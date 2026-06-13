@@ -2,10 +2,14 @@ package com.molox.createimp.block.brass_scrap_bucket;
 
 import com.mojang.serialization.MapCodec;
 import com.molox.createimp.network.OpenBrassScrapBucketGuiPacket;
+import com.molox.createimp.registry.ModBlockEntityTypes;
 import com.simibubi.create.content.equipment.wrench.IWrenchable;
+import com.simibubi.create.foundation.blockEntity.behaviour.filtering.FilteringBehaviour;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -19,6 +23,8 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.jetbrains.annotations.Nullable;
+import net.minecraft.world.level.block.entity.BlockEntityTicker;
+import net.minecraft.world.level.block.entity.BlockEntityType;
 
 public class BrassScrapBucketBlock extends BaseEntityBlock implements IWrenchable {
 
@@ -46,7 +52,14 @@ public class BrassScrapBucketBlock extends BaseEntityBlock implements IWrenchabl
     @Nullable
     @Override
     public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
-        return new BrassScrapBucketBlockEntity(pos, state);
+        return new BrassScrapBucketBlockEntity(ModBlockEntityTypes.BRASS_SCRAP_BUCKET.get(), pos, state);
+    }
+
+    @Nullable
+    @Override
+    public <T extends BlockEntity> BlockEntityTicker<T> getTicker(Level level, BlockState state, BlockEntityType<T> blockEntityType) {
+        return createTickerHelper(blockEntityType, ModBlockEntityTypes.BRASS_SCRAP_BUCKET.get(),
+                (lvl, pos, blockState, be) -> be.tick());
     }
 
     @Override
@@ -59,6 +72,23 @@ public class BrassScrapBucketBlock extends BaseEntityBlock implements IWrenchabl
         if (be.getAttachType() == BrassScrapBucketBlockEntity.ATTACH_NONE) {
             be.resetKeepConfig();
         }
+    }
+
+    @Override
+    protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level,
+                                              BlockPos pos, Player player, InteractionHand hand,
+                                              BlockHitResult hit) {
+        if (!(level.getBlockEntity(pos) instanceof BrassScrapBucketBlockEntity be))
+            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+
+        FilteringBehaviour filtering = be.filtering;
+        if (filtering != null && filtering.getSlotPositioning().testHit(level, pos, state, hit.getLocation())) {
+            if (level.isClientSide()) return ItemInteractionResult.SUCCESS;
+            filtering.onShortInteract(player, hand, hit.getDirection(), hit);
+            return ItemInteractionResult.SUCCESS;
+        }
+
+        return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
     }
 
     @Override

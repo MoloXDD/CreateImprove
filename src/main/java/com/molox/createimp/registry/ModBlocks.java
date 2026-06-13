@@ -18,6 +18,7 @@ public class ModBlocks {
             BLOCKS.register("andesite_scrap_bucket", () -> new AndesiteScrapBucketBlock(
                     BlockBehaviour.Properties.ofFullCopy(Blocks.ANDESITE)
                             .sound(SoundType.METAL)
+                            .noOcclusion()
                             .requiresCorrectToolForDrops()
             ));
 
@@ -25,6 +26,7 @@ public class ModBlocks {
             BLOCKS.register("brass_scrap_bucket", () -> new BrassScrapBucketBlock(
                     BlockBehaviour.Properties.ofFullCopy(Blocks.GOLD_BLOCK)
                             .sound(SoundType.METAL)
+                            .noOcclusion()
                             .requiresCorrectToolForDrops()
             ));
 }

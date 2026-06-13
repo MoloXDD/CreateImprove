@@ -13,5 +13,9 @@ public class CreateImpConfig implements ConfigData {
     public static class BrassScrapBucket {
         public int itemsPerNugget = 64;
         public int mbPerNugget = 2000;
+        public int itemTransferAmount = 64;
+        public int itemTransferInterval = 10;
+        public int fluidTransferAmount = 512;
+        public int fluidTransferInterval = 10;
     }
 }

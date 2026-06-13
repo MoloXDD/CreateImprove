@@ -3,7 +3,7 @@
   "block.createimp.andesite_scrap_bucket.tooltip.summary": "摧毁_一切_输入的物品与流体",
 
   "block.createimp.brass_scrap_bucket": "黄铜废料桶",
-  "block.createimp.brass_scrap_bucket.tooltip.summary": "摧毁_一切_输入的物品与流体，并在其中汲取一点_经验颗粒_，_空手右键_或利用_物流元件_取出经验颗粒。可在侧方配置_物品过滤_，且当放置在_储物设备或流体储罐_下时，可以配置_自动_将上方的库存_维持在一定数量_。",
+  "block.createimp.brass_scrap_bucket.tooltip.summary": "摧毁_一切_输入的物品与流体，并在其中汲取一点_经验颗粒_，_蹲下并空手右键_或利用_物流元件_取出经验颗粒。可在侧方配置_物品过滤_，且当放置在_储物设备或流体储罐_下时，可以配置_自动_将上方的库存_维持在一定数量_。",
 
   "itemGroup.createimp": "Create Improve",
 
@@ -13,5 +13,10 @@
   "text.autoconfig.createimp.option.brassScrapBucket.mbPerNugget": "生成经验颗粒的流体mB",
   "createimp.gui.brass_scrap_bucket.disabled": "未启用",
   "createimp.gui.brass_scrap_bucket.tooltip.current": "当前为%s",
-  "createimp.gui.brass_scrap_bucket.tooltip.max": "(最大%s)"
+  "createimp.gui.brass_scrap_bucket.tooltip.max": "(最大%s)",
+  "block.createimp.brass_scrap_bucket.filter_label": "废料桶过滤器",
+  "text.autoconfig.createimp.option.brassScrapBucket.itemTransferAmount": "传输物品单次上限（个）",
+  "text.autoconfig.createimp.option.brassScrapBucket.itemTransferInterval": "传输物品间隔（tick）",
+  "text.autoconfig.createimp.option.brassScrapBucket.fluidTransferAmount": "传输流体单次上限（mB）",
+  "text.autoconfig.createimp.option.brassScrapBucket.fluidTransferInterval": "传输流体间隔（tick）"
 }

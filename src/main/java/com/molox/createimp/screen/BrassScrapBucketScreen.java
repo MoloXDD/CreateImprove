@@ -1,6 +1,7 @@
 package com.molox.createimp.screen;
 
 import com.molox.createimp.CreateImp;
+import com.molox.createimp.registry.ModItems;
 import com.molox.createimp.block.brass_scrap_bucket.BrassScrapBucketBlockEntity;
 import com.molox.createimp.network.OpenBrassScrapBucketGuiPacket;
 import com.molox.createimp.network.SaveBrassScrapBucketConfigPacket;
@@ -35,6 +36,10 @@ public class BrassScrapBucketScreen extends AbstractSimiScreen {
     private static final int CONFIRM_BUTTON_X = 149;
     private static final int CONFIRM_BUTTON_Y = 55;
 
+    // 废料桶自身图标位置（相对于窗口左上角）
+    private static final int SELF_ICON_X = 24;
+    private static final int SELF_ICON_Y = 24;
+
     private static final int ATTACH_ICON_X = 13;
     private static final int ATTACH_ICON_Y = 56;
 
@@ -52,7 +57,7 @@ public class BrassScrapBucketScreen extends AbstractSimiScreen {
     private static final int MEASURE_INPUT_X = 100;
     private static final int MEASURE_INPUT_Y = 23;
     private static final int MEASURE_INPUT_W = 52;
-    private static final int MEASURE_INPUT_H = 42;
+    private static final int MEASURE_INPUT_H = 18;
 
     private static final int VALUE_TEXT_X = 53;
     private static final int VALUE_TEXT_Y = 28;
@@ -220,6 +225,10 @@ public class BrassScrapBucketScreen extends AbstractSimiScreen {
     @Override
     protected void renderWindow(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
         graphics.blit(TEXTURE, guiLeft, guiTop, 0, 0, GUI_WIDTH, GUI_HEIGHT, 256, 256);
+
+        GuiGameElement.of(new ItemStack(ModItems.BRASS_SCRAP_BUCKET.get()))
+                .at(guiLeft + SELF_ICON_X, guiTop + SELF_ICON_Y, 0)
+                .render(graphics);
 
         Component titleComp = Component.translatable("block.createimp.brass_scrap_bucket");
         int titleX = TITLE_X < 0

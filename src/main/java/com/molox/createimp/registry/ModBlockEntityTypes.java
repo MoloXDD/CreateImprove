@@ -20,6 +20,8 @@ public class ModBlockEntityTypes {
 
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<BrassScrapBucketBlockEntity>> BRASS_SCRAP_BUCKET =
             BLOCK_ENTITY_TYPES.register("brass_scrap_bucket",
-                    () -> BlockEntityType.Builder.of(BrassScrapBucketBlockEntity::new,
+                    () -> BlockEntityType.Builder.of(
+                            (pos, state) -> new BrassScrapBucketBlockEntity(
+                                    ModBlockEntityTypes.BRASS_SCRAP_BUCKET.get(), pos, state),
                             ModBlocks.BRASS_SCRAP_BUCKET.get()).build(null));
 }
