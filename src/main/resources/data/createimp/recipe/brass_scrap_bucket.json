@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " L ",
+    " B ",
+    " C "
+  ],
+  "key": {
+    "L": {"item": "minecraft:lava_bucket"},
+    "B": {"item": "create:basin"},
+    "C": {"item": "create:brass_casing"}
+  },
+  "result": {
+    "id": "createimp:brass_scrap_bucket"
+  }
+}

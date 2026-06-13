@@ -1,0 +1,18 @@
+{
+  "block.createimp.andesite_scrap_bucket": "Andesite Scrap Bucket",
+  "block.createimp.andesite_scrap_bucket.tooltip": "Destroys all input items and fluids",
+
+  "block.createimp.brass_scrap_bucket": "Brass Scrap Bucket",
+  "block.createimp.brass_scrap_bucket.tooltip1": "Destroys all input items and fluids",
+  "block.createimp.brass_scrap_bucket.tooltip2_prefix": "and extracts a bit of ",
+  "block.createimp.brass_scrap_bucket.tooltip2_exp": "Experience",
+  "block.createimp.brass_scrap_bucket.tooltip2_suffix": " Nuggets from them",
+  "block.createimp.brass_scrap_bucket.tooltip3": "Right-click empty-handed or use logistics to retrieve stored nuggets",
+
+  "itemGroup.createimp": "Create Improve",
+
+  "text.autoconfig.createimp.title": "Create Improve Config",
+  "text.autoconfig.createimp.option.brassScrapBucket": "Brass Scrap Bucket Config",
+  "text.autoconfig.createimp.option.brassScrapBucket.itemsPerNugget": "Items per Experience Nugget",
+  "text.autoconfig.createimp.option.brassScrapBucket.mbPerNugget": "mB per Experience Nugget"
+}

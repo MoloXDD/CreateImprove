@@ -1,0 +1,18 @@
+{
+  "block.createimp.andesite_scrap_bucket": "安山废料桶",
+  "block.createimp.andesite_scrap_bucket.tooltip": "摧毁一切输入的物品与流体",
+
+  "block.createimp.brass_scrap_bucket": "黄铜废料桶",
+  "block.createimp.brass_scrap_bucket.tooltip1": "摧毁一切输入的物品与流体",
+  "block.createimp.brass_scrap_bucket.tooltip2_prefix": "并在其中汲取一点",
+  "block.createimp.brass_scrap_bucket.tooltip2_exp": "经验",
+  "block.createimp.brass_scrap_bucket.tooltip2_suffix": "颗粒",
+  "block.createimp.brass_scrap_bucket.tooltip3": "空手右键或利用物流元件获取储存的经验颗粒",
+
+  "itemGroup.createimp": "Create Improve",
+
+  "text.autoconfig.createimp.title": "Create Improve 配置",
+  "text.autoconfig.createimp.option.brassScrapBucket": "黄铜废料桶配置",
+  "text.autoconfig.createimp.option.brassScrapBucket.itemsPerNugget": "生成经验颗粒的物品数",
+  "text.autoconfig.createimp.option.brassScrapBucket.mbPerNugget": "生成经验颗粒的流体mB"
+}
