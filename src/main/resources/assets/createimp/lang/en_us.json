@@ -1,18 +1,17 @@
 {
   "block.createimp.andesite_scrap_bucket": "Andesite Scrap Bucket",
-  "block.createimp.andesite_scrap_bucket.tooltip": "Destroys all input items and fluids",
+  "block.createimp.andesite_scrap_bucket.tooltip.summary": "Destroys _all_ input items and fluids",
 
   "block.createimp.brass_scrap_bucket": "Brass Scrap Bucket",
-  "block.createimp.brass_scrap_bucket.tooltip1": "Destroys all input items and fluids",
-  "block.createimp.brass_scrap_bucket.tooltip2_prefix": "and extracts a bit of ",
-  "block.createimp.brass_scrap_bucket.tooltip2_exp": "Experience",
-  "block.createimp.brass_scrap_bucket.tooltip2_suffix": " Nuggets from them",
-  "block.createimp.brass_scrap_bucket.tooltip3": "Right-click empty-handed or use logistics to retrieve stored nuggets",
+  "block.createimp.brass_scrap_bucket.tooltip.summary": "Destroys _all_ input items and fluids, harvesting _Experience_ _Nuggets_ in the process. Use an _empty hand_ or _logistics_ to retrieve them. A _filter_ can be configured on the side. When placed below a _container_ _or_ _fluid_ _tank_, it can be set to _automatically_ keep the inventory _below_ _a_ _set_ _amount_.",
 
   "itemGroup.createimp": "Create Improve",
 
   "text.autoconfig.createimp.title": "Create Improve Config",
   "text.autoconfig.createimp.option.brassScrapBucket": "Brass Scrap Bucket Config",
   "text.autoconfig.createimp.option.brassScrapBucket.itemsPerNugget": "Items per Experience Nugget",
-  "text.autoconfig.createimp.option.brassScrapBucket.mbPerNugget": "mB per Experience Nugget"
+  "text.autoconfig.createimp.option.brassScrapBucket.mbPerNugget": "mB per Experience Nugget",
+  "createimp.gui.brass_scrap_bucket.disabled": "Disabled",
+  "createimp.gui.brass_scrap_bucket.tooltip.current": "Current: %s",
+  "createimp.gui.brass_scrap_bucket.tooltip.max": "(Max %s)"
 }

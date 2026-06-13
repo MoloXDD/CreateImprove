@@ -154,6 +154,9 @@ dependencies {
     localRuntime files("libs/Jade-1.21.1-NeoForge-15.10.5.jar")
     localRuntime files("libs/JadeAddons-1.21.1-NeoForge-6.1.0.jar")
     localRuntime files("libs/jei-1.21.1-neoforge-19.27.0.340.jar")
+    compileOnly files("libs/ponder-neoforge-1.0.82+mc1.21.1.jar")
+    compileOnly files("libs/flywheel-neoforge-1.21.1-1.0.6.jar")
+
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.
