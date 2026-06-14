@@ -10,12 +10,19 @@ public class CreateImpConfig implements ConfigData {
     @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
     public BrassScrapBucket brassScrapBucket = new BrassScrapBucket();
 
+    @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
+    public QuickUnpack quickUnpack = new QuickUnpack();
+
     public static class BrassScrapBucket {
         public int itemsPerNugget = 64;
         public int mbPerNugget = 2000;
         public int itemTransferAmount = 64;
         public int itemTransferInterval = 10;
-        public int fluidTransferAmount = 512;
+        public int fluidTransferAmount = 1024;
         public int fluidTransferInterval = 10;
+    }
+
+    public static class QuickUnpack {
+        public boolean enabled = true;
     }
 }

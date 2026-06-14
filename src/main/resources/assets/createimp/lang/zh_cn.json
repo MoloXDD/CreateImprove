@@ -18,5 +18,7 @@
   "text.autoconfig.createimp.option.brassScrapBucket.itemTransferAmount": "传输物品单次上限（个）",
   "text.autoconfig.createimp.option.brassScrapBucket.itemTransferInterval": "传输物品间隔（tick）",
   "text.autoconfig.createimp.option.brassScrapBucket.fluidTransferAmount": "传输流体单次上限（mB）",
-  "text.autoconfig.createimp.option.brassScrapBucket.fluidTransferInterval": "传输流体间隔（tick）"
+  "text.autoconfig.createimp.option.brassScrapBucket.fluidTransferInterval": "传输流体间隔（tick）",
+  "text.autoconfig.createimp.option.quickUnpack": "快捷拆包功能配置",
+  "text.autoconfig.createimp.option.quickUnpack.enabled": "是否启用"
 }

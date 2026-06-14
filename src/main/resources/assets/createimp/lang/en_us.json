@@ -18,5 +18,7 @@
   "text.autoconfig.createimp.option.brassScrapBucket.itemTransferAmount": "Item Transfer Amount (items)",
   "text.autoconfig.createimp.option.brassScrapBucket.itemTransferInterval": "Item Transfer Interval (ticks)",
   "text.autoconfig.createimp.option.brassScrapBucket.fluidTransferAmount": "Fluid Transfer Amount (mB)",
-  "text.autoconfig.createimp.option.brassScrapBucket.fluidTransferInterval": "Fluid Transfer Interval (ticks)"
+  "text.autoconfig.createimp.option.brassScrapBucket.fluidTransferInterval": "Fluid Transfer Interval (ticks)",
+  "text.autoconfig.createimp.option.quickUnpack": "Quick Unpack Config",
+  "text.autoconfig.createimp.option.quickUnpack.enabled": "Enabled"
 }
