@@ -3,6 +3,7 @@ package com.molox.createimp.registry;
 import com.molox.createimp.CreateImp;
 import com.molox.createimp.block.andesite_scrap_bucket.AndesiteScrapBucketBlock;
 import com.molox.createimp.block.brass_scrap_bucket.BrassScrapBucketBlock;
+import com.molox.createimp.block.labeled_redstone_link.LabeledRedstoneLinkBlock;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
@@ -25,6 +26,14 @@ public class ModBlocks {
     public static final DeferredBlock<BrassScrapBucketBlock> BRASS_SCRAP_BUCKET =
             BLOCKS.register("brass_scrap_bucket", () -> new BrassScrapBucketBlock(
                     BlockBehaviour.Properties.ofFullCopy(Blocks.GOLD_BLOCK)
+                            .sound(SoundType.METAL)
+                            .noOcclusion()
+                            .requiresCorrectToolForDrops()
+            ));
+
+    public static final DeferredBlock<LabeledRedstoneLinkBlock> LABELED_REDSTONE_LINK =
+            BLOCKS.register("labeled_redstone_link", () -> new LabeledRedstoneLinkBlock(
+                    BlockBehaviour.Properties.ofFullCopy(Blocks.STONE)
                             .sound(SoundType.METAL)
                             .noOcclusion()
                             .requiresCorrectToolForDrops()

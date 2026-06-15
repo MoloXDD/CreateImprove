@@ -3,6 +3,7 @@ package com.molox.createimp.registry;
 import com.molox.createimp.CreateImp;
 import com.molox.createimp.block.andesite_scrap_bucket.AndesiteScrapBucketBlockEntity;
 import com.molox.createimp.block.brass_scrap_bucket.BrassScrapBucketBlockEntity;
+import com.molox.createimp.block.labeled_redstone_link.LabeledRedstoneLinkBlockEntity;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.neoforged.neoforge.registries.DeferredHolder;
@@ -24,4 +25,11 @@ public class ModBlockEntityTypes {
                             (pos, state) -> new BrassScrapBucketBlockEntity(
                                     ModBlockEntityTypes.BRASS_SCRAP_BUCKET.get(), pos, state),
                             ModBlocks.BRASS_SCRAP_BUCKET.get()).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<LabeledRedstoneLinkBlockEntity>> LABELED_REDSTONE_LINK =
+            BLOCK_ENTITY_TYPES.register("labeled_redstone_link",
+                    () -> BlockEntityType.Builder.of(
+                            (pos, state) -> new LabeledRedstoneLinkBlockEntity(
+                                    ModBlockEntityTypes.LABELED_REDSTONE_LINK.get(), pos, state),
+                            ModBlocks.LABELED_REDSTONE_LINK.get()).build(null));
 }

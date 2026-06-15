@@ -33,5 +33,8 @@
   "item.createimp.network_manager.tooltip.condition2": "蹲下并右键时",
   "item.createimp.network_manager.tooltip.behaviour2": "打开_物流网络标签管理菜单_，_左键标签_可以_选择该标签_。",
   "item.createimp.network_manager.tooltip.condition3": "选择标签时",
-  "item.createimp.network_manager.tooltip.behaviour3": "右键_物流网络设备_，将_该标签下的网络_应用到该设备。"
+  "item.createimp.network_manager.tooltip.behaviour3": "右键_物流网络设备_，将_该标签下的网络_应用到该设备。",
+  "block.createimp.labeled_redstone_link": "标码无线红石信号终端",
+  "createimp.gui.labeled_redstone_link.title": "频段设置",
+  "createimp.gui.labeled_redstone_link.default_frequency": "默认红石频率"
 }

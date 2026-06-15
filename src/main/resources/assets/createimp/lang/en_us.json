@@ -33,5 +33,8 @@
   "item.createimp.network_manager.tooltip.condition2": "When sneaking and right-clicking",
   "item.createimp.network_manager.tooltip.behaviour2": "Opens the _Network Label Manager_. _Left-click a label_ to _select it_.",
   "item.createimp.network_manager.tooltip.condition3": "While a label is selected",
-  "item.createimp.network_manager.tooltip.behaviour3": "Right-click a _logistics network device_ to apply _the network under that label_."
+  "item.createimp.network_manager.tooltip.behaviour3": "Right-click a _logistics network device_ to apply _the network under that label_.",
+  "block.createimp.labeled_redstone_link": "Labeled Redstone Link",
+  "createimp.gui.labeled_redstone_link.title": "Frequency Settings",
+  "createimp.gui.labeled_redstone_link.default_frequency": "Default Redstone Frequency"
 }

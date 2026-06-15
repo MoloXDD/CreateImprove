@@ -15,11 +15,12 @@ public class ModCreativeTabs {
     public static final DeferredHolder<CreativeModeTab, CreativeModeTab> CREATEIMP_TAB =
             CREATIVE_MODE_TABS.register("createimp_tab", () -> CreativeModeTab.builder()
                     .title(Component.translatable("itemGroup.createimp"))
-                    .icon(() -> ModItems.ANDESITE_SCRAP_BUCKET.get().getDefaultInstance())
+                    .icon(() -> ModItems.NETWORK_MANAGER.get().getDefaultInstance())
                     .displayItems((parameters, output) -> {
                         output.accept(ModItems.ANDESITE_SCRAP_BUCKET.get());
                         output.accept(ModItems.BRASS_SCRAP_BUCKET.get());
                         output.accept(ModItems.NETWORK_MANAGER.get());
+                        output.accept(ModItems.LABELED_REDSTONE_LINK.get());
                     })
                     .build());
 }

@@ -23,4 +23,8 @@ public class ModItems {
     public static final DeferredItem<NetworkManagerItem> NETWORK_MANAGER =
             ITEMS.register("network_manager",
                     () -> new NetworkManagerItem(new Item.Properties().stacksTo(1)));
+
+    public static final DeferredItem<BlockItem> LABELED_REDSTONE_LINK =
+            ITEMS.registerSimpleBlockItem("labeled_redstone_link", ModBlocks.LABELED_REDSTONE_LINK,
+                    new Item.Properties());
 }
