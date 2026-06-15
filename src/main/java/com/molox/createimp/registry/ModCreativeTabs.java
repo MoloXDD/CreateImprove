@@ -19,6 +19,7 @@ public class ModCreativeTabs {
                     .displayItems((parameters, output) -> {
                         output.accept(ModItems.ANDESITE_SCRAP_BUCKET.get());
                         output.accept(ModItems.BRASS_SCRAP_BUCKET.get());
+                        output.accept(ModItems.NETWORK_MANAGER.get());
                     })
                     .build());
 }

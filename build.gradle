@@ -144,6 +144,7 @@ dependencies {
     compileOnly files("libs/cloth-config-15.0.140-neoforge.jar")
     localRuntime files("libs/create-1.21.1-6.0.10.jar")
     compileOnly files("libs/create-1.21.1-6.0.10.jar")
+    compileOnly files("libs/jei-1.21.1-neoforge-19.27.0.340.jar")
     localRuntime files("libs/iris-neoforge-1.8.12+mc1.21.1.jar")
     localRuntime files("libs/sodium-neoforge-0.6.13+mc1.21.1.jar")
     localRuntime files("libs/irisveil-0.1.0.jar")

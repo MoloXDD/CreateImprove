@@ -1,12 +1,17 @@
 package com.molox.createimp;
 
 import com.molox.createimp.network.OpenBrassScrapBucketGuiPacket;
+import com.molox.createimp.network.OpenNetworkManagerEditorPacket;
+import com.molox.createimp.network.OpenNetworkManagerGuiPacket;
 import com.molox.createimp.network.SaveBrassScrapBucketConfigPacket;
+import com.molox.createimp.network.SaveNetworkManagerDataPacket;
 import com.molox.createimp.registry.ModBlockEntityTypes;
 import com.molox.createimp.registry.ModBlocks;
 import com.molox.createimp.registry.ModCapabilities;
 import com.molox.createimp.registry.ModCreativeTabs;
+import com.molox.createimp.registry.ModDataComponents;
 import com.molox.createimp.registry.ModItems;
+import com.molox.createimp.registry.ModMenuTypes;
 import com.mojang.logging.LogUtils;
 import me.shedaniel.autoconfig.AutoConfig;
 import me.shedaniel.autoconfig.serializer.GsonConfigSerializer;
@@ -28,6 +33,8 @@ public class CreateImp {
         ModItems.ITEMS.register(modEventBus);
         ModCreativeTabs.CREATIVE_MODE_TABS.register(modEventBus);
         ModBlockEntityTypes.BLOCK_ENTITY_TYPES.register(modEventBus);
+        ModDataComponents.DATA_COMPONENTS.register(modEventBus);
+        ModMenuTypes.MENU_TYPES.register(modEventBus);
         modEventBus.addListener(ModCapabilities::register);
         modEventBus.addListener(CreateImp::registerPayloads);
     }
@@ -44,6 +51,22 @@ public class CreateImp {
                 SaveBrassScrapBucketConfigPacket.TYPE,
                 SaveBrassScrapBucketConfigPacket.STREAM_CODEC,
                 SaveBrassScrapBucketConfigPacket::handle
+        );
+        registrar.playToClient(
+                OpenNetworkManagerGuiPacket.TYPE,
+                OpenNetworkManagerGuiPacket.STREAM_CODEC,
+                (packet, context) -> context.enqueueWork(
+                        () -> com.molox.createimp.screen.NetworkManagerScreen.open(packet))
+        );
+        registrar.playToServer(
+                SaveNetworkManagerDataPacket.TYPE,
+                SaveNetworkManagerDataPacket.STREAM_CODEC,
+                SaveNetworkManagerDataPacket::handle
+        );
+        registrar.playToServer(
+                OpenNetworkManagerEditorPacket.TYPE,
+                OpenNetworkManagerEditorPacket.STREAM_CODEC,
+                OpenNetworkManagerEditorPacket::handle
         );
     }
 

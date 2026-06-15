@@ -3,7 +3,8 @@ package com.molox.createimp;
 import com.molox.createimp.block.brass_scrap_bucket.BrassScrapBucketRenderer;
 import com.molox.createimp.registry.ModBlockEntityTypes;
 import com.molox.createimp.registry.ModItems;
-import com.simibubi.create.foundation.blockEntity.renderer.SmartBlockEntityRenderer;
+import com.molox.createimp.registry.ModMenuTypes;
+import com.molox.createimp.screen.NetworkManagerLabelEditorScreen;
 import com.simibubi.create.foundation.item.ItemDescription;
 import com.simibubi.create.foundation.item.TooltipModifier;
 import me.shedaniel.autoconfig.AutoConfig;
@@ -14,6 +15,7 @@ import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
+import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 
 @Mod(value = CreateImp.MODID, dist = Dist.CLIENT)
@@ -26,6 +28,7 @@ public class CreateImpClient {
 
         modEventBus.addListener(CreateImpClient::onClientSetup);
         modEventBus.addListener(CreateImpClient::onRegisterRenderers);
+        modEventBus.addListener(CreateImpClient::onRegisterMenuScreens);
     }
 
     private static void onClientSetup(FMLClientSetupEvent event) {
@@ -37,6 +40,11 @@ public class CreateImpClient {
                 ModItems.BRASS_SCRAP_BUCKET.get().asItem(),
                 new ItemDescription.Modifier(ModItems.BRASS_SCRAP_BUCKET.get().asItem(), FontHelper.Palette.STANDARD_CREATE)
         );
+    }
+
+    private static void onRegisterMenuScreens(RegisterMenuScreensEvent event) {
+        event.register(ModMenuTypes.NETWORK_MANAGER_LABEL_EDITOR.get(),
+                NetworkManagerLabelEditorScreen::new);
     }
 
     private static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {

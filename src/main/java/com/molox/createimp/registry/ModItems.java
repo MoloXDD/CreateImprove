@@ -1,6 +1,7 @@
 package com.molox.createimp.registry;
 
 import com.molox.createimp.CreateImp;
+import com.molox.createimp.item.NetworkManagerItem;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.neoforged.neoforge.registries.DeferredItem;
@@ -18,4 +19,8 @@ public class ModItems {
     public static final DeferredItem<BlockItem> BRASS_SCRAP_BUCKET =
             ITEMS.registerSimpleBlockItem("brass_scrap_bucket", ModBlocks.BRASS_SCRAP_BUCKET,
                     new Item.Properties());
+
+    public static final DeferredItem<NetworkManagerItem> NETWORK_MANAGER =
+            ITEMS.register("network_manager",
+                    () -> new NetworkManagerItem(new Item.Properties().stacksTo(1)));
 }

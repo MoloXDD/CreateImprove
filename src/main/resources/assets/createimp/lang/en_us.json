@@ -20,5 +20,8 @@
   "text.autoconfig.createimp.option.brassScrapBucket.fluidTransferAmount": "Fluid Transfer Amount (mB)",
   "text.autoconfig.createimp.option.brassScrapBucket.fluidTransferInterval": "Fluid Transfer Interval (ticks)",
   "text.autoconfig.createimp.option.quickUnpack": "Quick Unpack Config",
-  "text.autoconfig.createimp.option.quickUnpack.enabled": "Enabled"
+  "text.autoconfig.createimp.option.quickUnpack.enabled": "Enabled",
+  "item.createimp.network_manager": "Network Manager",
+  "createimp.gui.network_manager.label_prefix": "Network Label ",
+  "createimp.gui.network_manager.add_label_title": "Add Label"
 }

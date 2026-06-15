@@ -20,5 +20,8 @@
   "text.autoconfig.createimp.option.brassScrapBucket.fluidTransferAmount": "传输流体单次上限（mB）",
   "text.autoconfig.createimp.option.brassScrapBucket.fluidTransferInterval": "传输流体间隔（tick）",
   "text.autoconfig.createimp.option.quickUnpack": "快捷拆包功能配置",
-  "text.autoconfig.createimp.option.quickUnpack.enabled": "是否启用"
+  "text.autoconfig.createimp.option.quickUnpack.enabled": "是否启用",
+  "item.createimp.network_manager": "网络管理器",
+  "createimp.gui.network_manager.label_prefix": "物流网络标签",
+  "createimp.gui.network_manager.add_label_title": "新增标签"
 }
