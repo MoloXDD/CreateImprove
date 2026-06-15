@@ -23,5 +23,15 @@
   "text.autoconfig.createimp.option.quickUnpack.enabled": "是否启用",
   "item.createimp.network_manager": "网络管理器",
   "createimp.gui.network_manager.label_prefix": "物流网络标签",
-  "createimp.gui.network_manager.add_label_title": "新增标签"
+  "createimp.gui.network_manager.add_label_title": "新增标签",
+  "createimp.gui.network_manager.lmb_select": "左键选中",
+  "createimp.hud.network_manager.selected": "已选择网络：%s",
+  "createimp.message.network_manager.network_changed": "已修改网络连接",
+  "item.createimp.network_manager.tooltip.summary": "通过已有物流网络新建并管理网络标签，并随时将标签下的网络应用到物流网络设备的工具。",
+  "item.createimp.network_manager.tooltip.condition1": "蹲下并右键已连接网络的网络设备时",
+  "item.createimp.network_manager.tooltip.behaviour1": "打开_新建物流网络标签菜单_，可以给标签_起名_并用物品_设置图标_，同一物流网络可以_建立多个标签_。",
+  "item.createimp.network_manager.tooltip.condition2": "蹲下并右键时",
+  "item.createimp.network_manager.tooltip.behaviour2": "打开_物流网络标签管理菜单_，_左键标签_可以_选择该标签_。",
+  "item.createimp.network_manager.tooltip.condition3": "选择标签时",
+  "item.createimp.network_manager.tooltip.behaviour3": "右键_物流网络设备_，将_该标签下的网络_应用到该设备。"
 }

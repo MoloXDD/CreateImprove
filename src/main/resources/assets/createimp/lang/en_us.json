@@ -23,5 +23,15 @@
   "text.autoconfig.createimp.option.quickUnpack.enabled": "Enabled",
   "item.createimp.network_manager": "Network Manager",
   "createimp.gui.network_manager.label_prefix": "Network Label ",
-  "createimp.gui.network_manager.add_label_title": "Add Label"
+  "createimp.gui.network_manager.add_label_title": "Add Label",
+  "createimp.gui.network_manager.lmb_select": "Left-click to select",
+  "createimp.hud.network_manager.selected": "Network selected: %s",
+  "createimp.message.network_manager.network_changed": "Network connection modified",
+  "item.createimp.network_manager.tooltip.summary": "A tool for creating and managing network labels based on existing logistics networks, and applying them to logistics devices at any time.",
+  "item.createimp.network_manager.tooltip.condition1": "When sneaking and right-clicking a connected network device",
+  "item.createimp.network_manager.tooltip.behaviour1": "Opens the _Add Network Label_ menu to _name_ the label and _set an icon_ with an item. _Multiple labels_ can be created for the same network.",
+  "item.createimp.network_manager.tooltip.condition2": "When sneaking and right-clicking",
+  "item.createimp.network_manager.tooltip.behaviour2": "Opens the _Network Label Manager_. _Left-click a label_ to _select it_.",
+  "item.createimp.network_manager.tooltip.condition3": "While a label is selected",
+  "item.createimp.network_manager.tooltip.behaviour3": "Right-click a _logistics network device_ to apply _the network under that label_."
 }

@@ -22,10 +22,6 @@ import java.util.Set;
 public class NetworkManagerLabelEditorScreen
         extends AbstractSimiContainerScreen<NetworkManagerLabelEditorMenu> {
 
-    // =====================================================================
-    // 布局调节变量
-    // =====================================================================
-
     private static final int GUI_WIDTH  = AllGuiTextures.STOCK_KEEPER_CATEGORY.getWidth();
     private static final int HEADER_H   = AllGuiTextures.STOCK_KEEPER_CATEGORY_HEADER.getHeight();
     private static final int EDIT_H     = AllGuiTextures.STOCK_KEEPER_CATEGORY_EDIT.getHeight();
@@ -34,27 +30,19 @@ public class NetworkManagerLabelEditorScreen
     private static final int INV_GAP    = 14;
     private static final int GUI_HEIGHT = HEADER_H + EDIT_H + FOOTER_H + INV_H + INV_GAP;
 
-    // 文字输入框，相对于 GUI 左上角（受 EDITOR_Y_OFFSET 影响）
     private static final int EDITBOX_X = 47;
     private static final int EDITBOX_Y = 33;
     private static final int EDITBOX_W = 124;
     private static final int EDITBOX_H = 10;
 
-    // 确认按钮（对勾），相对于 GUI 左上角（受 EDITOR_Y_OFFSET 影响）
     private static final int CONFIRM_X = 167;
     private static final int CONFIRM_Y = 64;
 
-    // 玩家物品栏背景渲染位置（仅视觉，不影响交互）
     private static final int PLAYER_INV_RENDER_X = 10;
     private static final int PLAYER_INV_RENDER_Y = 98;
 
-    // 标题文字纵向偏移（受 EDITOR_Y_OFFSET 影响）
     private static final int TITLE_Y = 4;
-
-    // 整个编辑区（背景纹理+输入框+按钮，不含玩家物品栏）整体纵向偏移
     private static final int EDITOR_Y_OFFSET = 0;
-
-    // =====================================================================
 
     private static final int EDITBOX_COLOR = 0xEEEEEE;
     private static final int TITLE_COLOR   = 0x3D3C48;
@@ -126,10 +114,10 @@ public class NetworkManagerLabelEditorScreen
                 : nameEditBox.getValue();
 
         List<NetworkLabel> newLabels = new ArrayList<>(menu.existingLabels);
-        newLabels.add(new NetworkLabel(name, icon));
+        newLabels.add(new NetworkLabel(name, icon, menu.targetNetworkId));
 
-        PacketDistributor.sendToServer(
-                new SaveNetworkManagerDataPacket(menu.hand, newLabels));
+        // 发给服务端保存；服务端保存后会将最新标签列表推回，客户端收到后打开主菜单
+        PacketDistributor.sendToServer(new SaveNetworkManagerDataPacket(menu.hand, newLabels, true));
         onClose();
     }
 
@@ -150,19 +138,13 @@ public class NetworkManagerLabelEditorScreen
 
     @Override
     protected void renderForeground(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
-        // 鼠标在图标槽区域时，临时清空 hoveredSlot 阻止原版渲染物品 tooltip
         boolean onIconSlot = isMouseOverIconSlot(mouseX, mouseY);
         var savedSlot = hoveredSlot;
-        if (onIconSlot) {
-            hoveredSlot = null;
-        }
+        if (onIconSlot) hoveredSlot = null;
 
         super.renderForeground(graphics, mouseX, mouseY, partialTicks);
 
-        // 恢复 hoveredSlot
-        if (onIconSlot) {
-            hoveredSlot = savedSlot;
-        }
+        if (onIconSlot) hoveredSlot = savedSlot;
 
         int editorTop = topPos + EDITOR_Y_OFFSET;
 

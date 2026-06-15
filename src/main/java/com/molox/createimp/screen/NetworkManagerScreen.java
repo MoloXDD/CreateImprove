@@ -2,15 +2,18 @@ package com.molox.createimp.screen;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.molox.createimp.item.NetworkLabel;
-import com.molox.createimp.network.OpenNetworkManagerEditorPacket;
+import com.molox.createimp.item.NetworkSelectedState;
 import com.molox.createimp.network.OpenNetworkManagerGuiPacket;
 import com.molox.createimp.network.SaveNetworkManagerDataPacket;
+import com.molox.createimp.registry.ModDataComponents;
 import com.simibubi.create.foundation.gui.AllGuiTextures;
 import com.simibubi.create.foundation.gui.AllIcons;
 import com.simibubi.create.foundation.gui.widget.IconButton;
 import net.createmod.catnip.animation.LerpedFloat;
 import net.createmod.catnip.gui.AbstractSimiScreen;
 import net.createmod.catnip.gui.ScreenOpener;
+import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
@@ -20,28 +23,28 @@ import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public class NetworkManagerScreen extends AbstractSimiScreen {
 
     private static final int BODY_REPEAT = 4;
 
-    private static final int GUI_WIDTH  = AllGuiTextures.STOCK_KEEPER_CATEGORY.getWidth();
-    private static final int HEADER_H   = AllGuiTextures.STOCK_KEEPER_CATEGORY_HEADER.getHeight();
-    private static final int BODY_H     = AllGuiTextures.STOCK_KEEPER_CATEGORY.getHeight();
-    private static final int FOOTER_H   = AllGuiTextures.STOCK_KEEPER_CATEGORY_FOOTER.getHeight();
-    private static final int GUI_HEIGHT = HEADER_H + BODY_H * BODY_REPEAT + FOOTER_H;
+    private static final int GUI_WIDTH   = AllGuiTextures.STOCK_KEEPER_CATEGORY.getWidth();
+    private static final int HEADER_H    = AllGuiTextures.STOCK_KEEPER_CATEGORY_HEADER.getHeight();
+    private static final int BODY_H      = AllGuiTextures.STOCK_KEEPER_CATEGORY.getHeight();
+    private static final int FOOTER_H    = AllGuiTextures.STOCK_KEEPER_CATEGORY_FOOTER.getHeight();
+    private static final int GUI_HEIGHT  = HEADER_H + BODY_H * BODY_REPEAT + FOOTER_H;
 
-    private static final int ENTRY_STEP  = 20;
-    private static final int SCISSOR_X   = 3;
-    private static final int SCISSOR_Y   = 16;
-    private static final int SCISSOR_X2  = 187;
-    private static final int SCISSOR_Y2  = 19 + BODY_H * BODY_REPEAT;
-    // 条目列表在 GUI 内的起始 Y（相对 guiTop）
+    private static final int ENTRY_STEP    = 20;
+    private static final int SCISSOR_X    = 3;
+    private static final int SCISSOR_Y    = 16;
+    private static final int SCISSOR_X2   = 187;
+    private static final int SCISSOR_Y2   = 19 + BODY_H * BODY_REPEAT;
     private static final int ENTRY_START_Y = 24;
-    private static final int DELETE_X    = 153;
-    private static final int DELETE_W    = 16;
-    private static final int DELETE_H    = 16;
-    private static final int TEXT_COLOR  = 0x656565;
+    private static final int DELETE_X     = 153;
+    private static final int DELETE_W     = 16;
+    private static final int DELETE_H     = 16;
+    private static final int TEXT_COLOR   = 0x656565;
 
     private final InteractionHand hand;
     private final List<NetworkLabel> labels;
@@ -56,6 +59,16 @@ public class NetworkManagerScreen extends AbstractSimiScreen {
     }
 
     public static void open(OpenNetworkManagerGuiPacket packet) {
+        // 打开主菜单时清除选中状态
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player != null) {
+            ItemStack stack = mc.player.getItemInHand(packet.hand());
+            if (stack.has(ModDataComponents.NETWORK_SELECTED_STATE.get())) {
+                // 发包让服务端清除选中状态
+                PacketDistributor.sendToServer(
+                        new com.molox.createimp.network.ClearNetworkSelectionPacket(packet.hand()));
+            }
+        }
         ScreenOpener.open(new NetworkManagerScreen(packet));
     }
 
@@ -80,20 +93,6 @@ public class NetworkManagerScreen extends AbstractSimiScreen {
         scroll.tickChaser();
     }
 
-    private void syncToServer() {
-        PacketDistributor.sendToServer(new SaveNetworkManagerDataPacket(hand, labels));
-    }
-
-    /**
-     * 最大滚动量 = 条目列表总高度超出可视区的部分。
-     *
-     * 可视区高度   = SCISSOR_Y2 - SCISSOR_Y = (19 + BODY_H*BODY_REPEAT) - 16 = 3 + BODY_H*BODY_REPEAT
-     * 列表顶部距可视区顶部偏移 = ENTRY_START_Y - SCISSOR_Y = 24 - 16 = 8
-     * 列表内容总高 = 8 + labels.size() * ENTRY_STEP
-     * 超出量       = 列表内容总高 - 可视区高度
-     *             = 8 + labels.size()*ENTRY_STEP - (3 + BODY_H*BODY_REPEAT)
-     *             = labels.size()*ENTRY_STEP + 5 - BODY_H*BODY_REPEAT
-     */
     private int getMaxScroll() {
         return Math.max(0, labels.size() * ENTRY_STEP + 5 - BODY_H * BODY_REPEAT);
     }
@@ -115,38 +114,40 @@ public class NetworkManagerScreen extends AbstractSimiScreen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (button == 2) {
-            int sx  = guiLeft + SCISSOR_X;
-            int sy  = guiTop  + SCISSOR_Y;
-            int sx2 = guiLeft + SCISSOR_X2;
-            int sy2 = guiTop  + SCISSOR_Y2;
-            if (mouseX >= sx && mouseX < sx2 && mouseY >= sy && mouseY < sy2) {
-                openEditor();
-                return true;
-            }
-        }
-
         if (button == 0) {
-            float scrollOff  = scroll.getValue(1.0f);
-            int relX         = (int) mouseX - guiLeft - 7;
-            int relYBase     = (int) mouseY - guiTop - ENTRY_START_Y + (int) scrollOff;
+            float scrollOff = scroll.getValue(1.0f);
+            int relX        = (int) mouseX - guiLeft - 7;
+            int relYBase    = (int) mouseY - guiTop - ENTRY_START_Y + (int) scrollOff;
 
             for (int i = 0; i < labels.size(); i++) {
                 int entryRelY = relYBase - i * ENTRY_STEP;
                 if (entryRelY <= 0 || entryRelY > DELETE_H) continue;
-                if (relX <= DELETE_X || relX > DELETE_X + DELETE_W) continue;
-                labels.remove(i);
-                clampScroll();
-                syncToServer();
-                return true;
+
+                // 点击删除按钮
+                if (relX > DELETE_X && relX <= DELETE_X + DELETE_W) {
+                    labels.remove(i);
+                    clampScroll();
+                    PacketDistributor.sendToServer(
+                            new SaveNetworkManagerDataPacket(hand, labels, false));
+                    return true;
+                }
+
+                // 点击标签主体区域（排除删除按钮）→ 选中
+                if (relX > 0 && relX <= DELETE_X) {
+                    NetworkLabel label = labels.get(i);
+                    if (label.networkId().isPresent()) {
+                        // 发包让服务端设置选中状态，然后关闭界面
+                        PacketDistributor.sendToServer(
+                                new com.molox.createimp.network.SetNetworkSelectionPacket(
+                                        hand, label.name(), label.networkId().get()));
+                        onClose();
+                        return true;
+                    }
+                }
             }
         }
 
         return super.mouseClicked(mouseX, mouseY, button);
-    }
-
-    private void openEditor() {
-        PacketDistributor.sendToServer(new OpenNetworkManagerEditorPacket(hand, labels));
     }
 
     @Override
@@ -160,9 +161,9 @@ public class NetworkManagerScreen extends AbstractSimiScreen {
         }
         AllGuiTextures.STOCK_KEEPER_CATEGORY_FOOTER.render(graphics, guiLeft, y);
 
-        Component title  = Component.translatable("item.createimp.network_manager");
-        int titleX       = guiLeft + GUI_WIDTH / 2 - font.width(title) / 2;
-        int titleY       = guiTop  + (HEADER_H - font.lineHeight) / 2;
+        Component title = Component.translatable("item.createimp.network_manager");
+        int titleX      = guiLeft + GUI_WIDTH / 2 - font.width(title) / 2;
+        int titleY      = guiTop  + (HEADER_H - font.lineHeight) / 2;
         graphics.drawString(font, title, titleX, titleY, 0xFFFFFF, false);
 
         graphics.enableScissor(
@@ -196,21 +197,38 @@ public class NetworkManagerScreen extends AbstractSimiScreen {
         pose.popPose();
         graphics.disableScissor();
 
-        // 悬停删除按钮 Tooltip
+        // 悬停 tooltip
         float scrollOff2 = scroll.getValue(partialTicks);
         int relX         = mouseX - guiLeft - 7;
         int relYBase     = mouseY - guiTop  - ENTRY_START_Y + (int) scrollOff2;
         for (int i = 0; i < labels.size(); i++) {
             int entryRelY = relYBase - i * ENTRY_STEP;
             if (entryRelY <= 0 || entryRelY > DELETE_H) continue;
-            if (relX <= DELETE_X || relX > DELETE_X + DELETE_W) continue;
             int entryScreenY = guiTop + ENTRY_START_Y + i * ENTRY_STEP - (int) scrollOff2;
             if (entryScreenY + ENTRY_STEP <= guiTop + SCISSOR_Y
                     || entryScreenY >= guiTop + SCISSOR_Y2) continue;
-            graphics.renderComponentTooltip(font,
-                    List.of(Component.translatable("create.gui.stock_ticker.delete_category")),
-                    mouseX, mouseY);
-            break;
+
+            NetworkLabel label = labels.get(i);
+
+            // 删除按钮悬停
+            if (relX > DELETE_X && relX <= DELETE_X + DELETE_W) {
+                graphics.renderComponentTooltip(font,
+                        List.of(Component.translatable("create.gui.stock_ticker.delete_category")),
+                        mouseX, mouseY);
+                break;
+            }
+
+            // 标签主体悬停（仅有 networkId 的标签才可选中）
+            if (relX > 0 && relX <= DELETE_X) {
+                List<Component> tooltip = new ArrayList<>();
+                tooltip.add(Component.literal(label.name()).withStyle(ChatFormatting.WHITE));
+                if (label.networkId().isPresent()) {
+                    tooltip.add(Component.translatable("createimp.gui.network_manager.lmb_select")
+                            .withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC));
+                }
+                graphics.renderComponentTooltip(font, tooltip, mouseX, mouseY);
+                break;
+            }
         }
     }
 }

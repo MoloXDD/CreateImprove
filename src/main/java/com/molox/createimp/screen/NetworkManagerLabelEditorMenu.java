@@ -17,6 +17,8 @@ import net.neoforged.neoforge.items.ItemStackHandler;
 import net.neoforged.neoforge.items.SlotItemHandler;
 
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 public class NetworkManagerLabelEditorMenu extends GhostItemMenu<ItemStack> {
 
@@ -26,23 +28,26 @@ public class NetworkManagerLabelEditorMenu extends GhostItemMenu<ItemStack> {
     public static final int PLAYER_INV_SLOT_X = 18;
     public static final int PLAYER_INV_SLOT_Y = 116;
 
-    // 图标槽在 slots 列表中的索引（玩家背包 36 个槽之后）
     public static final int ICON_SLOT_INDEX = 36;
 
     public final InteractionHand hand;
     public final List<NetworkLabel> existingLabels;
+    public final Optional<UUID> targetNetworkId;
 
     public NetworkManagerLabelEditorMenu(int id, Inventory inv, RegistryFriendlyByteBuf buf) {
         this(ModMenuTypes.NETWORK_MANAGER_LABEL_EDITOR.get(), id, inv,
                 buf.readBoolean() ? InteractionHand.MAIN_HAND : InteractionHand.OFF_HAND,
-                NetworkLabel.STREAM_CODEC.apply(ByteBufCodecs.list()).decode(buf));
+                NetworkLabel.STREAM_CODEC.apply(ByteBufCodecs.list()).decode(buf),
+                buf.readBoolean() ? Optional.of(buf.readUUID()) : Optional.empty());
     }
 
     public NetworkManagerLabelEditorMenu(MenuType<?> type, int id, Inventory inv,
-                                         InteractionHand hand, List<NetworkLabel> existingLabels) {
+                                         InteractionHand hand, List<NetworkLabel> existingLabels,
+                                         Optional<UUID> targetNetworkId) {
         super(type, id, inv, ItemStack.EMPTY);
         this.hand = hand;
         this.existingLabels = existingLabels;
+        this.targetNetworkId = targetNetworkId;
     }
 
     @Override
@@ -71,7 +76,6 @@ public class NetworkManagerLabelEditorMenu extends GhostItemMenu<ItemStack> {
 
     @Override
     public void clicked(int slotId, int dragType, ClickType clickType, Player player) {
-        // 图标槽空手点击时不清空，保持原有图标
         if (slotId == ICON_SLOT_INDEX && getCarried().isEmpty()) {
             return;
         }
