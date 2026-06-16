@@ -4,9 +4,9 @@
 	"parent": "block/block",
 	"render_type": "cutout",
 	"textures": {
-		"redstone_antenna": "createimp:block/labeledrestone_link/labeledredstone_antenna",
+		"redstone_antenna": "createimp:block/labeledrestone_link/labeledredstone_antenna_powered",
 		"particle": "createimp:block/labeledrestone_link/labeledredstone_bridge",
-		"redstone_bridge_side": "createimp:block/labeledrestone_link/labeledredstone_bridge"
+		"redstone_bridge_side": "createimp:block/labeledrestone_link/labeledredstone_bridge_powered"
 	},
 	"elements": [
 		{
