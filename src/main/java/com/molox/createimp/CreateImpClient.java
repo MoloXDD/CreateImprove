@@ -1,6 +1,7 @@
 package com.molox.createimp;
 
 import com.molox.createimp.block.brass_scrap_bucket.BrassScrapBucketRenderer;
+import com.molox.createimp.block.labeled_redstone_link.LabeledRedstoneLinkRenderer;
 import com.molox.createimp.client.NetworkManagerClientHandler;
 import com.molox.createimp.registry.ModBlockEntityTypes;
 import com.molox.createimp.registry.ModItems;
@@ -38,10 +39,6 @@ public class CreateImpClient {
         modEventBus.addListener(CreateImpClient::onRegisterMenuScreens);
         modEventBus.addListener(CreateImpClient::onRegisterGuiLayers);
 
-        // 用 Pre 而不是 Post：
-        // Create 的 LogisticallyLinkedClientHandler.tick() 注册在 Pre，我们后注册所以后执行
-        // 顺序：Create 清空并重新设置 previouslyHeldFrequency（null）→ 我们覆盖为选中 UUID
-        // → BE tick → FactoryPanelBehaviour.tickPanel() 读到正确值
         NeoForge.EVENT_BUS.addListener(CreateImpClient::onClientTick);
     }
 
@@ -69,6 +66,10 @@ public class CreateImpClient {
         event.registerBlockEntityRenderer(
                 ModBlockEntityTypes.BRASS_SCRAP_BUCKET.get(),
                 BrassScrapBucketRenderer::new
+        );
+        event.registerBlockEntityRenderer(
+                ModBlockEntityTypes.LABELED_REDSTONE_LINK.get(),
+                LabeledRedstoneLinkRenderer::new
         );
     }
 

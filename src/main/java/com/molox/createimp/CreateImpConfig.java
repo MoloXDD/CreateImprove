@@ -13,6 +13,9 @@ public class CreateImpConfig implements ConfigData {
     @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
     public QuickUnpack quickUnpack = new QuickUnpack();
 
+    @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
+    public LabeledRedstoneLinkConfig labeledRedstoneLinkConfig = new LabeledRedstoneLinkConfig();
+
     public static class BrassScrapBucket {
         public int itemsPerNugget = 64;
         public int mbPerNugget = 2000;
@@ -24,5 +27,9 @@ public class CreateImpConfig implements ConfigData {
 
     public static class QuickUnpack {
         public boolean enabled = true;
+    }
+
+    public static class LabeledRedstoneLinkConfig {
+        public boolean showFrequencyLabel = true;
     }
 }
