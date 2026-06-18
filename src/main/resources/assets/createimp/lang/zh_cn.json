@@ -38,5 +38,7 @@
   "createimp.gui.labeled_redstone_link.title": "频段设置",
   "createimp.gui.labeled_redstone_link.default_frequency": "默认红石频率",
   "text.autoconfig.createimp.option.labeledRedstoneLinkConfig": "标码无线红石信号终端配置",
-  "text.autoconfig.createimp.option.labeledRedstoneLinkConfig.showFrequencyLabel": "以名称显示频率"
+  "text.autoconfig.createimp.option.labeledRedstoneLinkConfig.showFrequencyLabel": "以名称显示频率",
+  "createimp.message.network_manager.no_network_selected": "请先在主菜单中选择一个网络",
+  "createimp.message.network_manager.no_panel_targeted": "未检测到仪表"
 }
