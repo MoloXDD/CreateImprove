@@ -40,7 +40,6 @@ public class MixinClipboardScreen {
                                               GuiGraphics graphics, int x, int y,
                                               @Local(index = 12) String string) {
         if (string.startsWith("@")) {
-            // 明确指定纹理宽高为 8x8，避免blit内部按256x256计算UV
             graphics.blit(CLIPBOARD_FREQUENCY_TEXTURE, x, y, 0, 0, 8, 8, 8, 8);
         } else {
             instance.render(graphics, x, y);

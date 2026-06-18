@@ -38,4 +38,4 @@
   "createimp.gui.labeled_redstone_link.title": "Frequency Settings",
   "createimp.gui.labeled_redstone_link.default_frequency": "Default Redstone Frequency",
   "text.autoconfig.createimp.option.labeledRedstoneLinkConfig": "Labeled Redstone Link Settings",
-  "text.autoconfig.createimp.option.LabeledRedstoneLinkConfig.showFrequencyLabel": "Show Frequency Label"}
+  "text.autoconfig.createimp.option.labeledRedstoneLinkConfig.showFrequencyLabel": "Show Frequency Label"}

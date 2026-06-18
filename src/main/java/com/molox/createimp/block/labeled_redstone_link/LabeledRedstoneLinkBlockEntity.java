@@ -53,6 +53,7 @@ public class LabeledRedstoneLinkBlockEntity extends SmartBlockEntity
             } else {
                 this.frequencyText = newFreq;
             }
+            sendData();
         } else {
             this.frequencyText = newFreq;
         }
