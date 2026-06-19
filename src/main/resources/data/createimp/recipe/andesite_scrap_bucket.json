@@ -1,15 +1,9 @@
 {
-  "type": "minecraft:crafting_shaped",
-  "pattern": [
-    " L ",
-    " B ",
-    " A "
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    {"item": "create:andesite_casing"},
+    {"item": "minecraft:lava_bucket"}
   ],
-  "key": {
-    "L": {"item": "minecraft:lava_bucket"},
-    "B": {"item": "create:basin"},
-    "A": {"item": "create:andesite_casing"}
-  },
   "result": {
     "id": "createimp:andesite_scrap_bucket"
   }

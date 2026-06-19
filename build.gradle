@@ -158,6 +158,9 @@ dependencies {
     compileOnly files("libs/ponder-neoforge-1.0.82+mc1.21.1.jar")
     compileOnly files("libs/flywheel-neoforge-1.21.1-1.0.6.jar")
     compileOnly files("libs/Registrate-MC1.21-1.3.0+67.jar")
+    localRuntime files("libs/CopyID-neoforge-1.21.1-1.0.1.jar")
+    localRuntime files("libs/jecharacters-1.21-neoforge-4.5.23.jar")
+
 
 
 }

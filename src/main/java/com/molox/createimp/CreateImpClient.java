@@ -54,6 +54,10 @@ public class CreateImpClient {
                 ModItems.NETWORK_MANAGER.get().asItem(),
                 new ItemDescription.Modifier(ModItems.NETWORK_MANAGER.get().asItem(), FontHelper.Palette.STANDARD_CREATE)
         );
+        TooltipModifier.REGISTRY.register(
+                ModItems.LABELED_REDSTONE_LINK.get().asItem(),
+                new ItemDescription.Modifier(ModItems.LABELED_REDSTONE_LINK.get().asItem(), FontHelper.Palette.STANDARD_CREATE)
+        );
     }
 
     private static void onRegisterMenuScreens(RegisterMenuScreensEvent event) {

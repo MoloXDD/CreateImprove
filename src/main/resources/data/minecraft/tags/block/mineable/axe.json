@@ -1,6 +1,7 @@
 {
   "values": [
     "createimp:andesite_scrap_bucket",
-    "createimp:brass_scrap_bucket"
+    "createimp:brass_scrap_bucket",
+    "createimp:labeled_redstone_link"
   ]
 }

@@ -40,5 +40,12 @@
   "text.autoconfig.createimp.option.labeledRedstoneLinkConfig": "Labeled Redstone Link Settings",
   "text.autoconfig.createimp.option.labeledRedstoneLinkConfig.showFrequencyLabel": "Show Frequency Label",
   "createimp.message.network_manager.no_network_selected": "Please select a network from the main menu first",
-  "createimp.message.network_manager.no_panel_targeted": "No panel targeted"
+  "createimp.message.network_manager.no_panel_targeted": "No panel targeted",
+  "block.createimp.labeled_redstone_link.tooltip.summary": "A _wireless redstone signal terminal_ that transmits signals via _text frequency_.",
+  "block.createimp.labeled_redstone_link.tooltip.condition1": "When right-clicking",
+  "block.createimp.labeled_redstone_link.tooltip.behaviour1": "Opens the _frequency configuration menu_. Only Labeled Redstone Links sharing the same _text frequency_ can transmit signals to each other.",
+  "block.createimp.labeled_redstone_link.tooltip.condition2": "Copy and paste frequency via Clipboard",
+  "block.createimp.labeled_redstone_link.tooltip.behaviour2": "Hold a Clipboard and _right-click_ to copy the frequency, or _left-click_ to paste it.",
+  "block.createimp.labeled_redstone_link.tooltip.condition3": "Quick-set frequency via Clipboard",
+  "block.createimp.labeled_redstone_link.tooltip.behaviour3": "Write frequency names prefixed with _@_ in a _Clipboard_. When configuring a terminal's frequency, _all frequencies written in clipboards you are carrying_ will appear as quick-select suggestions."
 }

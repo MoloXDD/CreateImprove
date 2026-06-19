@@ -40,5 +40,12 @@
   "text.autoconfig.createimp.option.labeledRedstoneLinkConfig": "标码无线红石信号终端配置",
   "text.autoconfig.createimp.option.labeledRedstoneLinkConfig.showFrequencyLabel": "以名称显示频率",
   "createimp.message.network_manager.no_network_selected": "请先在主菜单中选择一个网络",
-  "createimp.message.network_manager.no_panel_targeted": "未检测到仪表"
+  "createimp.message.network_manager.no_panel_targeted": "未检测到仪表",
+  "block.createimp.labeled_redstone_link.tooltip.summary": "通过_字符频率_进行信号传输的_无线红石信号终端_。",
+  "block.createimp.labeled_redstone_link.tooltip.condition1": "右键点击时",
+  "block.createimp.labeled_redstone_link.tooltip.behaviour1": "打开_频率配置菜单_，相同_字符频率_的标码无线红石信号终端才能相互传输红石信号。",
+  "block.createimp.labeled_redstone_link.tooltip.condition2": "通过剪贴板复制粘贴频率",
+  "block.createimp.labeled_redstone_link.tooltip.behaviour2": "手持剪贴板_右键_以复制频率，_左键_以粘贴频率。",
+  "block.createimp.labeled_redstone_link.tooltip.condition3": "通过剪贴板快速设置频率",
+  "block.createimp.labeled_redstone_link.tooltip.behaviour3": "在_剪贴板_内以_@_符号开头填写频率名称，在设置终端频率时会呈现_身上所携带剪贴板内填写的所有频率_以供快速选择。"
 }

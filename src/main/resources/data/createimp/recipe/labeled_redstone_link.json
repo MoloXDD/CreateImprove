@@ -1,0 +1,10 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    {"item": "create:redstone_link"},
+    {"item": "minecraft:oak_sign"}
+  ],
+  "result": {
+    "id": "createimp:labeled_redstone_link"
+  }
+}
