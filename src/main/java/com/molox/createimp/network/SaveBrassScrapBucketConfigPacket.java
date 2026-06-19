@@ -2,8 +2,8 @@ package com.molox.createimp.network;
 
 import com.molox.createimp.CreateImp;
 import com.molox.createimp.block.brass_scrap_bucket.BrassScrapBucketBlockEntity;
-import io.netty.buffer.ByteBuf;
 import net.minecraft.core.BlockPos;
+import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -20,13 +20,23 @@ public record SaveBrassScrapBucketConfigPacket(
     public static final Type<SaveBrassScrapBucketConfigPacket> TYPE =
             new Type<>(ResourceLocation.fromNamespaceAndPath(CreateImp.MODID, "save_brass_scrap_bucket_config"));
 
-    public static final StreamCodec<ByteBuf, SaveBrassScrapBucketConfigPacket> STREAM_CODEC =
-            StreamCodec.composite(
-                    BlockPos.STREAM_CODEC, SaveBrassScrapBucketConfigPacket::pos,
-                    ByteBufCodecs.INT, SaveBrassScrapBucketConfigPacket::keepAmount,
-                    ByteBufCodecs.BOOL, SaveBrassScrapBucketConfigPacket::keepInStacks,
-                    SaveBrassScrapBucketConfigPacket::new
-            );
+    public static final StreamCodec<RegistryFriendlyByteBuf, SaveBrassScrapBucketConfigPacket> STREAM_CODEC =
+            new StreamCodec<>() {
+                @Override
+                public SaveBrassScrapBucketConfigPacket decode(RegistryFriendlyByteBuf buf) {
+                    BlockPos pos = BlockPos.STREAM_CODEC.decode(buf);
+                    int keepAmount = ByteBufCodecs.INT.decode(buf);
+                    boolean keepInStacks = ByteBufCodecs.BOOL.decode(buf);
+                    return new SaveBrassScrapBucketConfigPacket(pos, keepAmount, keepInStacks);
+                }
+
+                @Override
+                public void encode(RegistryFriendlyByteBuf buf, SaveBrassScrapBucketConfigPacket packet) {
+                    BlockPos.STREAM_CODEC.encode(buf, packet.pos());
+                    ByteBufCodecs.INT.encode(buf, packet.keepAmount());
+                    ByteBufCodecs.BOOL.encode(buf, packet.keepInStacks());
+                }
+            };
 
     @Override
     public Type<? extends CustomPacketPayload> type() {

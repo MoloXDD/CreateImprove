@@ -1,12 +1,9 @@
 {
   "block.createimp.andesite_scrap_bucket": "安山废料桶",
   "block.createimp.andesite_scrap_bucket.tooltip.summary": "摧毁_一切_输入的物品与流体",
-
   "block.createimp.brass_scrap_bucket": "黄铜废料桶",
-  "block.createimp.brass_scrap_bucket.tooltip.summary": "摧毁_一切_输入的物品与流体，并在其中汲取一点_经验颗粒_，_蹲下并空手右键_或利用_物流元件_取出经验颗粒。可在侧方配置_物品过滤_，且当放置在_储物设备或流体储罐_下时，可以配置_自动_将上方的库存_维持在一定数量_。",
-
+  "block.createimp.brass_scrap_bucket.tooltip.summary": "摧毁_一切_输入的物品与流体，并在其中汲取少量_经验颗粒_。",
   "itemGroup.createimp": "Create Improve",
-
   "text.autoconfig.createimp.title": "Create Improve 配置",
   "text.autoconfig.createimp.option.brassScrapBucket": "黄铜废料桶配置",
   "text.autoconfig.createimp.option.brassScrapBucket.itemsPerNugget": "生成经验颗粒的物品数",
@@ -47,5 +44,13 @@
   "block.createimp.labeled_redstone_link.tooltip.condition2": "通过剪贴板复制粘贴频率",
   "block.createimp.labeled_redstone_link.tooltip.behaviour2": "手持剪贴板_右键_以复制频率，_左键_以粘贴频率。",
   "block.createimp.labeled_redstone_link.tooltip.condition3": "通过剪贴板快速设置频率",
-  "block.createimp.labeled_redstone_link.tooltip.behaviour3": "在_剪贴板_内以_@_符号开头填写频率名称，在设置终端频率时会呈现_身上所携带剪贴板内填写的所有频率_以供快速选择。"
+  "block.createimp.labeled_redstone_link.tooltip.behaviour3": "在_剪贴板_内以_@_符号开头填写频率名称，在设置终端频率时会呈现_身上所携带剪贴板内填写的所有频率_以供快速选择。",
+  "createimp.gui.brass_scrap_bucket.filter_icon.empty": "未设置过滤物品,手持物品点击以设置",
+  "createimp.gui.brass_scrap_bucket.filter_icon.click_to_clear": "点击以清除",
+  "block.createimp.brass_scrap_bucket.tooltip.condition1": "蹲下并空手右键时",
+  "block.createimp.brass_scrap_bucket.tooltip.behaviour1": "取出储存的_经验颗粒_，也可以使用_物流元件_取出，经验颗粒最多储存_64个_，存满后不再生成。",
+  "block.createimp.brass_scrap_bucket.tooltip.condition2": "在侧方或菜单内配置物品过滤时",
+  "block.createimp.brass_scrap_bucket.tooltip.behaviour2": "只有_满足过滤条件_的物品或流体可以被输入，支持任意_过滤器_。",
+  "block.createimp.brass_scrap_bucket.tooltip.condition3": "放置于物品或流体储存设备下方时",
+  "block.createimp.brass_scrap_bucket.tooltip.behaviour3": "_右键_打开菜单，配置_物品过滤及数量_后，会自动将上方储存设备中_超出设置数量_的对应库存_销毁_并转换为_经验颗粒_。过滤_留空_则检测_任意库存_，同样支持任意_过滤器_。"
 }

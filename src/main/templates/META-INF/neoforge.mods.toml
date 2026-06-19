@@ -4,6 +4,9 @@
 # Note that there are a couple of TOML lists in this file.
 # Find more information on toml format here:  https://github.com/toml-lang/toml
 
+
+
+
 # The name of the mod loader type to load - for regular FML @Mod mods it should be javafml
 modLoader="javafml" #mandatory
 
@@ -19,35 +22,16 @@ license="${mod_license}"
 
 # A list of mods - how many allowed here is determined by the individual mod loader
 [[mods]] #mandatory
-
-# The modid of the mod
 modId="${mod_id}" #mandatory
-
-# The version number of the mod
 version="${mod_version}" #mandatory
-
-# A display name for the mod
 displayName="${mod_name}" #mandatory
-
-# A URL to query for updates for this mod. See the JSON update specification https://docs.neoforged.net/docs/misc/updatechecker/
-#updateJSONURL="https://change.me.example.invalid/updates.json" #optional
-
-# A URL for the "homepage" for this mod, displayed in the mod UI
-#displayURL="https://change.me.to.your.mods.homepage.example.invalid/" #optional
-
-# A file name (in the root of the mod JAR) containing a logo for display
-#logoFile="examplemod.png" #optional
-
-# A text field displayed in the mod UI
-#credits="" #optional
-
-# The authors of the mod, displayed in the mod UI (optional)
-#authors=""
-
-# The description text for the mod (multi line!) (#mandatory)
 description='''
-Example mod description.
+Right-click a Package in your inventory to open it,a Logistics Network Manager, a Redstone Link for wireless redstone signal transmission,and a Trash Can that automatically voids excess items or fluids-this mod adds a set of handy utilities and features tailored for factory construction.
+物品栏内右键打开纸壳包裹、物流网络管理器、字符频段的无线红石信号终端、自动清理多余物品或流体库存的废料桶——这个模组添加了这些方便进行工厂建设的实用工具或功能。
 '''
+logoFile = "icon.png"
+authors = "MoloX"
+
 
 # The [[mixins]] block allows you to declare your mixin config to FML so that it gets loaded.
 [[mixins]]

@@ -1,12 +1,9 @@
 {
   "block.createimp.andesite_scrap_bucket": "Andesite Scrap Bucket",
   "block.createimp.andesite_scrap_bucket.tooltip.summary": "Destroys _all_ input items and fluids",
-
   "block.createimp.brass_scrap_bucket": "Brass Scrap Bucket",
-  "block.createimp.brass_scrap_bucket.tooltip.summary": "Destroys _all_ input items and fluids, harvesting _Experience_ _Nuggets_ in the process. _Squat and use an empty hand_ or _logistics_ to retrieve them. A _filter_ can be configured on the side. When placed below a _container_ _or_ _fluid_ _tank_, it can be set to _automatically_ keep the inventory _below_ _a_ _set_ _amount_.",
-
+  "block.createimp.brass_scrap_bucket.tooltip.summary": "Destroys _all_ input items and fluids, harvesting _Experience_ _Nuggets_ in the process.",
   "itemGroup.createimp": "Create Improve",
-
   "text.autoconfig.createimp.title": "Create Improve Config",
   "text.autoconfig.createimp.option.brassScrapBucket": "Brass Scrap Bucket Config",
   "text.autoconfig.createimp.option.brassScrapBucket.itemsPerNugget": "Items per Experience Nugget",
@@ -47,5 +44,13 @@
   "block.createimp.labeled_redstone_link.tooltip.condition2": "Copy and paste frequency via Clipboard",
   "block.createimp.labeled_redstone_link.tooltip.behaviour2": "Hold a Clipboard and _right-click_ to copy the frequency, or _left-click_ to paste it.",
   "block.createimp.labeled_redstone_link.tooltip.condition3": "Quick-set frequency via Clipboard",
-  "block.createimp.labeled_redstone_link.tooltip.behaviour3": "Write frequency names prefixed with _@_ in a _Clipboard_. When configuring a terminal's frequency, _all frequencies written in clipboards you are carrying_ will appear as quick-select suggestions."
+  "block.createimp.labeled_redstone_link.tooltip.behaviour3": "Write frequency names prefixed with _@_ in a _Clipboard_. When configuring a terminal's frequency, _all frequencies written in clipboards you are carrying_ will appear as quick-select suggestions.",
+  "createimp.gui.brass_scrap_bucket.filter_icon.empty": "No filter item set,Click with an item to set",
+  "createimp.gui.brass_scrap_bucket.filter_icon.click_to_clear": "Click to clear",
+  "block.createimp.brass_scrap_bucket.tooltip.condition1": "When sneaking and right-clicking with an empty hand",
+  "block.createimp.brass_scrap_bucket.tooltip.behaviour1": "Retrieves stored _Experience_ _Nuggets_. They can also be extracted via _logistics_. Up to _64 nuggets_ can be stored; no more are generated once full.",
+  "block.createimp.brass_scrap_bucket.tooltip.condition2": "With a filter set on the side or in the menu",
+  "block.createimp.brass_scrap_bucket.tooltip.behaviour2": "Only items or fluids that _match the filter_ can be input. Any _filter item_ is supported.",
+  "block.createimp.brass_scrap_bucket.tooltip.condition3": "When placed below an item or fluid storage",
+  "block.createimp.brass_scrap_bucket.tooltip.behaviour3": "_Right-click_ to open the menu. After configuring a _filter and amount_, it will automatically _destroy_ the portion of matching inventory that _exceeds the set amount_, converting it into _Experience_ _Nuggets_. Leaving the filter _empty_ targets _all inventory_. Any _filter item_ is supported."
 }

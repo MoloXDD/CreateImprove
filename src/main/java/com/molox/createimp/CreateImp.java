@@ -1,7 +1,6 @@
 package com.molox.createimp;
 
 import com.molox.createimp.network.ClearNetworkSelectionPacket;
-import com.molox.createimp.network.OpenBrassScrapBucketGuiPacket;
 import com.molox.createimp.network.OpenLabeledRedstoneLinkGuiPacket;
 import com.molox.createimp.network.OpenNetworkManagerEditorPacket;
 import com.molox.createimp.network.OpenNetworkManagerGuiPacket;
@@ -9,6 +8,7 @@ import com.molox.createimp.network.SaveBrassScrapBucketConfigPacket;
 import com.molox.createimp.network.SaveLabeledRedstoneLinkConfigPacket;
 import com.molox.createimp.network.SaveNetworkManagerDataPacket;
 import com.molox.createimp.network.SetNetworkSelectionPacket;
+import com.molox.createimp.network.UpdateBrassScrapBucketAmountPacket;
 import com.molox.createimp.registry.ModBlockEntityTypes;
 import com.molox.createimp.registry.ModBlocks;
 import com.molox.createimp.registry.ModCapabilities;
@@ -45,16 +45,20 @@ public class CreateImp {
 
     private static void registerPayloads(RegisterPayloadHandlersEvent event) {
         PayloadRegistrar registrar = event.registrar(MODID);
-        registrar.playToClient(
-                OpenBrassScrapBucketGuiPacket.TYPE,
-                OpenBrassScrapBucketGuiPacket.STREAM_CODEC,
-                (packet, context) -> context.enqueueWork(() ->
-                        com.molox.createimp.screen.BrassScrapBucketScreen.open(packet))
-        );
         registrar.playToServer(
                 SaveBrassScrapBucketConfigPacket.TYPE,
                 SaveBrassScrapBucketConfigPacket.STREAM_CODEC,
                 SaveBrassScrapBucketConfigPacket::handle
+        );
+        registrar.playToClient(
+                UpdateBrassScrapBucketAmountPacket.TYPE,
+                UpdateBrassScrapBucketAmountPacket.STREAM_CODEC,
+                (packet, context) -> context.enqueueWork(() -> {
+                    var mc = net.minecraft.client.Minecraft.getInstance();
+                    if (mc.screen instanceof com.molox.createimp.screen.BrassScrapBucketScreen screen) {
+                        screen.updateCurrentAmounts(packet.currentAmount(), packet.currentStacks());
+                    }
+                })
         );
         registrar.playToClient(
                 OpenNetworkManagerGuiPacket.TYPE,

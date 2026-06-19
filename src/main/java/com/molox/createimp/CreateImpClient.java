@@ -6,6 +6,7 @@ import com.molox.createimp.client.NetworkManagerClientHandler;
 import com.molox.createimp.registry.ModBlockEntityTypes;
 import com.molox.createimp.registry.ModItems;
 import com.molox.createimp.registry.ModMenuTypes;
+import com.molox.createimp.screen.BrassScrapBucketScreen;
 import com.molox.createimp.screen.NetworkManagerLabelEditorScreen;
 import com.simibubi.create.foundation.item.ItemDescription;
 import com.simibubi.create.foundation.item.TooltipModifier;
@@ -63,6 +64,8 @@ public class CreateImpClient {
     private static void onRegisterMenuScreens(RegisterMenuScreensEvent event) {
         event.register(ModMenuTypes.NETWORK_MANAGER_LABEL_EDITOR.get(),
                 NetworkManagerLabelEditorScreen::new);
+        event.register(ModMenuTypes.BRASS_SCRAP_BUCKET.get(),
+                BrassScrapBucketScreen::new);
     }
 
     private static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {

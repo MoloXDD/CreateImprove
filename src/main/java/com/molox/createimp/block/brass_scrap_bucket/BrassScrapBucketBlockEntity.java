@@ -3,6 +3,7 @@ package com.molox.createimp.block.brass_scrap_bucket;
 import com.molox.createimp.CreateImp;
 import com.molox.createimp.CreateImpConfig;
 import com.simibubi.create.content.logistics.chute.SmartChuteFilterSlotPositioning;
+import com.simibubi.create.content.logistics.filter.FilterItemStack;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
 import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour;
 import com.simibubi.create.foundation.blockEntity.behaviour.filtering.FilteringBehaviour;
@@ -34,6 +35,7 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
 
     public int keepAmount = -1;
     public boolean keepInStacks = false;
+    public ItemStack filterIcon = ItemStack.EMPTY;
 
     private int itemTickCounter = 0;
     private int fluidTickCounter = 0;
@@ -50,7 +52,15 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
 
     @Override
     public void addBehaviours(List<BlockEntityBehaviour> behaviours) {
-        filtering = new FilteringBehaviour(this, new SmartChuteFilterSlotPositioning()).forFluids();
+        filtering = new FilteringBehaviour(this, new SmartChuteFilterSlotPositioning())
+                .forFluids()
+                .withCallback(stack -> {
+                    ItemStack normalized = stack.copy();
+                    if (!normalized.isEmpty()) normalized.setCount(1);
+                    filterIcon = normalized;
+                    setChanged();
+                    sendData();
+                });
         filtering.customLabel = net.minecraft.network.chat.Component.translatable("block.createimp.brass_scrap_bucket.filter_label");
         behaviours.add(filtering);
     }
@@ -133,6 +143,7 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
         return occupied;
     }
 
+    // GUI显示用，单位：桶
     public int getAboveCurrentFluids() {
         if (level == null) return 0;
         BlockPos above = worldPosition.above();
@@ -143,6 +154,89 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
             total += handler.getFluidInTank(i).getAmount();
         }
         return total / 1000;
+    }
+
+    // tick内部使用，单位：mB，避免精度损失
+    private int getAboveCurrentFluidsMb() {
+        if (level == null) return 0;
+        BlockPos above = worldPosition.above();
+        IFluidHandler handler = level.getCapability(Capabilities.FluidHandler.BLOCK, above, Direction.DOWN);
+        if (handler == null) return 0;
+        int total = 0;
+        for (int i = 0; i < handler.getTanks(); i++) {
+            total += handler.getFluidInTank(i).getAmount();
+        }
+        return total;
+    }
+
+    public int getFilteredCurrentItems() {
+        if (level == null) return 0;
+        if (filterIcon.isEmpty()) return getAboveCurrentItems();
+        BlockPos above = worldPosition.above();
+        IItemHandler handler = level.getCapability(Capabilities.ItemHandler.BLOCK, above, Direction.DOWN);
+        if (handler == null) return 0;
+        FilterItemStack fis = FilterItemStack.of(filterIcon);
+        int total = 0;
+        for (int i = 0; i < handler.getSlots(); i++) {
+            ItemStack stack = handler.getStackInSlot(i);
+            if (!stack.isEmpty() && fis.test(level, stack, false)) {
+                total += stack.getCount();
+            }
+        }
+        return total;
+    }
+
+    public int getFilteredCurrentStacks() {
+        if (level == null) return 0;
+        if (filterIcon.isEmpty()) return getAboveCurrentStacks();
+        BlockPos above = worldPosition.above();
+        IItemHandler handler = level.getCapability(Capabilities.ItemHandler.BLOCK, above, Direction.DOWN);
+        if (handler == null) return 0;
+        FilterItemStack fis = FilterItemStack.of(filterIcon);
+        int occupied = 0;
+        for (int i = 0; i < handler.getSlots(); i++) {
+            ItemStack stack = handler.getStackInSlot(i);
+            if (!stack.isEmpty() && fis.test(level, stack, false)) {
+                occupied++;
+            }
+        }
+        return occupied;
+    }
+
+    // GUI显示用，单位：桶
+    public int getFilteredCurrentFluids() {
+        if (level == null) return 0;
+        if (filterIcon.isEmpty()) return getAboveCurrentFluids();
+        BlockPos above = worldPosition.above();
+        IFluidHandler handler = level.getCapability(Capabilities.FluidHandler.BLOCK, above, Direction.DOWN);
+        if (handler == null) return 0;
+        FilterItemStack fis = FilterItemStack.of(filterIcon);
+        int total = 0;
+        for (int i = 0; i < handler.getTanks(); i++) {
+            FluidStack fs = handler.getFluidInTank(i);
+            if (!fs.isEmpty() && fis.test(level, fs, false)) {
+                total += fs.getAmount();
+            }
+        }
+        return total / 1000;
+    }
+
+    // tick内部使用，单位：mB，避免精度损失
+    private int getFilteredCurrentFluidsMb() {
+        if (level == null) return 0;
+        if (filterIcon.isEmpty()) return getAboveCurrentFluidsMb();
+        BlockPos above = worldPosition.above();
+        IFluidHandler handler = level.getCapability(Capabilities.FluidHandler.BLOCK, above, Direction.DOWN);
+        if (handler == null) return 0;
+        FilterItemStack fis = FilterItemStack.of(filterIcon);
+        int total = 0;
+        for (int i = 0; i < handler.getTanks(); i++) {
+            FluidStack fs = handler.getFluidInTank(i);
+            if (!fs.isEmpty() && fis.test(level, fs, false)) {
+                total += fs.getAmount();
+            }
+        }
+        return total;
     }
 
     @Override
@@ -175,30 +269,28 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
         IItemHandler handler = level.getCapability(Capabilities.ItemHandler.BLOCK, above, Direction.DOWN);
         if (handler == null) return;
 
+        FilterItemStack fis = filterIcon.isEmpty() ? null : FilterItemStack.of(filterIcon);
+
         if (keepInStacks) {
-            // 组模式：数格子数，超出的格子整格销毁
-            int occupiedSlots = 0;
-            for (int i = 0; i < handler.getSlots(); i++) {
-                if (!handler.getStackInSlot(i).isEmpty()) occupiedSlots++;
-            }
-            int itemsPerStack = Math.max(1, getAboveMaxItems() / getAboveMaxStacks());
+            int occupiedSlots = fis != null ? getFilteredCurrentStacks() : getAboveCurrentStacks();
+            int itemsPerStack = Math.max(1, getAboveMaxItems() / Math.max(1, getAboveMaxStacks()));
             int limitStacks = keepAmount / itemsPerStack;
             if (occupiedSlots <= limitStacks) return;
 
-            int slotsToDestroy = occupiedSlots - limitStacks;
             int transferLimit = config.brassScrapBucket.itemTransferAmount;
             int destroyed = 0;
+            int slotsStillToRemove = occupiedSlots - limitStacks;
 
-            for (int i = 0; i < handler.getSlots() && slotsToDestroy > 0; i++) {
+            for (int i = 0; i < handler.getSlots() && slotsStillToRemove > 0 && destroyed < transferLimit; i++) {
                 ItemStack stack = handler.getStackInSlot(i);
                 if (stack.isEmpty()) continue;
-                if (!filtering.getFilter().isEmpty() && !filtering.test(stack)) continue;
+                if (fis != null && !fis.test(level, stack, false)) continue;
 
                 int canTake = Math.min(stack.getCount(), transferLimit - destroyed);
                 if (canTake <= 0) break;
                 ItemStack extracted = handler.extractItem(i, canTake, false);
+                if (extracted.getCount() >= stack.getCount()) slotsStillToRemove--;
                 destroyed += extracted.getCount();
-                if (extracted.getCount() >= stack.getCount()) slotsToDestroy--;
                 itemFill += extracted.getCount();
                 int itemsPerNugget = CreateImp.getConfig().brassScrapBucket.itemsPerNugget;
                 while (itemFill >= itemsPerNugget && nuggetCount < MAX_NUGGETS) {
@@ -209,22 +301,20 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
                 setChanged();
             }
         } else {
-            // 个模式：数总个数
-            int currentTotal = 0;
-            for (int i = 0; i < handler.getSlots(); i++) {
-                currentTotal += handler.getStackInSlot(i).getCount();
-            }
-            if (currentTotal <= keepAmount) return;
-
-            int toDestroy = Math.min(currentTotal - keepAmount, config.brassScrapBucket.itemTransferAmount);
+            int transferLimit = config.brassScrapBucket.itemTransferAmount;
             int destroyed = 0;
 
-            for (int i = 0; i < handler.getSlots() && destroyed < toDestroy; i++) {
+            for (int i = 0; i < handler.getSlots() && destroyed < transferLimit; i++) {
                 ItemStack stack = handler.getStackInSlot(i);
                 if (stack.isEmpty()) continue;
-                if (!filtering.getFilter().isEmpty() && !filtering.test(stack)) continue;
+                if (fis != null && !fis.test(level, stack, false)) continue;
 
-                int canTake = Math.min(stack.getCount(), toDestroy - destroyed);
+                int recalcFiltered = fis != null ? getFilteredCurrentItems() : getAboveCurrentItems();
+                if (recalcFiltered <= keepAmount) break;
+
+                int excess = recalcFiltered - keepAmount;
+                int canTake = Math.min(Math.min(stack.getCount(), excess), transferLimit - destroyed);
+                if (canTake <= 0) break;
                 ItemStack extracted = handler.extractItem(i, canTake, false);
                 destroyed += extracted.getCount();
                 itemFill += extracted.getCount();
@@ -245,31 +335,23 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
         IFluidHandler handler = level.getCapability(Capabilities.FluidHandler.BLOCK, above, Direction.DOWN);
         if (handler == null) return;
 
-        // 当前总流体量（mB）
-        int currentTotal = 0;
-        for (int i = 0; i < handler.getTanks(); i++) {
-            currentTotal += handler.getFluidInTank(i).getAmount();
-        }
+        FilterItemStack fis = filterIcon.isEmpty() ? null : FilterItemStack.of(filterIcon);
 
-        // 限制值转换为 mB
-        int limitInMb = keepAmount * 1000;
-        if (currentTotal <= limitInMb) return;
+        // 使用mB级别方法，避免/1000再*1000的精度损失
+        int currentMb = fis != null ? getFilteredCurrentFluidsMb() : getAboveCurrentFluidsMb();
+        int limitMb = keepAmount * 1000;
+        if (currentMb <= limitMb) return;
 
-        int toDestroy = Math.min(
-                currentTotal - limitInMb,
-                config.brassScrapBucket.fluidTransferAmount
-        );
-
+        int toDestroy = Math.min(currentMb - limitMb, config.brassScrapBucket.fluidTransferAmount);
         int remaining = toDestroy;
-        for (int i = 0; i < handler.getTanks() && remaining > 0; i++) {
-            net.neoforged.neoforge.fluids.FluidStack inTank = handler.getFluidInTank(i);
-            if (inTank.isEmpty()) continue;
-            if (!filtering.getFilter().isEmpty() && !filtering.test(inTank)) continue;
 
-            net.neoforged.neoforge.fluids.FluidStack toDrain =
-                    new net.neoforged.neoforge.fluids.FluidStack(inTank.getFluid(), remaining);
-            net.neoforged.neoforge.fluids.FluidStack drained =
-                    handler.drain(toDrain, IFluidHandler.FluidAction.EXECUTE);
+        for (int i = 0; i < handler.getTanks() && remaining > 0; i++) {
+            FluidStack inTank = handler.getFluidInTank(i);
+            if (inTank.isEmpty()) continue;
+            if (fis != null && !fis.test(level, inTank, false)) continue;
+
+            FluidStack toDrain = new FluidStack(inTank.getFluid(), remaining);
+            FluidStack drained = handler.drain(toDrain, IFluidHandler.FluidAction.EXECUTE);
             int drainedAmount = drained.getAmount();
             remaining -= drainedAmount;
             fluidFill += drainedAmount;
@@ -316,6 +398,9 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
         tag.putInt("nuggetCount", nuggetCount);
         tag.putInt("keepAmount", keepAmount);
         tag.putBoolean("keepInStacks", keepInStacks);
+        if (!filterIcon.isEmpty()) {
+            tag.put("filterIcon", filterIcon.save(registries, new CompoundTag()));
+        }
     }
 
     @Override
@@ -326,6 +411,11 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
         nuggetCount = tag.getInt("nuggetCount");
         keepAmount = tag.contains("keepAmount") ? tag.getInt("keepAmount") : -1;
         keepInStacks = tag.getBoolean("keepInStacks");
+        if (tag.contains("filterIcon")) {
+            filterIcon = ItemStack.parseOptional(registries, tag.getCompound("filterIcon"));
+        } else {
+            filterIcon = ItemStack.EMPTY;
+        }
     }
 
     public final IItemHandler itemHandler = new IItemHandler() {
@@ -343,7 +433,10 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
         @Override
         public ItemStack insertItem(int slot, ItemStack stack, boolean simulate) {
             if (slot != 0 || stack.isEmpty()) return stack;
-            if (!filtering.getFilter().isEmpty() && !filtering.test(stack)) return stack;
+            if (!filterIcon.isEmpty()) {
+                FilterItemStack fis = FilterItemStack.of(filterIcon);
+                if (!fis.test(level, stack, false)) return stack;
+            }
             if (!simulate) {
                 int itemsPerNugget = CreateImp.getConfig().brassScrapBucket.itemsPerNugget;
                 itemFill += stack.getCount();
@@ -370,7 +463,8 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
         @Override
         public boolean isItemValid(int slot, ItemStack stack) {
             if (slot != 0) return false;
-            return filtering.getFilter().isEmpty() || filtering.test(stack);
+            if (filterIcon.isEmpty()) return true;
+            return FilterItemStack.of(filterIcon).test(level, stack, false);
         }
     };
 
@@ -383,7 +477,10 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
         @Override
         public int fill(FluidStack resource, FluidAction action) {
             if (resource.isEmpty()) return 0;
-            if (!filtering.getFilter().isEmpty() && !filtering.test(resource)) return 0;
+            if (!filterIcon.isEmpty()) {
+                FilterItemStack fis = FilterItemStack.of(filterIcon);
+                if (!fis.test(level, resource, false)) return 0;
+            }
             if (!action.simulate()) {
                 int mbPerNugget = CreateImp.getConfig().brassScrapBucket.mbPerNugget;
                 fluidFill += resource.getAmount();

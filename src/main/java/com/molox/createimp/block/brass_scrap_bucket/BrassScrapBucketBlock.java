@@ -1,17 +1,22 @@
 package com.molox.createimp.block.brass_scrap_bucket;
 
 import com.mojang.serialization.MapCodec;
-import com.molox.createimp.network.OpenBrassScrapBucketGuiPacket;
 import com.molox.createimp.registry.ModBlockEntityTypes;
+import com.molox.createimp.registry.ModMenuTypes;
+import com.molox.createimp.screen.BrassScrapBucketMenu;
 import com.simibubi.create.content.equipment.wrench.IWrenchable;
+import com.simibubi.create.content.logistics.filter.FilterItem;
 import com.simibubi.create.foundation.blockEntity.behaviour.filtering.FilteringBehaviour;
 import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.ItemInteractionResult;
+import net.minecraft.world.MenuProvider;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
@@ -19,12 +24,15 @@ import net.minecraft.world.level.block.BaseEntityBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.BlockHitResult;
-import net.neoforged.neoforge.network.PacketDistributor;
-import org.jetbrains.annotations.Nullable;
 import net.minecraft.world.level.block.entity.BlockEntityTicker;
 import net.minecraft.world.level.block.entity.BlockEntityType;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.storage.loot.LootParams;
+import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
+import net.minecraft.world.phys.BlockHitResult;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
 
 public class BrassScrapBucketBlock extends BaseEntityBlock implements IWrenchable {
 
@@ -41,7 +49,21 @@ public class BrassScrapBucketBlock extends BaseEntityBlock implements IWrenchabl
 
     @Override
     public InteractionResult onWrenched(BlockState state, UseOnContext context) {
-        return InteractionResult.FAIL;
+        Level level = context.getLevel();
+        BlockPos pos = context.getClickedPos();
+        Player player = context.getPlayer();
+        if (level.isClientSide() || player == null) return InteractionResult.SUCCESS;
+
+        if (level.getBlockEntity(pos) instanceof BrassScrapBucketBlockEntity be) {
+            dropFilterIcon(be, level, pos, player);
+        }
+
+        level.removeBlock(pos, false);
+        ItemStack drop = new ItemStack(this);
+        if (!player.getInventory().add(drop)) {
+            player.drop(drop, false);
+        }
+        return InteractionResult.SUCCESS;
     }
 
     @Override
@@ -75,6 +97,18 @@ public class BrassScrapBucketBlock extends BaseEntityBlock implements IWrenchabl
     }
 
     @Override
+    public List<ItemStack> getDrops(BlockState state, LootParams.Builder builder) {
+        List<ItemStack> drops = super.getDrops(state, builder);
+        if (builder.getOptionalParameter(LootContextParams.BLOCK_ENTITY) instanceof BrassScrapBucketBlockEntity be) {
+            ItemStack filter = be.filterIcon;
+            if (!filter.isEmpty() && filter.getItem() instanceof FilterItem) {
+                drops.add(filter.copy());
+            }
+        }
+        return drops;
+    }
+
+    @Override
     protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level,
                                               BlockPos pos, Player player, InteractionHand hand,
                                               BlockHitResult hit) {
@@ -100,8 +134,7 @@ public class BrassScrapBucketBlock extends BaseEntityBlock implements IWrenchabl
         if (player.isShiftKeyDown()) {
             if (be.getNuggetCount() <= 0) return InteractionResult.PASS;
             ItemStack nuggets = be.takeAllNuggets();
-            Inventory inventory = player.getInventory();
-            if (!inventory.add(nuggets)) {
+            if (!player.getInventory().add(nuggets)) {
                 player.drop(nuggets, false);
             }
             return InteractionResult.SUCCESS;
@@ -112,19 +145,70 @@ public class BrassScrapBucketBlock extends BaseEntityBlock implements IWrenchabl
         int maxStacks = 0;
         int currentAmount = 0;
         int currentStacks = 0;
+
+        boolean hasDetectionFilter = !be.filterIcon.isEmpty();
+
         if (attachType == BrassScrapBucketBlockEntity.ATTACH_ITEM) {
             maxItems = be.getAboveMaxItems();
             maxStacks = be.getAboveMaxStacks();
-            currentAmount = be.getAboveCurrentItems();
-            currentStacks = be.getAboveCurrentStacks();
+            if (hasDetectionFilter) {
+                currentAmount = be.getFilteredCurrentItems();
+                currentStacks = be.getFilteredCurrentStacks();
+            } else {
+                currentAmount = be.getAboveCurrentItems();
+                currentStacks = be.getAboveCurrentStacks();
+            }
         } else if (attachType == BrassScrapBucketBlockEntity.ATTACH_FLUID) {
             maxItems = be.getAboveMaxFluids();
-            currentAmount = be.getAboveCurrentFluids();
+            if (hasDetectionFilter) {
+                currentAmount = be.getFilteredCurrentFluids();
+            } else {
+                currentAmount = be.getAboveCurrentFluids();
+            }
         }
 
-        PacketDistributor.sendToPlayer((ServerPlayer) player,
-                new OpenBrassScrapBucketGuiPacket(pos, attachType, be.keepAmount, be.keepInStacks,
-                        maxItems, maxStacks, currentAmount, currentStacks));
+        final int fAttachType = attachType;
+        final int fMaxItems = maxItems;
+        final int fMaxStacks = maxStacks;
+        final int fCurrentAmount = currentAmount;
+        final int fCurrentStacks = currentStacks;
+        final int fKeepAmount = be.keepAmount;
+        final boolean fKeepInStacks = be.keepInStacks;
+        final ItemStack fFilterIcon = be.filterIcon.copy();
+
+        ((ServerPlayer) player).openMenu(new MenuProvider() {
+            @Override
+            public Component getDisplayName() {
+                return Component.translatable("block.createimp.brass_scrap_bucket");
+            }
+
+            @Override
+            public AbstractContainerMenu createMenu(int id, Inventory inv, Player p) {
+                return new BrassScrapBucketMenu(ModMenuTypes.BRASS_SCRAP_BUCKET.get(), id, inv,
+                        pos, fAttachType, fKeepAmount, fKeepInStacks,
+                        fMaxItems, fMaxStacks, fCurrentAmount, fCurrentStacks,
+                        fFilterIcon);
+            }
+        }, buf -> {
+            BlockPos.STREAM_CODEC.encode(buf, pos);
+            buf.writeInt(fAttachType);
+            buf.writeInt(fKeepAmount);
+            buf.writeBoolean(fKeepInStacks);
+            buf.writeInt(fMaxItems);
+            buf.writeInt(fMaxStacks);
+            buf.writeInt(fCurrentAmount);
+            buf.writeInt(fCurrentStacks);
+            ItemStack.OPTIONAL_STREAM_CODEC.encode(buf, fFilterIcon);
+        });
+
         return InteractionResult.SUCCESS;
+    }
+
+    private void dropFilterIcon(BrassScrapBucketBlockEntity be, Level level, BlockPos pos, Player player) {
+        ItemStack filter = be.filterIcon;
+        if (filter.isEmpty() || !(filter.getItem() instanceof FilterItem)) return;
+        if (!player.getInventory().add(filter.copy())) {
+            Block.popResource(level, pos, filter.copy());
+        }
     }
 }

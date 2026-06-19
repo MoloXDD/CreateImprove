@@ -1,23 +1,20 @@
 package com.molox.createimp.screen;
 
 import com.molox.createimp.CreateImp;
-import com.molox.createimp.registry.ModItems;
 import com.molox.createimp.block.brass_scrap_bucket.BrassScrapBucketBlockEntity;
-import com.molox.createimp.network.OpenBrassScrapBucketGuiPacket;
 import com.molox.createimp.network.SaveBrassScrapBucketConfigPacket;
 import com.simibubi.create.foundation.gui.AllGuiTextures;
 import com.simibubi.create.foundation.gui.AllIcons;
+import com.simibubi.create.foundation.gui.menu.AbstractSimiContainerScreen;
 import com.simibubi.create.foundation.gui.widget.IconButton;
 import com.simibubi.create.foundation.gui.widget.ScrollInput;
 import com.simibubi.create.foundation.gui.widget.SelectionScrollInput;
-import net.createmod.catnip.gui.AbstractSimiScreen;
-import net.createmod.catnip.gui.ScreenOpener;
-import net.createmod.catnip.gui.element.GuiGameElement;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -25,25 +22,28 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import java.util.ArrayList;
 import java.util.List;
 
-public class BrassScrapBucketScreen extends AbstractSimiScreen {
+public class BrassScrapBucketScreen extends AbstractSimiContainerScreen<BrassScrapBucketMenu> {
 
     private static final ResourceLocation TEXTURE =
             ResourceLocation.fromNamespaceAndPath(CreateImp.MODID, "textures/gui/brass_scrap_bucket.png");
 
     private static final int GUI_WIDTH = 182;
-    private static final int GUI_HEIGHT = 79;
+    private static final int GUI_TOP_HEIGHT = 79;
+
+    private static final int PLAYER_INV_RENDER_X = -1;
+    private static final int PLAYER_INV_RENDER_Y = 83;
+
+    private static final int GUI_HEIGHT = GUI_TOP_HEIGHT + 14 + 76;
 
     private static final int CONFIRM_BUTTON_X = 149;
     private static final int CONFIRM_BUTTON_Y = 55;
 
-    // 废料桶自身图标位置（相对于窗口左上角）
-    private static final int SELF_ICON_X = 24;
-    private static final int SELF_ICON_Y = 24;
+    public static final int FILTER_ICON_X = 24;
+    public static final int FILTER_ICON_Y = 24;
 
     private static final int ATTACH_ICON_X = 13;
     private static final int ATTACH_ICON_Y = 56;
 
-    private static final int TITLE_X = -1;
     private static final int TITLE_Y = 4;
 
     private static final int INPUTS_BG_X = 44;
@@ -69,30 +69,39 @@ public class BrassScrapBucketScreen extends AbstractSimiScreen {
     private final int attachType;
     private final int maxItems;
     private final int maxStacks;
-    private final int currentAmount;
-    private final int currentStacks;
 
     private int currentKeepAmount;
     private boolean currentKeepInStacks;
+
+    private int currentAmount;
+    private int currentStacks;
 
     private IconButton confirmButton;
     private ScrollInput valueInput;
     private SelectionScrollInput measureInput;
 
-    public BrassScrapBucketScreen(OpenBrassScrapBucketGuiPacket packet) {
-        super(Component.empty());
-        this.pos = packet.pos();
-        this.attachType = packet.attachType();
-        this.currentKeepAmount = packet.keepAmount();
-        this.currentKeepInStacks = packet.keepInStacks();
-        this.maxItems = packet.maxItems();
-        this.maxStacks = packet.maxStacks();
-        this.currentAmount = packet.currentAmount();
-        this.currentStacks = packet.currentStacks();
+    public BrassScrapBucketScreen(BrassScrapBucketMenu menu, Inventory inv, Component title) {
+        super(menu, inv, title);
+        this.pos = menu.pos;
+        this.attachType = menu.attachType;
+        this.currentKeepAmount = menu.keepAmount;
+        this.currentKeepInStacks = menu.keepInStacks;
+        this.maxItems = menu.maxItems;
+        this.maxStacks = menu.maxStacks;
+        this.currentAmount = menu.currentAmount;
+        this.currentStacks = menu.currentStacks;
     }
 
-    public static void open(OpenBrassScrapBucketGuiPacket packet) {
-        ScreenOpener.open(new BrassScrapBucketScreen(packet));
+    public int getGuiLeft() { return leftPos; }
+    public int getGuiTop() { return topPos; }
+
+    public void setFilterIcon(ItemStack stack) {
+        menu.ghostInventory.setStackInSlot(0, stack.copy());
+    }
+
+    public void updateCurrentAmounts(int newAmount, int newStacks) {
+        this.currentAmount = newAmount;
+        this.currentStacks = newStacks;
     }
 
     private int getItemsPerStack() {
@@ -139,7 +148,7 @@ public class BrassScrapBucketScreen extends AbstractSimiScreen {
 
         if (attachType == BrassScrapBucketBlockEntity.ATTACH_ITEM) {
             measureInput = (SelectionScrollInput) new SelectionScrollInput(
-                    guiLeft + MEASURE_INPUT_X, guiTop + MEASURE_INPUT_Y,
+                    leftPos + MEASURE_INPUT_X, topPos + MEASURE_INPUT_Y,
                     MEASURE_INPUT_W, MEASURE_INPUT_H)
                     .forOptions(List.of(
                             Component.translatable("create.schedule.condition.threshold.items"),
@@ -156,31 +165,43 @@ public class BrassScrapBucketScreen extends AbstractSimiScreen {
             int initMax = getMaxInCurrentUnit();
             int initValue = currentKeepAmount < 0 ? -1 : toCurrentUnit(currentKeepAmount);
             valueInput = new ScrollInput(
-                    guiLeft + VALUE_INPUT_X, guiTop + VALUE_INPUT_Y,
+                    leftPos + VALUE_INPUT_X, topPos + VALUE_INPUT_Y,
                     VALUE_INPUT_W, VALUE_INPUT_H)
                     .withRange(-1, initMax + 1)
                     .titled(Component.translatable("create.gui.threshold_switch.upper_threshold"))
                     .calling(this::onValueChanged)
-                    .withStepFunction(ctx -> ctx.shift ? 8 : 1)
+                    .withStepFunction(ctx -> {
+                        if (!ctx.shift) return 1;
+                        if (currentKeepInStacks) {
+                            return 10;
+                        }
+                        if (ctx.forward) {
+                            int next = (ctx.currentValue / 5 + 1) * 5;
+                            return Math.max(1, next - ctx.currentValue);
+                        } else {
+                            int prev = (ctx.currentValue - 1) / 5 * 5;
+                            return Math.max(1, ctx.currentValue - prev);
+                        }
+                    })
                     .setState(Math.max(-1, Math.min(initValue, initMax)));
             addRenderableWidget(valueInput);
 
         } else if (attachType == BrassScrapBucketBlockEntity.ATTACH_FLUID) {
             int initValue = Math.max(-1, Math.min(currentKeepAmount, maxItems));
             valueInput = new ScrollInput(
-                    guiLeft + VALUE_INPUT_X, guiTop + VALUE_INPUT_Y,
+                    leftPos + VALUE_INPUT_X, topPos + VALUE_INPUT_Y,
                     VALUE_INPUT_W, VALUE_INPUT_H)
                     .withRange(-1, maxItems + 1)
                     .titled(Component.translatable("create.gui.threshold_switch.upper_threshold"))
                     .calling(val -> currentKeepAmount = val)
-                    .withStepFunction(ctx -> ctx.shift ? 8 : 1)
+                    .withStepFunction(ctx -> ctx.shift ? 10 : 1)
                     .setState(initValue);
             addRenderableWidget(valueInput);
         }
 
         confirmButton = new IconButton(
-                guiLeft + CONFIRM_BUTTON_X,
-                guiTop + CONFIRM_BUTTON_Y,
+                leftPos + CONFIRM_BUTTON_X,
+                topPos + CONFIRM_BUTTON_Y,
                 18, 18,
                 AllIcons.I_CONFIRM
         );
@@ -216,6 +237,13 @@ public class BrassScrapBucketScreen extends AbstractSimiScreen {
         currentKeepAmount = toItems(newDisplayValue);
     }
 
+    private boolean isMouseOverFilterIconSlot(double mouseX, double mouseY) {
+        int slotScreenX = leftPos + FILTER_ICON_X;
+        int slotScreenY = topPos + FILTER_ICON_Y;
+        return mouseX >= slotScreenX && mouseX < slotScreenX + 16
+                && mouseY >= slotScreenY && mouseY < slotScreenY + 16;
+    }
+
     private void saveAndClose() {
         PacketDistributor.sendToServer(
                 new SaveBrassScrapBucketConfigPacket(pos, currentKeepAmount, currentKeepInStacks));
@@ -223,33 +251,42 @@ public class BrassScrapBucketScreen extends AbstractSimiScreen {
     }
 
     @Override
-    protected void renderWindow(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
-        graphics.blit(TEXTURE, guiLeft, guiTop, 0, 0, GUI_WIDTH, GUI_HEIGHT, 256, 256);
+    protected void renderBg(GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
+        graphics.blit(TEXTURE, leftPos, topPos, 0, 0, GUI_WIDTH, GUI_TOP_HEIGHT, 256, 256);
+        renderPlayerInventory(graphics, leftPos + PLAYER_INV_RENDER_X, topPos + PLAYER_INV_RENDER_Y);
+    }
 
-        GuiGameElement.of(new ItemStack(ModItems.BRASS_SCRAP_BUCKET.get()))
-                .at(guiLeft + SELF_ICON_X, guiTop + SELF_ICON_Y, 0)
-                .render(graphics);
+    @Override
+    protected void renderForeground(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
+        boolean onFilterSlot = isMouseOverFilterIconSlot(mouseX, mouseY);
+        var savedSlot = hoveredSlot;
+        if (onFilterSlot) hoveredSlot = null;
+
+        super.renderForeground(graphics, mouseX, mouseY, partialTicks);
+
+        if (onFilterSlot) hoveredSlot = savedSlot;
+
+        ItemStack filterIcon = menu.ghostInventory.getStackInSlot(0);
+        if (!filterIcon.isEmpty()) {
+            graphics.renderItem(filterIcon, leftPos + FILTER_ICON_X, topPos + FILTER_ICON_Y);
+        }
 
         Component titleComp = Component.translatable("block.createimp.brass_scrap_bucket");
-        int titleX = TITLE_X < 0
-                ? guiLeft + GUI_WIDTH / 2 - font.width(titleComp) / 2
-                : guiLeft + TITLE_X;
-        graphics.drawString(font, titleComp, titleX, guiTop + TITLE_Y, 0x592424, false);
+        int titleX = leftPos + GUI_WIDTH / 2 - font.width(titleComp) / 2;
+        graphics.drawString(font, titleComp, titleX, topPos + TITLE_Y, 0x592424, false);
 
         if (attachType == BrassScrapBucketBlockEntity.ATTACH_ITEM) {
             AllGuiTextures.THRESHOLD_SWITCH_ITEMCOUNT_INPUTS.render(
-                    graphics, guiLeft + INPUTS_BG_X, guiTop + INPUTS_BG_Y);
+                    graphics, leftPos + INPUTS_BG_X, topPos + INPUTS_BG_Y);
         } else {
             AllGuiTextures.THRESHOLD_SWITCH_MISC_INPUTS.render(
-                    graphics, guiLeft + INPUTS_BG_X, guiTop + INPUTS_BG_Y);
+                    graphics, leftPos + INPUTS_BG_X, topPos + INPUTS_BG_Y);
         }
 
         ItemStack displayItem = attachType == BrassScrapBucketBlockEntity.ATTACH_NONE
                 ? new ItemStack(Items.BARRIER)
                 : getAboveBlockItem();
-        GuiGameElement.of(displayItem)
-                .at(guiLeft + ATTACH_ICON_X, guiTop + ATTACH_ICON_Y, 0)
-                .render(graphics);
+        graphics.renderItem(displayItem, leftPos + ATTACH_ICON_X, topPos + ATTACH_ICON_Y);
 
         if (attachType != BrassScrapBucketBlockEntity.ATTACH_NONE && valueInput != null) {
             int displayValue = valueInput.getState();
@@ -262,13 +299,13 @@ public class BrassScrapBucketScreen extends AbstractSimiScreen {
                 leftText = String.valueOf(displayValue);
             }
             graphics.drawString(font, Component.literal(leftText),
-                    guiLeft + VALUE_TEXT_X, guiTop + VALUE_TEXT_Y, 0xFFFFFF, true);
+                    leftPos + VALUE_TEXT_X, topPos + VALUE_TEXT_Y, 0xFFFFFF, true);
         }
 
         if (attachType == BrassScrapBucketBlockEntity.ATTACH_NONE) {
             graphics.drawString(font,
                     Component.translatable("createimp.gui.brass_scrap_bucket.disabled"),
-                    guiLeft + VALUE_TEXT_X, guiTop + VALUE_TEXT_Y, 0xFFFFFF, true);
+                    leftPos + VALUE_TEXT_X, topPos + VALUE_TEXT_Y, 0xFFFFFF, true);
         }
 
         if (attachType == BrassScrapBucketBlockEntity.ATTACH_ITEM
@@ -278,16 +315,37 @@ public class BrassScrapBucketScreen extends AbstractSimiScreen {
                     ? Component.translatable("create.schedule.condition.threshold.stacks").getString()
                     : Component.translatable("create.schedule.condition.threshold.items").getString();
             graphics.drawString(font, Component.literal(measureText),
-                    guiLeft + MEASURE_TEXT_X, guiTop + MEASURE_TEXT_Y, 0xFFFFFF, true);
+                    leftPos + MEASURE_TEXT_X, topPos + MEASURE_TEXT_Y, 0xFFFFFF, true);
         }
 
         if (attachType != BrassScrapBucketBlockEntity.ATTACH_NONE) {
-            int iconScreenX = guiLeft + ATTACH_ICON_X;
-            int iconScreenY = guiTop + ATTACH_ICON_Y;
+            int iconScreenX = leftPos + ATTACH_ICON_X;
+            int iconScreenY = topPos + ATTACH_ICON_Y;
             if (mouseX >= iconScreenX && mouseX < iconScreenX + 16
                     && mouseY >= iconScreenY && mouseY < iconScreenY + 16) {
                 renderAttachTooltip(graphics, mouseX, mouseY);
             }
+        }
+
+        if (onFilterSlot) {
+            renderFilterIconTooltip(graphics, mouseX, mouseY);
+        }
+    }
+
+    private void renderFilterIconTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
+        ItemStack filterIcon = menu.ghostInventory.getStackInSlot(0);
+        if (filterIcon.isEmpty()) {
+            graphics.renderComponentTooltip(font, List.of(
+                    Component.translatable("createimp.gui.brass_scrap_bucket.filter_icon.empty")
+                            .withStyle(ChatFormatting.GRAY)
+            ), mouseX, mouseY);
+        } else {
+            List<Component> lines = new ArrayList<>();
+            lines.add(filterIcon.getHoverName());
+            lines.add(Component.translatable("createimp.gui.brass_scrap_bucket.filter_icon.click_to_clear")
+                    .withStyle(ChatFormatting.DARK_GRAY)
+                    .withStyle(ChatFormatting.ITALIC));
+            graphics.renderComponentTooltip(font, lines, mouseX, mouseY);
         }
     }
 
