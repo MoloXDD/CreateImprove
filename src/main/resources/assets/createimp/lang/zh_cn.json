@@ -25,12 +25,12 @@
   "createimp.hud.network_manager.selected": "已选择网络：%s",
   "createimp.message.network_manager.network_changed": "已修改网络连接",
   "item.createimp.network_manager.tooltip.summary": "通过已有物流网络新建并管理网络标签，并随时将标签下的网络应用到物流网络设备的工具。",
-  "item.createimp.network_manager.tooltip.condition1": "蹲下并右键已连接网络的网络设备时",
+  "item.createimp.network_manager.tooltip.condition1": "蹲下并右键物流网络设备时",
   "item.createimp.network_manager.tooltip.behaviour1": "打开_新建物流网络标签菜单_，可以给标签_起名_并用物品_设置图标_，同一物流网络可以_建立多个标签_。",
   "item.createimp.network_manager.tooltip.condition2": "蹲下并右键时",
   "item.createimp.network_manager.tooltip.behaviour2": "打开_物流网络标签管理菜单_，_左键标签_可以_选择该标签_。",
   "item.createimp.network_manager.tooltip.condition3": "选择标签时",
-  "item.createimp.network_manager.tooltip.behaviour3": "右键_物流网络设备_，将_该标签下的网络_应用到该设备。",
+  "item.createimp.network_manager.tooltip.behaviour3": "右键_物流网络设备_以_应用网络_，_长按右键_以打开菜单，可将网络_应用到该设备所属网络下的所有设备_。",
   "block.createimp.labeled_redstone_link": "标码无线红石信号终端",
   "createimp.gui.labeled_redstone_link.title": "频段设置",
   "createimp.gui.labeled_redstone_link.default_frequency": "默认红石频率",
@@ -55,5 +55,11 @@
   "block.createimp.brass_scrap_bucket.tooltip.behaviour3": "_右键_打开菜单，配置_物品过滤及数量_后，会自动将上方储存设备中_超出设置数量_的对应库存_销毁_并转换为_经验颗粒_。过滤_留空_则检测_任意库存_，同样支持任意_过滤器_。",
   "createimp.gui.network_manager.rmb_edit": "右键编辑",
   "createimp.gui.network_manager.edit_label_title": "编辑标签",
-  "createimp.gui.network_manager.search_hint": "搜索..."
+  "createimp.gui.network_manager.search_hint": "搜索...",
+  "createimp.gui.network_manager.config_network": "配置网络",
+  "createimp.gui.network_manager.config_release": "松开右键以确认",
+  "createimp.gui.network_manager.config_single": "配置当前元件",
+  "createimp.gui.network_manager.config_whole_network": "配置该网络下所有元件",
+  "text.autoconfig.createimp.option.networkManagerConfig": "网络管理器配置",
+  "text.autoconfig.createimp.option.networkManagerConfig.longPressThreshold": "长按时间（tick）"
 }

@@ -25,12 +25,12 @@
   "createimp.hud.network_manager.selected": "Network selected: %s",
   "createimp.message.network_manager.network_changed": "Network connection modified",
   "item.createimp.network_manager.tooltip.summary": "A tool for creating and managing network labels based on existing logistics networks, and applying them to logistics devices at any time.",
-  "item.createimp.network_manager.tooltip.condition1": "When sneaking and right-clicking a connected network device",
+  "item.createimp.network_manager.tooltip.condition1": "When sneaking and right-clicking a logistics network device",
   "item.createimp.network_manager.tooltip.behaviour1": "Opens the _Add Network Label_ menu to _name_ the label and _set an icon_ with an item. _Multiple labels_ can be created for the same network.",
   "item.createimp.network_manager.tooltip.condition2": "When sneaking and right-clicking",
   "item.createimp.network_manager.tooltip.behaviour2": "Opens the _Network Label Manager_. _Left-click a label_ to _select it_.",
   "item.createimp.network_manager.tooltip.condition3": "While a label is selected",
-  "item.createimp.network_manager.tooltip.behaviour3": "Right-click a _logistics network device_ to apply _the network under that label_.",
+  "item.createimp.network_manager.tooltip.behaviour3": "Right-click a _logistics network device_ to _apply the network_. _Hold right-click_ to open a menu that can apply the network to _all devices in that device's network_.",
   "block.createimp.labeled_redstone_link": "Labeled Redstone Link",
   "createimp.gui.labeled_redstone_link.title": "Frequency Settings",
   "createimp.gui.labeled_redstone_link.default_frequency": "Default Redstone Frequency",
@@ -55,5 +55,11 @@
   "block.createimp.brass_scrap_bucket.tooltip.behaviour3": "_Right-click_ to open the menu. After configuring a _filter and amount_, it will automatically _destroy_ the portion of matching inventory that _exceeds the set amount_, converting it into _Experience_ _Nuggets_. Leaving the filter _empty_ targets _all inventory_. Any _filter item_ is supported.",
   "createimp.gui.network_manager.rmb_edit": "Right-click to edit",
   "createimp.gui.network_manager.edit_label_title": "Edit Label",
-  "createimp.gui.network_manager.search_hint": "Search..."
+  "createimp.gui.network_manager.search_hint": "Search...",
+  "createimp.gui.network_manager.config_network": "Configure Network",
+  "createimp.gui.network_manager.config_release": "Release Use to confirm",
+  "createimp.gui.network_manager.config_single": "Configure This Element",
+  "createimp.gui.network_manager.config_whole_network": "Configure All Elements in Network",
+  "text.autoconfig.createimp.option.networkManagerConfig": "Network Manager Config",
+  "text.autoconfig.createimp.option.networkManagerConfig.longPressThreshold": "Long Press Duration (ticks)"
 }

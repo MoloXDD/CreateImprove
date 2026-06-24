@@ -16,6 +16,9 @@ public class CreateImpConfig implements ConfigData {
     @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
     public LabeledRedstoneLinkConfig labeledRedstoneLinkConfig = new LabeledRedstoneLinkConfig();
 
+    @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
+    public NetworkManagerConfig networkManagerConfig = new NetworkManagerConfig();
+
     public static class BrassScrapBucket {
         public int itemsPerNugget = 64;
         public int mbPerNugget = 2000;
@@ -31,5 +34,10 @@ public class CreateImpConfig implements ConfigData {
 
     public static class LabeledRedstoneLinkConfig {
         public boolean showFrequencyLabel = true;
+    }
+
+    public static class NetworkManagerConfig {
+        @ConfigEntry.BoundedDiscrete(min = 1, max = 60)
+        public int longPressThreshold = 10;
     }
 }

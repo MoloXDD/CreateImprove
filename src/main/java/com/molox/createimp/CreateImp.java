@@ -1,5 +1,6 @@
 package com.molox.createimp;
 
+import com.molox.createimp.network.ApplyNetworkPacket;
 import com.molox.createimp.network.ClearNetworkSelectionPacket;
 import com.molox.createimp.network.OpenLabeledRedstoneLinkGuiPacket;
 import com.molox.createimp.network.OpenNetworkManagerEditPacket;
@@ -107,6 +108,11 @@ public class CreateImp {
                 SaveLabeledRedstoneLinkConfigPacket.TYPE,
                 SaveLabeledRedstoneLinkConfigPacket.STREAM_CODEC,
                 SaveLabeledRedstoneLinkConfigPacket::handle
+        );
+        registrar.playToServer(
+                ApplyNetworkPacket.TYPE,
+                ApplyNetworkPacket.STREAM_CODEC,
+                ApplyNetworkPacket::handle
         );
     }
 

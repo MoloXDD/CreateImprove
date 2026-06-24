@@ -36,8 +36,6 @@ import java.util.UUID;
 
 public class NetworkManagerItem extends Item {
 
-    private static Field blockEntityListField = null;
-
     public NetworkManagerItem(Properties properties) {
         super(properties);
     }
@@ -78,35 +76,17 @@ public class NetworkManagerItem extends Item {
         boolean isFactoryPanel = be instanceof FactoryPanelBlockEntity;
         if (linkedBehaviour == null && !isFactoryPanel) return InteractionResult.PASS;
 
-        if (level.isClientSide()) return InteractionResult.SUCCESS;
-
-        NetworkSelectedState selectedState = stack.get(ModDataComponents.NETWORK_SELECTED_STATE.get());
-        UUID newNetworkId = selectedState.networkId();
-
-        if (linkedBehaviour != null) {
-            UUID oldNetworkId = getFreqId(be);
-            reassignNetwork(linkedBehaviour, be, newNetworkId);
-            if (oldNetworkId != null) {
-                updateFactoryPanels(level, oldNetworkId, newNetworkId);
-            }
-        } else {
-            FactoryPanelBehaviour targeted = getTargetedBehaviour(
-                    (FactoryPanelBlockEntity) be,
+        // 客户端：通知 ClientHandler 启动长按计时，阻止方块菜单打开但不触发物品使用动画
+        if (level.isClientSide()) {
+            com.molox.createimp.client.NetworkManagerClientHandler.startLongPressTracking(
                     context.getClickedPos(),
-                    level.getBlockState(context.getClickedPos()),
-                    context.getClickLocation()
+                    context.getClickLocation(),
+                    context.getHand()
             );
-            if (targeted == null || !targeted.isActive()) return InteractionResult.PASS;
-            targeted.setNetwork(newNetworkId);
-            ((FactoryPanelBlockEntity) be).notifyUpdate();
-            ((FactoryPanelBlockEntity) be).setChanged();
+            return InteractionResult.FAIL;
         }
 
-        player.displayClientMessage(
-                Component.translatable("createimp.message.network_manager.network_changed"),
-                true
-        );
-        return InteractionResult.SUCCESS;
+        return InteractionResult.PASS;
     }
 
     @Override
@@ -170,7 +150,7 @@ public class NetworkManagerItem extends Item {
         return InteractionResult.SUCCESS;
     }
 
-    private static FactoryPanelBehaviour getTargetedBehaviour(
+    public static FactoryPanelBehaviour getTargetedBehaviour(
             FactoryPanelBlockEntity fpbe, net.minecraft.core.BlockPos pos,
             BlockState state, Vec3 clickLocation) {
         try {
@@ -185,50 +165,8 @@ public class NetworkManagerItem extends Item {
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private static void updateFactoryPanels(Level level, UUID oldId, UUID newId) {
-        try {
-            if (blockEntityListField == null) {
-                for (Field f : Level.class.getDeclaredFields()) {
-                    if (f.getType() == List.class) {
-                        f.setAccessible(true);
-                        Object val = f.get(level);
-                        if (val instanceof List<?> list && !list.isEmpty()
-                                && list.get(0) instanceof BlockEntity) {
-                            blockEntityListField = f;
-                            break;
-                        }
-                    }
-                }
-            }
-            if (blockEntityListField == null) return;
-
-            List<BlockEntity> beList = (List<BlockEntity>) blockEntityListField.get(level);
-            for (BlockEntity be : beList) {
-                if (!(be instanceof FactoryPanelBlockEntity fpbe)) continue;
-                boolean changed = false;
-                for (var type : new com.simibubi.create.foundation.blockEntity.behaviour.BehaviourType[]{
-                        FactoryPanelBehaviour.TOP_LEFT, FactoryPanelBehaviour.TOP_RIGHT,
-                        FactoryPanelBehaviour.BOTTOM_LEFT, FactoryPanelBehaviour.BOTTOM_RIGHT
-                }) {
-                    var b = BlockEntityBehaviour.get(fpbe, type);
-                    if (!(b instanceof FactoryPanelBehaviour fpb)) continue;
-                    if (!fpb.isActive()) continue;
-                    if (oldId.equals(fpb.network)) {
-                        fpb.setNetwork(newId);
-                        fpbe.notifyUpdate();
-                        changed = true;
-                    }
-                }
-                if (changed) fpbe.setChanged();
-            }
-        } catch (Exception e) {
-            Create.LOGGER.error("NetworkManager: failed to update factory panels", e);
-        }
-    }
-
-    private static void reassignNetwork(LogisticallyLinkedBehaviour behaviour,
-                                        BlockEntity be, UUID newNetworkId) {
+    public static void reassignNetwork(LogisticallyLinkedBehaviour behaviour,
+                                       BlockEntity be, UUID newNetworkId) {
         try {
             LogisticallyLinkedBehaviour.remove(behaviour);
             behaviour.destroy();

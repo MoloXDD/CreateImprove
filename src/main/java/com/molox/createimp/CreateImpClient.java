@@ -26,6 +26,7 @@ import net.neoforged.neoforge.client.gui.VanillaGuiLayers;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 
 @Mod(value = CreateImp.MODID, dist = Dist.CLIENT)
 public class CreateImpClient {
@@ -41,6 +42,7 @@ public class CreateImpClient {
         modEventBus.addListener(CreateImpClient::onRegisterGuiLayers);
 
         NeoForge.EVENT_BUS.addListener(CreateImpClient::onClientTick);
+        NeoForge.EVENT_BUS.addListener(CreateImpClient::onRightClickBlock);
     }
 
     private static void onClientSetup(FMLClientSetupEvent event) {
@@ -92,5 +94,9 @@ public class CreateImpClient {
 
     private static void onClientTick(ClientTickEvent.Pre event) {
         NetworkManagerClientHandler.tick();
+    }
+
+    private static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
+        NetworkManagerClientHandler.cancelIfAlreadyTracking(event);
     }
 }
