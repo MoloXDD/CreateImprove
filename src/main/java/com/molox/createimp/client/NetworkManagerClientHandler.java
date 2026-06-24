@@ -10,6 +10,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.AABB;
@@ -31,7 +32,6 @@ public class NetworkManagerClientHandler {
                     .getDeclaredField("previouslyHeldFrequency");
             previouslyHeldFrequencyField.setAccessible(true);
         } catch (Exception e) {
-            // 获取失败则高亮工厂仪表功能不可用，不影响其他功能
         }
     }
 
@@ -54,12 +54,8 @@ public class NetworkManagerClientHandler {
 
         UUID networkId = state.networkId();
 
-        // 设置 previouslyHeldFrequency，让 Create 的 tickPanel 正确高亮工厂仪表
-        // FactoryPanelBehaviour.lazyTick 会调 LogisticallyLinkedClientHandler.tickPanel(this)
-        // tickPanel 检查 previouslyHeldFrequency.equals(fpb.network) 来决定是否高亮
         setPreviouslyHeldFrequency(networkId);
 
-        // 高亮所有同网络的连接站等元件（LogisticallyLinkedBehaviour）
         Collection<LogisticallyLinkedBehaviour> linked =
                 LogisticallyLinkedBehaviour.getAllPresent(networkId, false, false);
 
@@ -108,7 +104,7 @@ public class NetworkManagerClientHandler {
     }
 
     private static NetworkSelectedState getSelectedState(LocalPlayer player) {
-        for (net.minecraft.world.InteractionHand hand : net.minecraft.world.InteractionHand.values()) {
+        for (InteractionHand hand : InteractionHand.values()) {
             ItemStack stack = player.getItemInHand(hand);
             if (stack.getItem() instanceof NetworkManagerItem
                     && stack.has(ModDataComponents.NETWORK_SELECTED_STATE.get())) {

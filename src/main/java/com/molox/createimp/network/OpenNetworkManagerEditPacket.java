@@ -3,7 +3,7 @@ package com.molox.createimp.network;
 import com.molox.createimp.CreateImp;
 import com.molox.createimp.item.NetworkLabel;
 import com.molox.createimp.registry.ModMenuTypes;
-import com.molox.createimp.screen.NetworkManagerLabelEditorMenu;
+import com.molox.createimp.screen.NetworkManagerLabelEditMenu;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
@@ -15,38 +15,41 @@ import net.minecraft.world.MenuProvider;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
 
-public record OpenNetworkManagerEditorPacket(
+public record OpenNetworkManagerEditPacket(
         InteractionHand hand,
         List<NetworkLabel> existingLabels,
-        Optional<UUID> targetNetworkId
+        int editingIndex,
+        ItemStack editingIcon,
+        String editingName
 ) implements CustomPacketPayload {
 
-    public static final Type<OpenNetworkManagerEditorPacket> TYPE =
-            new Type<>(ResourceLocation.fromNamespaceAndPath(CreateImp.MODID, "open_network_manager_editor"));
+    public static final Type<OpenNetworkManagerEditPacket> TYPE =
+            new Type<>(ResourceLocation.fromNamespaceAndPath(CreateImp.MODID, "open_network_manager_edit"));
 
-    public static final StreamCodec<RegistryFriendlyByteBuf, OpenNetworkManagerEditorPacket> STREAM_CODEC =
+    public static final StreamCodec<RegistryFriendlyByteBuf, OpenNetworkManagerEditPacket> STREAM_CODEC =
             StreamCodec.of(
                     (buf, pkt) -> {
                         ByteBufCodecs.BOOL.encode(buf, pkt.hand() == InteractionHand.MAIN_HAND);
                         NetworkLabel.STREAM_CODEC.apply(ByteBufCodecs.list()).encode(buf, pkt.existingLabels());
-                        boolean hasId = pkt.targetNetworkId().isPresent();
-                        buf.writeBoolean(hasId);
-                        if (hasId) buf.writeUUID(pkt.targetNetworkId().get());
+                        buf.writeInt(pkt.editingIndex());
+                        ItemStack.STREAM_CODEC.encode(buf, pkt.editingIcon());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, pkt.editingName());
                     },
                     buf -> {
                         InteractionHand hand = buf.readBoolean()
                                 ? InteractionHand.MAIN_HAND : InteractionHand.OFF_HAND;
                         List<NetworkLabel> labels =
                                 NetworkLabel.STREAM_CODEC.apply(ByteBufCodecs.list()).decode(buf);
-                        Optional<UUID> networkId = buf.readBoolean()
-                                ? Optional.of(buf.readUUID()) : Optional.empty();
-                        return new OpenNetworkManagerEditorPacket(hand, labels, networkId);
+                        int editingIndex = buf.readInt();
+                        ItemStack editingIcon = ItemStack.STREAM_CODEC.decode(buf);
+                        String editingName = ByteBufCodecs.STRING_UTF8.decode(buf);
+                        return new OpenNetworkManagerEditPacket(
+                                hand, labels, editingIndex, editingIcon, editingName);
                     }
             );
 
@@ -55,9 +58,11 @@ public record OpenNetworkManagerEditorPacket(
         return TYPE;
     }
 
-    public static void handle(OpenNetworkManagerEditorPacket packet, IPayloadContext context) {
+    public static void handle(OpenNetworkManagerEditPacket packet, IPayloadContext context) {
         context.enqueueWork(() -> {
             ServerPlayer player = (ServerPlayer) context.player();
+            com.molox.createimp.CreateImp.LOGGER.info("[NetworkManager] 服务端收到编辑包，index={}, name={}", packet.editingIndex(), packet.editingName());
+            NetworkManagerLabelEditMenu.setPendingIcon(packet.editingIcon().copy());
             player.openMenu(new MenuProvider() {
                 @Override
                 public net.minecraft.network.chat.Component getDisplayName() {
@@ -66,17 +71,17 @@ public record OpenNetworkManagerEditorPacket(
 
                 @Override
                 public AbstractContainerMenu createMenu(int id, Inventory inv, Player p) {
-                    return new NetworkManagerLabelEditorMenu(
-                            ModMenuTypes.NETWORK_MANAGER_LABEL_EDITOR.get(),
+                    return new NetworkManagerLabelEditMenu(
+                            ModMenuTypes.NETWORK_MANAGER_LABEL_EDIT.get(),
                             id, inv, packet.hand(), packet.existingLabels(),
-                            packet.targetNetworkId());
+                            packet.editingIndex(), packet.editingIcon(), packet.editingName());
                 }
             }, buf -> {
                 ByteBufCodecs.BOOL.encode(buf, packet.hand() == InteractionHand.MAIN_HAND);
                 NetworkLabel.STREAM_CODEC.apply(ByteBufCodecs.list()).encode(buf, packet.existingLabels());
-                boolean hasId = packet.targetNetworkId().isPresent();
-                buf.writeBoolean(hasId);
-                if (hasId) buf.writeUUID(packet.targetNetworkId().get());
+                buf.writeInt(packet.editingIndex());
+                ItemStack.STREAM_CODEC.encode(buf, packet.editingIcon());
+                ByteBufCodecs.STRING_UTF8.encode(buf, packet.editingName());
             });
         });
     }

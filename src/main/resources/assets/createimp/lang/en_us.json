@@ -52,5 +52,8 @@
   "block.createimp.brass_scrap_bucket.tooltip.condition2": "With a filter set on the side or in the menu",
   "block.createimp.brass_scrap_bucket.tooltip.behaviour2": "Only items or fluids that _match the filter_ can be input. Any _filter item_ is supported.",
   "block.createimp.brass_scrap_bucket.tooltip.condition3": "When placed below an item or fluid storage",
-  "block.createimp.brass_scrap_bucket.tooltip.behaviour3": "_Right-click_ to open the menu. After configuring a _filter and amount_, it will automatically _destroy_ the portion of matching inventory that _exceeds the set amount_, converting it into _Experience_ _Nuggets_. Leaving the filter _empty_ targets _all inventory_. Any _filter item_ is supported."
+  "block.createimp.brass_scrap_bucket.tooltip.behaviour3": "_Right-click_ to open the menu. After configuring a _filter and amount_, it will automatically _destroy_ the portion of matching inventory that _exceeds the set amount_, converting it into _Experience_ _Nuggets_. Leaving the filter _empty_ targets _all inventory_. Any _filter item_ is supported.",
+  "createimp.gui.network_manager.rmb_edit": "Right-click to edit",
+  "createimp.gui.network_manager.edit_label_title": "Edit Label",
+  "createimp.gui.network_manager.search_hint": "Search..."
 }

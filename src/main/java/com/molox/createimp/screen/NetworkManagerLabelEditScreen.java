@@ -15,12 +15,10 @@ import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
-public class NetworkManagerLabelEditorScreen
-        extends AbstractSimiContainerScreen<NetworkManagerLabelEditorMenu> {
+public class NetworkManagerLabelEditScreen
+        extends AbstractSimiContainerScreen<NetworkManagerLabelEditMenu> {
 
     private static final int GUI_WIDTH  = AllGuiTextures.STOCK_KEEPER_CATEGORY.getWidth();
     private static final int HEADER_H   = AllGuiTextures.STOCK_KEEPER_CATEGORY_HEADER.getHeight();
@@ -50,8 +48,8 @@ public class NetworkManagerLabelEditorScreen
     private EditBox nameEditBox;
     private IconButton confirmButton;
 
-    public NetworkManagerLabelEditorScreen(
-            NetworkManagerLabelEditorMenu menu, Inventory inv, Component title) {
+    public NetworkManagerLabelEditScreen(
+            NetworkManagerLabelEditMenu menu, Inventory inv, Component title) {
         super(menu, inv, title);
     }
 
@@ -85,24 +83,8 @@ public class NetworkManagerLabelEditorScreen
         nameEditBox.setBordered(false);
         nameEditBox.setFocused(false);
         nameEditBox.setMaxLength(28);
-        nameEditBox.setValue(computeDefaultName());
+        nameEditBox.setValue(menu.editingName);
         addRenderableWidget(nameEditBox);
-    }
-
-    private String computeDefaultName() {
-        String prefix = Component.translatable("createimp.gui.network_manager.label_prefix").getString();
-        Set<Integer> usedNumbers = new HashSet<>();
-        for (NetworkLabel label : menu.existingLabels) {
-            if (label.name().startsWith(prefix)) {
-                try {
-                    usedNumbers.add(Integer.parseInt(label.name().substring(prefix.length()).trim()));
-                } catch (NumberFormatException ignored) {
-                }
-            }
-        }
-        int n = 1;
-        while (usedNumbers.contains(n)) n++;
-        return prefix + n;
     }
 
     private void onConfirm() {
@@ -110,13 +92,16 @@ public class NetworkManagerLabelEditorScreen
         if (!icon.isEmpty()) icon.setCount(1);
 
         String name = nameEditBox.getValue().isBlank()
-                ? computeDefaultName()
+                ? menu.editingName
                 : nameEditBox.getValue();
 
         List<NetworkLabel> newLabels = new ArrayList<>(menu.existingLabels);
-        newLabels.add(new NetworkLabel(name, icon, menu.targetNetworkId));
+        NetworkLabel original = newLabels.get(menu.editingIndex);
+        newLabels.set(menu.editingIndex,
+                new NetworkLabel(name, icon, original.networkId()));
 
-        PacketDistributor.sendToServer(new SaveNetworkManagerDataPacket(menu.hand, newLabels, true));
+        PacketDistributor.sendToServer(
+                new SaveNetworkManagerDataPacket(menu.hand, newLabels, true));
         onClose();
     }
 
@@ -147,7 +132,7 @@ public class NetworkManagerLabelEditorScreen
 
         int editorTop = topPos + EDITOR_Y_OFFSET;
 
-        var titleText = Component.translatable("createimp.gui.network_manager.add_label_title")
+        var titleText = Component.translatable("createimp.gui.network_manager.edit_label_title")
                 .getVisualOrderText();
         graphics.drawString(font, titleText,
                 (int)(leftPos + GUI_WIDTH / 2f - font.width(titleText) / 2f),
@@ -166,8 +151,8 @@ public class NetworkManagerLabelEditorScreen
     }
 
     private boolean isMouseOverIconSlot(int mouseX, int mouseY) {
-        int slotScreenX = leftPos + NetworkManagerLabelEditorMenu.ICON_SLOT_X;
-        int slotScreenY = topPos  + NetworkManagerLabelEditorMenu.ICON_SLOT_Y;
+        int slotScreenX = leftPos + NetworkManagerLabelEditMenu.ICON_SLOT_X;
+        int slotScreenY = topPos  + NetworkManagerLabelEditMenu.ICON_SLOT_Y;
         return mouseX >= slotScreenX && mouseX < slotScreenX + 16
                 && mouseY >= slotScreenY && mouseY < slotScreenY + 16;
     }

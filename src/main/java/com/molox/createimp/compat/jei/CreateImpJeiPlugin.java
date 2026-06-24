@@ -1,6 +1,8 @@
 package com.molox.createimp.compat.jei;
 
 import com.molox.createimp.screen.BrassScrapBucketScreen;
+import com.molox.createimp.screen.NetworkManagerLabelEditMenu;
+import com.molox.createimp.screen.NetworkManagerLabelEditScreen;
 import com.molox.createimp.screen.NetworkManagerLabelEditorMenu;
 import com.molox.createimp.screen.NetworkManagerLabelEditorScreen;
 import com.simibubi.create.content.logistics.filter.FilterItem;
@@ -32,6 +34,10 @@ public class CreateImpJeiPlugin implements IModPlugin {
                 new LabelEditorGhostHandler()
         );
         registration.addGhostIngredientHandler(
+                NetworkManagerLabelEditScreen.class,
+                new LabelEditGhostHandler()
+        );
+        registration.addGhostIngredientHandler(
                 BrassScrapBucketScreen.class,
                 new BrassScrapBucketGhostHandler()
         );
@@ -51,6 +57,45 @@ public class CreateImpJeiPlugin implements IModPlugin {
 
             int iconSlotScreenX = screen.getGuiLeft() + NetworkManagerLabelEditorMenu.ICON_SLOT_X;
             int iconSlotScreenY = screen.getGuiTop() + NetworkManagerLabelEditorMenu.ICON_SLOT_Y;
+
+            targets.add(new IGhostIngredientHandler.Target<I>() {
+                @Override
+                public Rect2i getArea() {
+                    return new Rect2i(iconSlotScreenX, iconSlotScreenY, 16, 16);
+                }
+
+                @Override
+                public void accept(I value) {
+                    if (value instanceof ItemStack stack && !stack.isEmpty()) {
+                        ItemStack copy = stack.copy();
+                        copy.setCount(1);
+                        screen.getMenu().ghostInventory.setStackInSlot(0, copy);
+                    }
+                }
+            });
+
+            return targets;
+        }
+
+        @Override
+        public void onComplete() {
+        }
+    }
+
+    private static class LabelEditGhostHandler
+            implements IGhostIngredientHandler<NetworkManagerLabelEditScreen> {
+
+        @Override
+        public <I> List<IGhostIngredientHandler.Target<I>> getTargetsTyped(
+                NetworkManagerLabelEditScreen screen,
+                ITypedIngredient<I> ingredient,
+                boolean doStart) {
+
+            List<IGhostIngredientHandler.Target<I>> targets = new ArrayList<>();
+            if (!ingredient.getType().equals(VanillaTypes.ITEM_STACK)) return targets;
+
+            int iconSlotScreenX = screen.getGuiLeft() + NetworkManagerLabelEditMenu.ICON_SLOT_X;
+            int iconSlotScreenY = screen.getGuiTop() + NetworkManagerLabelEditMenu.ICON_SLOT_Y;
 
             targets.add(new IGhostIngredientHandler.Target<I>() {
                 @Override

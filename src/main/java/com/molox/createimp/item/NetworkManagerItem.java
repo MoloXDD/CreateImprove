@@ -1,6 +1,5 @@
 package com.molox.createimp.item;
 
-import com.molox.createimp.data.NetworkManagerSavedData;
 import com.molox.createimp.network.OpenNetworkManagerGuiPacket;
 import com.molox.createimp.registry.ModDataComponents;
 import com.molox.createimp.registry.ModMenuTypes;
@@ -30,6 +29,7 @@ import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.lang.reflect.Field;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -42,26 +42,27 @@ public class NetworkManagerItem extends Item {
         super(properties);
     }
 
+    private static List<NetworkLabel> getLabels(ItemStack stack) {
+        List<NetworkLabel> labels = stack.get(ModDataComponents.NETWORK_MANAGER_LABELS.get());
+        return labels != null ? labels : Collections.emptyList();
+    }
+
     @Override
     public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
         if (!player.isShiftKeyDown()) {
             return InteractionResultHolder.pass(player.getItemInHand(hand));
         }
+        ItemStack stack = player.getItemInHand(hand);
         if (!level.isClientSide()) {
-            List<NetworkLabel> labels = NetworkManagerSavedData.get(
-                    ((ServerPlayer) player).server).getLabels();
+            List<NetworkLabel> labels = getLabels(stack);
             PacketDistributor.sendToPlayer(
                     (ServerPlayer) player,
                     new OpenNetworkManagerGuiPacket(hand, labels)
             );
         }
-        return InteractionResultHolder.success(player.getItemInHand(hand));
+        return InteractionResultHolder.success(stack);
     }
 
-    /**
-     * 非蹲下时，在 Block.useItemOn 之前拦截，对网络元件和工厂仪表应用网络。
-     * 蹲下时直接 PASS，交给 useOn 处理打开编辑器的逻辑。
-     */
     @Override
     public InteractionResult onItemUseFirst(ItemStack stack, UseOnContext context) {
         Player player = context.getPlayer();
@@ -108,10 +109,6 @@ public class NetworkManagerItem extends Item {
         return InteractionResult.SUCCESS;
     }
 
-    /**
-     * 蹲下时：打开编辑器（有网络的元件）或主菜单（无目标或无网络）。
-     * 此时 Block.useItemOn 因 flag1=true 被跳过，Item.useOn 会被正常调用。
-     */
     @Override
     public InteractionResult useOn(UseOnContext context) {
         Player player = context.getPlayer();
@@ -123,6 +120,7 @@ public class NetworkManagerItem extends Item {
 
         if (level.isClientSide()) return InteractionResult.SUCCESS;
 
+        ItemStack stack = player.getItemInHand(hand);
         BlockEntity be = level.getBlockEntity(context.getClickedPos());
         ServerPlayer serverPlayer = (ServerPlayer) player;
 
@@ -143,12 +141,12 @@ public class NetworkManagerItem extends Item {
         }
 
         if (networkId == null) {
-            List<NetworkLabel> labels = NetworkManagerSavedData.get(serverPlayer.server).getLabels();
+            List<NetworkLabel> labels = getLabels(stack);
             PacketDistributor.sendToPlayer(serverPlayer,
                     new OpenNetworkManagerGuiPacket(hand, labels));
         } else {
             final UUID finalNetworkId = networkId;
-            List<NetworkLabel> labels = NetworkManagerSavedData.get(serverPlayer.server).getLabels();
+            List<NetworkLabel> labels = getLabels(stack);
             Optional<UUID> targetNetworkId = Optional.of(finalNetworkId);
             serverPlayer.openMenu(new MenuProvider() {
                 @Override
@@ -171,8 +169,6 @@ public class NetworkManagerItem extends Item {
         }
         return InteractionResult.SUCCESS;
     }
-
-    // ---- 工厂仪表 ----
 
     private static FactoryPanelBehaviour getTargetedBehaviour(
             FactoryPanelBlockEntity fpbe, net.minecraft.core.BlockPos pos,

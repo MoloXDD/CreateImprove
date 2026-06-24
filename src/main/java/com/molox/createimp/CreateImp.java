@@ -2,11 +2,13 @@ package com.molox.createimp;
 
 import com.molox.createimp.network.ClearNetworkSelectionPacket;
 import com.molox.createimp.network.OpenLabeledRedstoneLinkGuiPacket;
+import com.molox.createimp.network.OpenNetworkManagerEditPacket;
 import com.molox.createimp.network.OpenNetworkManagerEditorPacket;
 import com.molox.createimp.network.OpenNetworkManagerGuiPacket;
 import com.molox.createimp.network.SaveBrassScrapBucketConfigPacket;
 import com.molox.createimp.network.SaveLabeledRedstoneLinkConfigPacket;
 import com.molox.createimp.network.SaveNetworkManagerDataPacket;
+import com.molox.createimp.network.SaveNetworkManagerSearchPacket;
 import com.molox.createimp.network.SetNetworkSelectionPacket;
 import com.molox.createimp.network.UpdateBrassScrapBucketAmountPacket;
 import com.molox.createimp.registry.ModBlockEntityTypes;
@@ -75,6 +77,16 @@ public class CreateImp {
                 OpenNetworkManagerEditorPacket.TYPE,
                 OpenNetworkManagerEditorPacket.STREAM_CODEC,
                 OpenNetworkManagerEditorPacket::handle
+        );
+        registrar.playToServer(
+                OpenNetworkManagerEditPacket.TYPE,
+                OpenNetworkManagerEditPacket.STREAM_CODEC,
+                OpenNetworkManagerEditPacket::handle
+        );
+        registrar.playToServer(
+                SaveNetworkManagerSearchPacket.TYPE,
+                SaveNetworkManagerSearchPacket.STREAM_CODEC,
+                SaveNetworkManagerSearchPacket::handle
         );
         registrar.playToServer(
                 SetNetworkSelectionPacket.TYPE,
