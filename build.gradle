@@ -160,6 +160,8 @@ dependencies {
     compileOnly files("libs/Registrate-MC1.21-1.3.0+67.jar")
     localRuntime files("libs/CopyID-neoforge-1.21.1-1.0.1.jar")
     localRuntime files("libs/jecharacters-1.21-neoforge-4.5.23.jar")
+    localRuntime files("libs/IMBlocker-5.5.2-neoforge+1.20.6-1.21.8.jar")
+
 
 
 

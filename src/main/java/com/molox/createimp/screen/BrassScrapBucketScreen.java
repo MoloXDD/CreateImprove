@@ -170,19 +170,7 @@ public class BrassScrapBucketScreen extends AbstractSimiContainerScreen<BrassScr
                     .withRange(-1, initMax + 1)
                     .titled(Component.translatable("create.gui.threshold_switch.upper_threshold"))
                     .calling(this::onValueChanged)
-                    .withStepFunction(ctx -> {
-                        if (!ctx.shift) return 1;
-                        if (currentKeepInStacks) {
-                            return 10;
-                        }
-                        if (ctx.forward) {
-                            int next = (ctx.currentValue / 5 + 1) * 5;
-                            return Math.max(1, next - ctx.currentValue);
-                        } else {
-                            int prev = (ctx.currentValue - 1) / 5 * 5;
-                            return Math.max(1, ctx.currentValue - prev);
-                        }
-                    })
+                    .withStepFunction(ctx -> ctx.shift ? 10 : 1)
                     .setState(Math.max(-1, Math.min(initValue, initMax)));
             addRenderableWidget(valueInput);
 
