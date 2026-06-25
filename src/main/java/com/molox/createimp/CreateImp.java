@@ -1,5 +1,7 @@
 package com.molox.createimp;
 
+import com.molox.createimp.item.NetworkManagerItem;
+import com.molox.createimp.item.NetworkSelectedState;
 import com.molox.createimp.network.ApplyNetworkPacket;
 import com.molox.createimp.network.ClearNetworkSelectionPacket;
 import com.molox.createimp.network.OpenLabeledRedstoneLinkGuiPacket;
@@ -20,11 +22,19 @@ import com.molox.createimp.registry.ModDataComponents;
 import com.molox.createimp.registry.ModItems;
 import com.molox.createimp.registry.ModMenuTypes;
 import com.mojang.logging.LogUtils;
+import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelBlockEntity;
 import me.shedaniel.autoconfig.AutoConfig;
 import me.shedaniel.autoconfig.serializer.GsonConfigSerializer;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.LogicalSide;
+import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import org.slf4j.Logger;
@@ -44,6 +54,34 @@ public class CreateImp {
         ModMenuTypes.MENU_TYPES.register(modEventBus);
         modEventBus.addListener(ModCapabilities::register);
         modEventBus.addListener(CreateImp::registerPayloads);
+
+        NeoForge.EVENT_BUS.addListener(EventPriority.HIGH, CreateImp::onRightClickBlockServer);
+    }
+
+    /**
+     * 服务端侧拦截：当玩家手持处于网络选择状态的管理器，且目标是网络元件时，
+     * 取消事件，防止 ValueSettingsInputHandler 在服务端触发 onShortInteract，
+     * 避免将管理器物品错误地配置到工厂仪表的过滤槽。
+     */
+    private static void onRightClickBlockServer(PlayerInteractEvent.RightClickBlock event) {
+        if (event.getSide() != LogicalSide.SERVER) return;
+
+        net.minecraft.world.entity.player.Player player = event.getEntity();
+        if (player.isShiftKeyDown()) return;
+
+        ItemStack stack = player.getItemInHand(event.getHand());
+        if (!(stack.getItem() instanceof NetworkManagerItem)) return;
+        if (!stack.has(ModDataComponents.NETWORK_SELECTED_STATE.get())) return;
+
+        BlockEntity be = player.level().getBlockEntity(event.getPos());
+        if (be == null) return;
+
+        boolean isTarget = NetworkManagerItem.getBehaviour(be) != null
+                || be instanceof FactoryPanelBlockEntity;
+        if (!isTarget) return;
+
+        event.setCanceled(true);
+        event.setCancellationResult(InteractionResult.FAIL);
     }
 
     private static void registerPayloads(RegisterPayloadHandlersEvent event) {

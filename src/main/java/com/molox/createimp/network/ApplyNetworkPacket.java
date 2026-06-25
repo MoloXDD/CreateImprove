@@ -202,28 +202,18 @@ public record ApplyNetworkPacket(
         }
     }
 
-    /**
-     * 穿透 RebindableTickingBlockEntityWrapper → BoundTickingBlockEntity 两层包装，
-     * 取出真正的 BlockEntity 实例。
-     * 结构：
-     *   RebindableTickingBlockEntityWrapper { TickingBlockEntity ticker }
-     *     └─ BoundTickingBlockEntity { T blockEntity, BlockEntityTicker ticker }
-     */
     @Nullable
     private static BlockEntity unwrapTickingBlockEntity(Object obj) {
         if (obj == null) return null;
         try {
             Object current = obj;
-            // 最多拆 3 层，防止无限循环
             for (int depth = 0; depth < 3; depth++) {
-                // 优先找类型为 BlockEntity 子类的字段
                 for (Field f : current.getClass().getDeclaredFields()) {
                     if (BlockEntity.class.isAssignableFrom(f.getType())) {
                         f.setAccessible(true);
                         return (BlockEntity) f.get(current);
                     }
                 }
-                // 没找到 BlockEntity 字段，找类型为 TickingBlockEntity 接口的字段继续向下拆
                 Field nextField = null;
                 for (Field f : current.getClass().getDeclaredFields()) {
                     if (net.minecraft.world.level.block.entity.TickingBlockEntity.class
@@ -238,7 +228,6 @@ public record ApplyNetworkPacket(
                 if (current == null) break;
             }
         } catch (Exception e) {
-            // 忽略单个 ticker 的反射失败
         }
         return null;
     }

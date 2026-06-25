@@ -15,6 +15,7 @@ import me.shedaniel.autoconfig.AutoConfig;
 import net.createmod.catnip.lang.FontHelper;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
@@ -42,7 +43,7 @@ public class CreateImpClient {
         modEventBus.addListener(CreateImpClient::onRegisterGuiLayers);
 
         NeoForge.EVENT_BUS.addListener(CreateImpClient::onClientTick);
-        NeoForge.EVENT_BUS.addListener(CreateImpClient::onRightClickBlock);
+        NeoForge.EVENT_BUS.addListener(EventPriority.HIGH, CreateImpClient::onRightClickBlock);
     }
 
     private static void onClientSetup(FMLClientSetupEvent event) {
@@ -97,6 +98,6 @@ public class CreateImpClient {
     }
 
     private static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
-        NetworkManagerClientHandler.cancelIfAlreadyTracking(event);
+        NetworkManagerClientHandler.onRightClickBlock(event);
     }
 }

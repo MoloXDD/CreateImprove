@@ -6,6 +6,7 @@ import com.molox.createimp.item.NetworkSelectedState;
 import com.molox.createimp.network.ApplyNetworkPacket;
 import com.molox.createimp.registry.ModDataComponents;
 import com.molox.createimp.screen.NetworkManagerConfigScreen;
+import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelBlockEntity;
 import com.simibubi.create.content.logistics.packagerLink.LogisticallyLinkedBehaviour;
 import com.simibubi.create.content.logistics.packagerLink.LogisticallyLinkedClientHandler;
 import net.createmod.catnip.gui.ScreenOpener;
@@ -50,12 +51,56 @@ public class NetworkManagerClientHandler {
         longPressHand = null;
     }
 
-    public static void cancelIfAlreadyTracking(PlayerInteractEvent.RightClickBlock event) {
-        if (longPressTicks == -1) return;
-        if (longPressPos != null && longPressPos.equals(event.getPos())) {
-            event.setCanceled(true);
-            event.setCancellationResult(InteractionResult.FAIL);
+    /**
+     * 统一处理 RightClickBlock 事件（以 HIGH 优先级注册，先于 ValueSettingsInputHandler）。
+     *
+     * 情况一：长按计时已在进行中，且点击的仍是同一方块 → 取消事件，防止框架重置按键状态。
+     * 情况二：长按计时尚未开始，但玩家手持处于选择状态的网络管理器，且目标方块是可配置的
+     *         网络元件（含 LogisticallyLinkedBehaviour 或 FactoryPanelBlockEntity）→ 立即取消
+     *         事件（在 ValueSettingsInputHandler 之前），并启动长按计时。
+     */
+    public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
+        if (event.getSide() != net.neoforged.fml.LogicalSide.CLIENT) return;
+
+        Minecraft mc = Minecraft.getInstance();
+        LocalPlayer player = mc.player;
+        if (player == null) return;
+
+        BlockPos pos = event.getPos();
+
+        // 情况一：计时已在进行，防止框架重置
+        if (longPressTicks != -1) {
+            if (longPressPos != null && longPressPos.equals(pos)) {
+                event.setCanceled(true);
+                event.setCancellationResult(InteractionResult.FAIL);
+            }
+            return;
         }
+
+        // 情况二：检测是否应该接管本次右键
+        NetworkSelectedState state = getSelectedState(player);
+        if (state == null) return;
+
+        if (player.isShiftKeyDown()) return;
+
+        // 判断目标方块是否是可配置的网络元件
+        if (mc.level == null) return;
+        BlockEntity be = mc.level.getBlockEntity(pos);
+        if (be == null) return;
+
+        boolean isTarget = NetworkManagerItem.getBehaviour(be) != null
+                || be instanceof FactoryPanelBlockEntity;
+        if (!isTarget) return;
+
+        // 满足条件：取消事件，接管交互
+        event.setCanceled(true);
+        event.setCancellationResult(InteractionResult.FAIL);
+
+        Vec3 clickLocation = event.getHitVec() != null
+                ? event.getHitVec().getLocation()
+                : Vec3.atCenterOf(pos);
+
+        startLongPressTracking(pos, clickLocation, event.getHand());
     }
 
     private static Field previouslyHeldFrequencyField = null;
