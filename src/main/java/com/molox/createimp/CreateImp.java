@@ -58,11 +58,6 @@ public class CreateImp {
         NeoForge.EVENT_BUS.addListener(EventPriority.HIGH, CreateImp::onRightClickBlockServer);
     }
 
-    /**
-     * 服务端侧拦截：当玩家手持处于网络选择状态的管理器，且目标是网络元件时，
-     * 取消事件，防止 ValueSettingsInputHandler 在服务端触发 onShortInteract，
-     * 避免将管理器物品错误地配置到工厂仪表的过滤槽。
-     */
     private static void onRightClickBlockServer(PlayerInteractEvent.RightClickBlock event) {
         if (event.getSide() != LogicalSide.SERVER) return;
 

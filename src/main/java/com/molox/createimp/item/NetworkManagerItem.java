@@ -21,6 +21,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -38,6 +39,24 @@ public class NetworkManagerItem extends Item {
 
     public NetworkManagerItem(Properties properties) {
         super(properties);
+    }
+
+    @Override
+    public boolean isFoil(ItemStack stack) {
+        return stack.has(ModDataComponents.NETWORK_SELECTED_STATE.get());
+    }
+
+    @Override
+    public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltipComponents, TooltipFlag tooltipFlag) {
+        super.appendHoverText(stack, context, tooltipComponents, tooltipFlag);
+        NetworkSelectedState state = stack.get(ModDataComponents.NETWORK_SELECTED_STATE.get());
+        if (state == null) return;
+        net.minecraft.network.chat.MutableComponent line =
+                Component.translatable("createimp.hud.network_manager.selected_prefix")
+                        .withStyle(style -> style.withColor(0xFFFFFF))
+                        .append(Component.literal(state.labelName())
+                                .withStyle(style -> style.withColor(0xFFA500)));
+        tooltipComponents.add(line);
     }
 
     private static List<NetworkLabel> getLabels(ItemStack stack) {
@@ -76,7 +95,6 @@ public class NetworkManagerItem extends Item {
         boolean isFactoryPanel = be instanceof FactoryPanelBlockEntity;
         if (linkedBehaviour == null && !isFactoryPanel) return InteractionResult.PASS;
 
-        // 客户端：通知 ClientHandler 启动长按计时，阻止方块菜单打开但不触发物品使用动画
         if (level.isClientSide()) {
             com.molox.createimp.client.NetworkManagerClientHandler.startLongPressTracking(
                     context.getClickedPos(),

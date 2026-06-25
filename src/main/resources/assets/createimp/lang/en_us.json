@@ -30,7 +30,7 @@
   "item.createimp.network_manager.tooltip.condition2": "When sneaking and right-clicking",
   "item.createimp.network_manager.tooltip.behaviour2": "Opens the _Network Label Manager_. _Left-click a label_ to _select it_.",
   "item.createimp.network_manager.tooltip.condition3": "While a label is selected",
-  "item.createimp.network_manager.tooltip.behaviour3": "Right-click a _logistics network device_ to _apply the network_. _Hold right-click_ to open a menu that can apply the network to _all devices in that device's network_.",
+  "item.createimp.network_manager.tooltip.behaviour3": "Right-click a _logistics network device_ to _apply the network_. _Hold right-click_ to open a menu that can apply the network to _all devices in that device's network_. In the _inventory_, right-click a _device item_ with the Network Manager to _apply the network_.",
   "block.createimp.labeled_redstone_link": "Labeled Redstone Link",
   "createimp.gui.labeled_redstone_link.title": "Frequency Settings",
   "createimp.gui.labeled_redstone_link.default_frequency": "Default Redstone Frequency",
@@ -61,5 +61,6 @@
   "createimp.gui.network_manager.config_single": "Configure This Element",
   "createimp.gui.network_manager.config_whole_network": "Configure All Elements in Network",
   "text.autoconfig.createimp.option.networkManagerConfig": "Network Manager Config",
-  "text.autoconfig.createimp.option.networkManagerConfig.longPressThreshold": "Long Press Duration (ticks)"
+  "text.autoconfig.createimp.option.networkManagerConfig.longPressThreshold": "Long Press Duration (ticks)",
+  "createimp.hud.network_manager.selected_prefix": "Selected network: "
 }

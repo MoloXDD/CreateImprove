@@ -32,6 +32,9 @@ import java.util.UUID;
 
 public class NetworkManagerClientHandler {
 
+    /** 已选择网络提示文字距离屏幕底部的偏移量，值越大文字越靠上。原版物品名称提示为 59，此处设为 61 以避免重叠。 */
+    private static final int HUD_Y_OFFSET = 61;
+
     private static int longPressTicks = -1;
     private static BlockPos longPressPos = null;
     private static Vec3 longPressClickLocation = null;
@@ -51,14 +54,6 @@ public class NetworkManagerClientHandler {
         longPressHand = null;
     }
 
-    /**
-     * 统一处理 RightClickBlock 事件（以 HIGH 优先级注册，先于 ValueSettingsInputHandler）。
-     *
-     * 情况一：长按计时已在进行中，且点击的仍是同一方块 → 取消事件，防止框架重置按键状态。
-     * 情况二：长按计时尚未开始，但玩家手持处于选择状态的网络管理器，且目标方块是可配置的
-     *         网络元件（含 LogisticallyLinkedBehaviour 或 FactoryPanelBlockEntity）→ 立即取消
-     *         事件（在 ValueSettingsInputHandler 之前），并启动长按计时。
-     */
     public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
         if (event.getSide() != net.neoforged.fml.LogicalSide.CLIENT) return;
 
@@ -68,7 +63,6 @@ public class NetworkManagerClientHandler {
 
         BlockPos pos = event.getPos();
 
-        // 情况一：计时已在进行，防止框架重置
         if (longPressTicks != -1) {
             if (longPressPos != null && longPressPos.equals(pos)) {
                 event.setCanceled(true);
@@ -77,13 +71,11 @@ public class NetworkManagerClientHandler {
             return;
         }
 
-        // 情况二：检测是否应该接管本次右键
         NetworkSelectedState state = getSelectedState(player);
         if (state == null) return;
 
         if (player.isShiftKeyDown()) return;
 
-        // 判断目标方块是否是可配置的网络元件
         if (mc.level == null) return;
         BlockEntity be = mc.level.getBlockEntity(pos);
         if (be == null) return;
@@ -92,7 +84,6 @@ public class NetworkManagerClientHandler {
                 || be instanceof FactoryPanelBlockEntity;
         if (!isTarget) return;
 
-        // 满足条件：取消事件，接管交互
         event.setCanceled(true);
         event.setCancellationResult(InteractionResult.FAIL);
 
@@ -193,15 +184,19 @@ public class NetworkManagerClientHandler {
         NetworkSelectedState state = getSelectedState(player);
         if (state == null) return;
 
-        Component text = Component.translatable(
-                "createimp.hud.network_manager.selected", state.labelName());
+        // 前缀白色，标签名橙色（0xFFA500），拼接为带样式的 Component
+        net.minecraft.network.chat.MutableComponent text =
+                Component.translatable("createimp.hud.network_manager.selected_prefix")
+                        .withStyle(style -> style.withColor(0xFFFFFF))
+                        .append(Component.literal(state.labelName())
+                                .withStyle(style -> style.withColor(0xFFA500)));
 
         int screenWidth  = mc.getWindow().getGuiScaledWidth();
         int screenHeight = mc.getWindow().getGuiScaledHeight();
         int textWidth    = mc.font.width(text);
 
         int x = (screenWidth - textWidth) / 2;
-        int y = screenHeight - 59;
+        int y = screenHeight - HUD_Y_OFFSET;
 
         graphics.drawString(mc.font, text, x, y, 0xFFFFFF, true);
     }
