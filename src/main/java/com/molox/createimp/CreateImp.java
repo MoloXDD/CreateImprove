@@ -9,6 +9,7 @@ import com.molox.createimp.network.OpenNetworkManagerEditPacket;
 import com.molox.createimp.network.OpenNetworkManagerEditorPacket;
 import com.molox.createimp.network.OpenNetworkManagerGuiPacket;
 import com.molox.createimp.network.SaveBrassScrapBucketConfigPacket;
+import com.molox.createimp.network.SaveFactoryPanelDemandModePacket;
 import com.molox.createimp.network.SaveLabeledRedstoneLinkConfigPacket;
 import com.molox.createimp.network.SaveNetworkManagerDataPacket;
 import com.molox.createimp.network.SaveNetworkManagerSearchPacket;
@@ -146,6 +147,11 @@ public class CreateImp {
                 ApplyNetworkPacket.TYPE,
                 ApplyNetworkPacket.STREAM_CODEC,
                 ApplyNetworkPacket::handle
+        );
+        registrar.playToServer(
+                SaveFactoryPanelDemandModePacket.TYPE,
+                SaveFactoryPanelDemandModePacket.STREAM_CODEC,
+                SaveFactoryPanelDemandModePacket::handle
         );
     }
 

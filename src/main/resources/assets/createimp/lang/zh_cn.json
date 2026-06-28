@@ -62,5 +62,7 @@
   "createimp.gui.network_manager.config_whole_network": "配置该网络下所有元件",
   "text.autoconfig.createimp.option.networkManagerConfig": "网络管理器配置",
   "text.autoconfig.createimp.option.networkManagerConfig.longPressThreshold": "长按时间（tick）",
-  "createimp.hud.network_manager.selected_prefix": "已选择网络："
+  "createimp.hud.network_manager.selected_prefix": "已选择网络：",
+  "createimp.gui.factory_panel.demand_mode.title": "按量请求模式",
+  "createimp.gui.factory_panel.demand_mode.desc": "一次性请求满足需求的原料"
 }

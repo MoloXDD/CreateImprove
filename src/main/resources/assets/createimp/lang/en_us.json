@@ -62,5 +62,7 @@
   "createimp.gui.network_manager.config_whole_network": "Configure All Elements in Network",
   "text.autoconfig.createimp.option.networkManagerConfig": "Network Manager Config",
   "text.autoconfig.createimp.option.networkManagerConfig.longPressThreshold": "Long Press Duration (ticks)",
-  "createimp.hud.network_manager.selected_prefix": "Selected network: "
+  "createimp.hud.network_manager.selected_prefix": "Selected network: ",
+  "createimp.gui.factory_panel.demand_mode.title": "Demand Request Mode",
+  "createimp.gui.factory_panel.demand_mode.desc": "Request all required ingredients at once"
 }

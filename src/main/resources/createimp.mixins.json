@@ -5,7 +5,10 @@
   "compatibilityLevel": "JAVA_21",
   "mixins": [
     "MixinAbstractContainerMenu",
-    "MixinClipboardScreen"
+    "MixinClipboardScreen",
+    "MixinFactoryPanelBehaviour",
+    "MixinFactoryPanelScreen",
+    "AbstractSimiScreenAccessor"
   ],
   "client": [],
   "injectors": {
