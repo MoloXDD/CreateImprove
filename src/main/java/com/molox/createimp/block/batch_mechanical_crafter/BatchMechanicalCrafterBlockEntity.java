@@ -63,6 +63,11 @@ public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity {
     private EdgeInteractionBehaviour connectivity;
     private ItemStack scriptedResult = ItemStack.EMPTY;
 
+    public int packageProgressOrderId = -1;
+    public int packageProgressEntryIndex = 0;
+    public int packageProgressEntryRemaining = -1;
+
+
     public BatchMechanicalCrafterBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState state) {
         super(type, pos, state);
         this.setLazyTickRate(20);
@@ -137,6 +142,9 @@ public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity {
         compound.putString("Phase", this.phase.name());
         compound.putInt("CountDown", this.countDown);
         compound.putBoolean("Cover", this.covered);
+        compound.putInt("PkgProgressOrderId", this.packageProgressOrderId);
+        compound.putInt("PkgProgressEntryIndex", this.packageProgressEntryIndex);
+        compound.putInt("PkgProgressEntryRemaining", this.packageProgressEntryRemaining);
         super.write(compound, registries, clientPacket);
         if (clientPacket && this.reRender) {
             compound.putBoolean("Redraw", true);
@@ -160,6 +168,9 @@ public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity {
         }
         this.countDown = compound.getInt("CountDown");
         this.covered = compound.getBoolean("Cover");
+        this.packageProgressOrderId = compound.contains("PkgProgressOrderId") ? compound.getInt("PkgProgressOrderId") : -1;
+        this.packageProgressEntryIndex = compound.getInt("PkgProgressEntryIndex");
+        this.packageProgressEntryRemaining = compound.contains("PkgProgressEntryRemaining") ? compound.getInt("PkgProgressEntryRemaining") : -1;
         super.read(compound, registries, clientPacket);
         if (!clientPacket) return;
         if (compound.contains("Redraw"))
@@ -214,23 +225,25 @@ public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity {
                     this.sendData();
                     return;
                 }
-                ItemStack result = this.isVirtual() ? this.scriptedResult
-                        : BatchRecipeGridHandler.tryToApplyRecipe(this.level, this.groupedItems);
-                if (result != null) {
-                    ArrayList<ItemStack> containers = new ArrayList<>();
-                    this.groupedItems.grid.values().forEach(stack -> {
-                        if (stack.hasCraftingRemainingItem())
-                            containers.add(stack.getCraftingRemainingItem().copy());
-                    });
-                    if (this.isVirtual())
-                        this.groupedItemsBeforeCraft = this.groupedItems;
-                    this.groupedItems = new BatchRecipeGridHandler.GroupedItems(result);
-                    for (int i = 0; i < containers.size(); i++) {
-                        ItemStack stack = containers.get(i);
-                        BatchRecipeGridHandler.GroupedItems container = new BatchRecipeGridHandler.GroupedItems();
-                        container.grid.put(Pair.of(i, 0), stack);
-                        container.mergeOnto(this.groupedItems, Pointing.LEFT);
+                if (this.isVirtual()) {
+                    ItemStack result = this.scriptedResult;
+                    if (result != null) {
+                        if (this.isVirtual())
+                            this.groupedItemsBeforeCraft = this.groupedItems;
+                        this.groupedItems = new BatchRecipeGridHandler.GroupedItems(result);
+                        this.phase = Phase.CRAFTING;
+                        this.countDown = 2000;
+                        this.sendData();
+                        return;
                     }
+                    this.ejectWholeGrid();
+                    return;
+                }
+                BatchRecipeGridHandler.BatchCraftResult batchResult =
+                        BatchRecipeGridHandler.tryToApplyRecipeBatch(this.level, this.groupedItems);
+                if (batchResult != null) {
+                    this.groupedItemsBeforeCraft = this.groupedItems;
+                    this.groupedItems = batchResult.outputItems;
                     this.phase = Phase.CRAFTING;
                     this.countDown = 2000;
                     this.sendData();
@@ -358,6 +371,11 @@ public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity {
                 BatchRecipeGridHandler.getAllCraftersOfChain(this);
         if (chain == null) return;
         chain.forEach(BatchMechanicalCrafterBlockEntity::eject);
+        if (!this.level.isClientSide()) {
+            for (BatchMechanicalCrafterBlockEntity crafter : chain) {
+                crafter.tryProcessPackagerBox();
+            }
+        }
     }
 
     public void eject() {
@@ -377,6 +395,33 @@ public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity {
         this.sendData();
     }
 
+    private void tryProcessPackagerBox() {
+        var facing = this.getBlockState()
+                .getOptionalValue(BatchMechanicalCrafterBlock.HORIZONTAL_FACING);
+        if (facing.isEmpty()) return;
+        for (net.minecraft.core.Direction dir : net.minecraft.core.Direction.values()) {
+            net.minecraft.core.BlockPos neighborPos = this.worldPosition.relative(dir);
+            net.minecraft.world.level.block.entity.BlockEntity neighbor =
+                    this.level.getBlockEntity(neighborPos);
+            if (!(neighbor instanceof com.simibubi.create.content.logistics.packager.PackagerBlockEntity packager))
+                continue;
+            if (packager.heldBox.isEmpty()) continue;
+            com.simibubi.create.content.logistics.stockTicker.PackageOrderWithCrafts ctx =
+                    com.simibubi.create.content.logistics.box.PackageItem.getOrderContext(packager.heldBox);
+            if (ctx == null || ctx.orderedCrafts().isEmpty()) continue;
+            var packagerFacing = packager.getBlockState()
+                    .getOptionalValue(com.simibubi.create.content.logistics.packager.PackagerBlock.FACING)
+                    .orElse(null);
+            if (packagerFacing == null) continue;
+            net.minecraft.core.BlockPos packagerTarget =
+                    packager.getBlockPos().relative(packagerFacing.getOpposite());
+            if (!packagerTarget.equals(this.worldPosition)) continue;
+            com.molox.createimp.block.batch_mechanical_crafter.BatchCrafterUnpackingHandler
+                    .processBatchPackage(packager, this);
+            break;
+        }
+    }
+
     public void dropItem(Vec3 ejectPos, ItemStack stack) {
         ItemEntity itemEntity = new ItemEntity(this.level, ejectPos.x, ejectPos.y, ejectPos.z, stack);
         itemEntity.setDefaultPickUpDelay();
@@ -391,6 +436,7 @@ public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity {
             this.checkCompletedRecipe(false);
         if (this.phase == Phase.INSERTING)
             this.tryInsert();
+
     }
 
     public boolean craftingItemPresent() {
@@ -415,7 +461,7 @@ public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity {
 
     protected void begin() {
         this.phase = Phase.ACCEPTING;
-        this.groupedItems = new BatchRecipeGridHandler.GroupedItems(this.inventory.getItem(0));
+        this.groupedItems = new BatchRecipeGridHandler.GroupedItems(this.inventory.getItem(0).copy());
         this.inventory.setStackInSlot(0, ItemStack.EMPTY);
         if (BatchRecipeGridHandler.getPrecedingCrafters(this).isEmpty()) {
             this.phase = Phase.ASSEMBLING;
@@ -453,6 +499,13 @@ public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity {
         this.scriptedResult = scriptedResult;
     }
 
+    public void clearPackageProgress() {
+        this.packageProgressOrderId = -1;
+        this.packageProgressEntryIndex = 0;
+        this.packageProgressEntryRemaining = -1;
+        this.setChanged();
+    }
+
     public BatchConnectedInputHandler.ConnectedInput getInput() {
         return this.input;
     }
@@ -465,7 +518,7 @@ public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity {
         private final BatchMechanicalCrafterBlockEntity blockEntity;
 
         public Inventory(BatchMechanicalCrafterBlockEntity blockEntity) {
-            super(1, (com.simibubi.create.foundation.blockEntity.SyncedBlockEntity) blockEntity, 1, false);
+            super(1, (com.simibubi.create.foundation.blockEntity.SyncedBlockEntity) blockEntity, 64, false);
             this.blockEntity = blockEntity;
             this.forbidExtraction();
             this.whenContentsChanged(slot -> {
@@ -479,6 +532,7 @@ public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity {
         public ItemStack insertItem(int slot, ItemStack stack, boolean simulate) {
             if (this.blockEntity.phase != Phase.IDLE) return stack;
             if (this.blockEntity.covered) return stack;
+            if (!this.getItem(slot).isEmpty()) return stack;
             ItemStack result = super.insertItem(slot, stack, simulate);
             if (result.getCount() != stack.getCount() && !simulate) {
                 this.blockEntity.getLevel().playSound(null, this.blockEntity.getBlockPos(),

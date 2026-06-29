@@ -3,7 +3,6 @@ package com.molox.createimp.block.batch_mechanical_crafter;
 import com.google.common.base.Predicates;
 import com.simibubi.create.AllRecipeTypes;
 import com.simibubi.create.content.kinetics.base.HorizontalKineticBlock;
-import com.simibubi.create.content.kinetics.crafter.MechanicalCraftingInput;
 import com.simibubi.create.infrastructure.config.AllConfigs;
 import net.createmod.catnip.data.Iterate;
 import net.createmod.catnip.math.Pointing;
@@ -15,11 +14,9 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.crafting.CraftingInput;
 import net.minecraft.world.item.crafting.CraftingRecipe;
 import net.minecraft.world.item.crafting.FireworkRocketRecipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
-import net.minecraft.world.item.crafting.RecipeInput;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.Level;
 import org.apache.commons.lang3.tuple.Pair;
@@ -122,9 +119,35 @@ public class BatchRecipeGridHandler {
         return crafters;
     }
 
+    private static BatchCraftingInput buildCraftingInput(GroupedItems items, int countPerSlot) {
+        int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE;
+        int minY = Integer.MAX_VALUE, maxY = Integer.MIN_VALUE;
+        for (Map.Entry<Pair<Integer, Integer>, ItemStack> entry : items.grid.entrySet()) {
+            if (entry.getValue().isEmpty()) continue;
+            int x = entry.getKey().getKey(), y = entry.getKey().getValue();
+            minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+            minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+        }
+        if (minX == Integer.MAX_VALUE)
+            return BatchCraftingInput.of(1, 1, List.of(ItemStack.EMPTY));
+        int w = maxX - minX + 1;
+        int h = maxY - minY + 1;
+        ArrayList<ItemStack> list = new ArrayList<>(w * h);
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                ItemStack stack = items.grid.get(Pair.of(x + minX, maxY - y));
+                if (stack == null || stack.isEmpty())
+                    list.add(ItemStack.EMPTY);
+                else
+                    list.add(stack.copyWithCount(countPerSlot));
+            }
+        }
+        return BatchCraftingInput.of(w, h, list);
+    }
+
     public static ItemStack tryToApplyRecipe(Level world, GroupedItems items) {
         items.calcStats();
-        CraftingInput craftingInput = buildCraftingInput(items);
+        BatchCraftingInput craftingInput = buildCraftingInput(items, 1);
         ItemStack result = null;
         RegistryAccess registryAccess = world.registryAccess();
         if (((Boolean) AllConfigs.server().recipes.allowRegularCraftingInCrafter.get())) {
@@ -142,36 +165,74 @@ public class BatchRecipeGridHandler {
         return result;
     }
 
-    private static CraftingInput buildCraftingInput(GroupedItems items) {
-        ArrayList<ItemStack> list = new ArrayList<>(items.width * items.height);
-        int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE;
-        int minY = Integer.MAX_VALUE, maxY = Integer.MIN_VALUE;
-        for (int y = 0; y < items.height; y++) {
-            for (int x = 0; x < items.width; x++) {
-                int xp = x + items.minX;
-                int yp = y + items.minY;
-                ItemStack stack = items.grid.get(Pair.of(xp, yp));
-                if (stack == null || stack.isEmpty()) continue;
-                minX = Math.min(minX, xp);
-                maxX = Math.max(maxX, xp);
-                minY = Math.min(minY, yp);
-                maxY = Math.max(maxY, yp);
+    public static BatchCraftResult tryToApplyRecipeBatch(Level world, GroupedItems items) {
+        items.calcStats();
+        BatchCraftingInput singleInput = buildCraftingInput(items, 1);
+
+        RecipeHolder<CraftingRecipe> matchedRecipe = null;
+        RegistryAccess registryAccess = world.registryAccess();
+
+        if (((Boolean) AllConfigs.server().recipes.allowRegularCraftingInCrafter.get())) {
+            var found = world.getRecipeManager()
+                    .getRecipeFor(RecipeType.CRAFTING, singleInput, world)
+                    .filter(r -> isRecipeAllowed(r, singleInput))
+                    .orElse(null);
+            if (found != null)
+                matchedRecipe = found;
+        }
+        if (matchedRecipe == null) {
+            var found = AllRecipeTypes.MECHANICAL_CRAFTING.find(singleInput, world).orElse(null);
+            if (found != null)
+                matchedRecipe = (RecipeHolder<CraftingRecipe>) (RecipeHolder<?>) found;
+        }
+        if (matchedRecipe == null)
+            return null;
+
+        ItemStack singleResult = matchedRecipe.value().assemble(singleInput, registryAccess);
+        if (singleResult.isEmpty())
+            return null;
+
+        int batches = Integer.MAX_VALUE;
+        for (ItemStack stack : items.grid.values()) {
+            if (!stack.isEmpty())
+                batches = Math.min(batches, stack.getCount());
+        }
+        if (batches == Integer.MAX_VALUE || batches <= 0)
+            batches = 1;
+
+        GroupedItems outputItems = new GroupedItems();
+        int remainderSlot = 0;
+        int totalOutput = singleResult.getCount() * batches;
+        int maxStack = singleResult.getMaxStackSize();
+        while (totalOutput > 0) {
+            int slotCount = Math.min(totalOutput, maxStack);
+            outputItems.grid.put(Pair.of(remainderSlot, 0), singleResult.copyWithCount(slotCount));
+            remainderSlot++;
+            totalOutput -= slotCount;
+        }
+
+        for (Map.Entry<Pair<Integer, Integer>, ItemStack> entry : items.grid.entrySet()) {
+            ItemStack original = entry.getValue();
+            if (original.isEmpty()) continue;
+            int remaining = original.getCount() - batches;
+            if (remaining > 0) {
+                outputItems.grid.put(Pair.of(remainderSlot, 0), original.copyWithCount(remaining));
+                remainderSlot++;
             }
         }
-        if (minX == Integer.MAX_VALUE)
-            return CraftingInput.of(1, 1, List.of(ItemStack.EMPTY));
-        int w = maxX - minX + 1;
-        int h = maxY - minY + 1;
-        for (int y = 0; y < h; y++) {
-            for (int x = 0; x < w; x++) {
-                ItemStack stack = items.grid.get(Pair.of(x + minX, maxY - y));
-                list.add(stack == null ? ItemStack.EMPTY : stack.copy());
-            }
+
+        for (ItemStack stack : items.grid.values()) {
+            if (stack.isEmpty() || !stack.hasCraftingRemainingItem()) continue;
+            ItemStack container = stack.getCraftingRemainingItem().copy();
+            int containerCount = Math.min(container.getCount() * batches, container.getMaxStackSize());
+            outputItems.grid.put(Pair.of(remainderSlot, 0), container.copyWithCount(containerCount));
+            remainderSlot++;
         }
-        return CraftingInput.of(w, h, list);
+
+        return new BatchCraftResult(outputItems, batches);
     }
 
-    public static boolean isRecipeAllowed(RecipeHolder<CraftingRecipe> recipe, CraftingInput craftingInput) {
+    public static boolean isRecipeAllowed(RecipeHolder<CraftingRecipe> recipe, BatchCraftingInput craftingInput) {
         if (recipe.value() instanceof FireworkRocketRecipe) {
             int numItems = 0;
             for (int i = 0; i < craftingInput.size(); i++) {
@@ -181,6 +242,16 @@ public class BatchRecipeGridHandler {
                 return false;
         }
         return !AllRecipeTypes.shouldIgnoreInAutomation(recipe);
+    }
+
+    public static class BatchCraftResult {
+        public final GroupedItems outputItems;
+        public final int batches;
+
+        public BatchCraftResult(GroupedItems outputItems, int batches) {
+            this.outputItems = outputItems;
+            this.batches = batches;
+        }
     }
 
     public static class GroupedItems {

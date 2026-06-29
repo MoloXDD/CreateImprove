@@ -8,7 +8,9 @@
     "MixinClipboardScreen",
     "MixinFactoryPanelBehaviour",
     "MixinFactoryPanelScreen",
-    "AbstractSimiScreenAccessor"
+    "AbstractSimiScreenAccessor",
+    "MixinMechanicalCraftingRecipe",
+    "MixinPackagerItemHandler"
   ],
   "client": [],
   "injectors": {
