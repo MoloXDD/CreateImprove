@@ -64,5 +64,9 @@
   "text.autoconfig.createimp.option.networkManagerConfig.longPressThreshold": "Long Press Duration (ticks)",
   "createimp.hud.network_manager.selected_prefix": "Selected network: ",
   "createimp.gui.factory_panel.demand_mode.title": "Demand Request Mode",
-  "createimp.gui.factory_panel.demand_mode.desc": "Request all required ingredients at once"
+  "createimp.gui.factory_panel.demand_mode.desc": "Request all required ingredients at once",
+  "block.createimp.batch_mechanical_crafter": "Batch Mechanical Crafter",
+  "text.autoconfig.createimp.option.batchMechanicalCrafterConfig": "Batch Mechanical Crafter Config",
+  "text.autoconfig.createimp.option.batchMechanicalCrafterConfig.maxSpeedStressImpact": "Stress Impact at Max Speed (SU)",
+  "text.autoconfig.createimp.option.batchMechanicalCrafterConfig.showItemCount": "Show Item Count"
 }

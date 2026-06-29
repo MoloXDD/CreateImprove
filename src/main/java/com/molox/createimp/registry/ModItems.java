@@ -27,4 +27,8 @@ public class ModItems {
     public static final DeferredItem<BlockItem> LABELED_REDSTONE_LINK =
             ITEMS.registerSimpleBlockItem("labeled_redstone_link", ModBlocks.LABELED_REDSTONE_LINK,
                     new Item.Properties());
+
+    public static final DeferredItem<BlockItem> BATCH_MECHANICAL_CRAFTER =
+            ITEMS.registerSimpleBlockItem("batch_mechanical_crafter", ModBlocks.BATCH_MECHANICAL_CRAFTER,
+                    new Item.Properties());
 }

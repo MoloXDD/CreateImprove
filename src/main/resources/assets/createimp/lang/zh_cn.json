@@ -64,5 +64,9 @@
   "text.autoconfig.createimp.option.networkManagerConfig.longPressThreshold": "长按时间（tick）",
   "createimp.hud.network_manager.selected_prefix": "已选择网络：",
   "createimp.gui.factory_panel.demand_mode.title": "按量请求模式",
-  "createimp.gui.factory_panel.demand_mode.desc": "一次性请求满足需求的原料"
+  "createimp.gui.factory_panel.demand_mode.desc": "一次性请求满足需求的原料",
+  "block.createimp.batch_mechanical_crafter": "批量动力合成器",
+  "text.autoconfig.createimp.option.batchMechanicalCrafterConfig": "批量动力合成器配置",
+  "text.autoconfig.createimp.option.batchMechanicalCrafterConfig.maxSpeedStressImpact": "满转速应力消耗（SU）",
+  "text.autoconfig.createimp.option.batchMechanicalCrafterConfig.showItemCount": "显示物品数量"
 }

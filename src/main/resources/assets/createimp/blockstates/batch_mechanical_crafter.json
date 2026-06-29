@@ -1,0 +1,64 @@
+{
+  "variants": {
+    "facing=east,pointing=down": {
+      "model": "createimp:block/batch_mechanical_crafter/block",
+      "y": 90
+    },
+    "facing=east,pointing=left": {
+      "model": "createimp:block/batch_mechanical_crafter/block",
+      "y": 90
+    },
+    "facing=east,pointing=right": {
+      "model": "createimp:block/batch_mechanical_crafter/block",
+      "y": 90
+    },
+    "facing=east,pointing=up": {
+      "model": "createimp:block/batch_mechanical_crafter/block",
+      "y": 90
+    },
+    "facing=north,pointing=down": {
+      "model": "createimp:block/batch_mechanical_crafter/block"
+    },
+    "facing=north,pointing=left": {
+      "model": "createimp:block/batch_mechanical_crafter/block"
+    },
+    "facing=north,pointing=right": {
+      "model": "createimp:block/batch_mechanical_crafter/block"
+    },
+    "facing=north,pointing=up": {
+      "model": "createimp:block/batch_mechanical_crafter/block"
+    },
+    "facing=south,pointing=down": {
+      "model": "createimp:block/batch_mechanical_crafter/block",
+      "y": 180
+    },
+    "facing=south,pointing=left": {
+      "model": "createimp:block/batch_mechanical_crafter/block",
+      "y": 180
+    },
+    "facing=south,pointing=right": {
+      "model": "createimp:block/batch_mechanical_crafter/block",
+      "y": 180
+    },
+    "facing=south,pointing=up": {
+      "model": "createimp:block/batch_mechanical_crafter/block",
+      "y": 180
+    },
+    "facing=west,pointing=down": {
+      "model": "createimp:block/batch_mechanical_crafter/block",
+      "y": 270
+    },
+    "facing=west,pointing=left": {
+      "model": "createimp:block/batch_mechanical_crafter/block",
+      "y": 270
+    },
+    "facing=west,pointing=right": {
+      "model": "createimp:block/batch_mechanical_crafter/block",
+      "y": 270
+    },
+    "facing=west,pointing=up": {
+      "model": "createimp:block/batch_mechanical_crafter/block",
+      "y": 270
+    }
+  }
+}

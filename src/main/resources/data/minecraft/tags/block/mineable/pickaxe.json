@@ -2,6 +2,7 @@
   "values": [
     "createimp:andesite_scrap_bucket",
     "createimp:brass_scrap_bucket",
-    "createimp:labeled_redstone_link"
+    "createimp:labeled_redstone_link",
+    "createimp:batch_mechanical_crafter"
   ]
 }

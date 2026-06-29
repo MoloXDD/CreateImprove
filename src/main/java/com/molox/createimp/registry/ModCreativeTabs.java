@@ -21,6 +21,7 @@ public class ModCreativeTabs {
                         output.accept(ModItems.BRASS_SCRAP_BUCKET.get());
                         output.accept(ModItems.NETWORK_MANAGER.get());
                         output.accept(ModItems.LABELED_REDSTONE_LINK.get());
+                        output.accept(ModItems.BATCH_MECHANICAL_CRAFTER.get());
                     })
                     .build());
 }

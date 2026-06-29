@@ -1,7 +1,6 @@
 package com.molox.createimp;
 
 import com.molox.createimp.item.NetworkManagerItem;
-import com.molox.createimp.item.NetworkSelectedState;
 import com.molox.createimp.network.ApplyNetworkPacket;
 import com.molox.createimp.network.ClearNetworkSelectionPacket;
 import com.molox.createimp.network.OpenLabeledRedstoneLinkGuiPacket;
@@ -23,7 +22,10 @@ import com.molox.createimp.registry.ModDataComponents;
 import com.molox.createimp.registry.ModItems;
 import com.molox.createimp.registry.ModMenuTypes;
 import com.mojang.logging.LogUtils;
+import com.simibubi.create.api.packager.unpacking.UnpackingHandler;
+import com.simibubi.create.api.stress.BlockStressValues;
 import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelBlockEntity;
+import com.molox.createimp.block.batch_mechanical_crafter.BatchCrafterUnpackingHandler;
 import me.shedaniel.autoconfig.AutoConfig;
 import me.shedaniel.autoconfig.serializer.GsonConfigSerializer;
 import net.minecraft.world.InteractionResult;
@@ -34,6 +36,7 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.LogicalSide;
+import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
@@ -55,8 +58,24 @@ public class CreateImp {
         ModMenuTypes.MENU_TYPES.register(modEventBus);
         modEventBus.addListener(ModCapabilities::register);
         modEventBus.addListener(CreateImp::registerPayloads);
+        modEventBus.addListener(CreateImp::commonSetup);
 
         NeoForge.EVENT_BUS.addListener(EventPriority.HIGH, CreateImp::onRightClickBlockServer);
+    }
+
+    private static void commonSetup(FMLCommonSetupEvent event) {
+        event.enqueueWork(() -> {
+            // 包裹接收功能（动力合成请求）
+            UnpackingHandler.REGISTRY.register(
+                    ModBlocks.BATCH_MECHANICAL_CRAFTER.get(),
+                    BatchCrafterUnpackingHandler.INSTANCE
+            );
+            // 应力消耗：满转速（256RPM）下应力 = 配置值，impact = 配置值 / 256.0
+            BlockStressValues.IMPACTS.register(
+                    ModBlocks.BATCH_MECHANICAL_CRAFTER.get(),
+                    () -> CreateImp.getConfig().batchMechanicalCrafterConfig.maxSpeedStressImpact / 256.0
+            );
+        });
     }
 
     private static void onRightClickBlockServer(PlayerInteractEvent.RightClickBlock event) {
