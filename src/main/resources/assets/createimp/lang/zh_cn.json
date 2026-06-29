@@ -68,5 +68,6 @@
   "block.createimp.batch_mechanical_crafter": "批量动力合成器",
   "text.autoconfig.createimp.option.batchMechanicalCrafterConfig": "批量动力合成器配置",
   "text.autoconfig.createimp.option.batchMechanicalCrafterConfig.maxSpeedStressImpact": "满转速应力消耗（SU）",
-  "text.autoconfig.createimp.option.batchMechanicalCrafterConfig.showItemCount": "显示物品数量"
+  "text.autoconfig.createimp.option.batchMechanicalCrafterConfig.showItemCount": "显示物品数量",
+  "block.createimp.batch_repackager": "批量理包机"
 }

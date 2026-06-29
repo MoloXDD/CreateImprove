@@ -1,0 +1,6 @@
+{
+  "parent": "createimp:block/batch_repackager/block",
+  "textures": {
+    "2": "createimp:block/batch_repackager/batch_packager_horizontal_powered"
+  }
+}

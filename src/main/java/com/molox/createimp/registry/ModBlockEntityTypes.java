@@ -3,6 +3,7 @@ package com.molox.createimp.registry;
 import com.molox.createimp.CreateImp;
 import com.molox.createimp.block.andesite_scrap_bucket.AndesiteScrapBucketBlockEntity;
 import com.molox.createimp.block.batch_mechanical_crafter.BatchMechanicalCrafterBlockEntity;
+import com.molox.createimp.block.batch_repackager.BatchRepackagerBlockEntity;
 import com.molox.createimp.block.brass_scrap_bucket.BrassScrapBucketBlockEntity;
 import com.molox.createimp.block.labeled_redstone_link.LabeledRedstoneLinkBlockEntity;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -40,4 +41,11 @@ public class ModBlockEntityTypes {
                             (pos, state) -> new BatchMechanicalCrafterBlockEntity(
                                     ModBlockEntityTypes.BATCH_MECHANICAL_CRAFTER.get(), pos, state),
                             ModBlocks.BATCH_MECHANICAL_CRAFTER.get()).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<BatchRepackagerBlockEntity>> BATCH_REPACKAGER =
+            BLOCK_ENTITY_TYPES.register("batch_repackager",
+                    () -> BlockEntityType.Builder.of(
+                            (pos, state) -> new BatchRepackagerBlockEntity(
+                                    ModBlockEntityTypes.BATCH_REPACKAGER.get(), pos, state),
+                            ModBlocks.BATCH_REPACKAGER.get()).build(null));
 }

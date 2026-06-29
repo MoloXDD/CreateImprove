@@ -68,5 +68,6 @@
   "block.createimp.batch_mechanical_crafter": "Batch Mechanical Crafter",
   "text.autoconfig.createimp.option.batchMechanicalCrafterConfig": "Batch Mechanical Crafter Config",
   "text.autoconfig.createimp.option.batchMechanicalCrafterConfig.maxSpeedStressImpact": "Stress Impact at Max Speed (SU)",
-  "text.autoconfig.createimp.option.batchMechanicalCrafterConfig.showItemCount": "Show Item Count"
+  "text.autoconfig.createimp.option.batchMechanicalCrafterConfig.showItemCount": "Show Item Count",
+  "block.createimp.batch_repackager": "Batch Repackager"
 }

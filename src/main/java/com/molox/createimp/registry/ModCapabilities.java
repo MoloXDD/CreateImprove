@@ -2,6 +2,7 @@ package com.molox.createimp.registry;
 
 import com.molox.createimp.block.andesite_scrap_bucket.AndesiteScrapBucketBlockEntity;
 import com.molox.createimp.block.batch_mechanical_crafter.BatchMechanicalCrafterBlockEntity;
+import com.molox.createimp.block.batch_repackager.BatchRepackagerBlockEntity;
 import com.molox.createimp.block.brass_scrap_bucket.BrassScrapBucketBlockEntity;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
@@ -31,5 +32,6 @@ public class ModCapabilities {
         );
         BatchMechanicalCrafterBlockEntity.registerCapabilities(
                 event, ModBlockEntityTypes.BATCH_MECHANICAL_CRAFTER.get());
+        BatchRepackagerBlockEntity.registerCapabilities(event);
     }
 }

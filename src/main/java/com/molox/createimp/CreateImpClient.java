@@ -1,6 +1,8 @@
 package com.molox.createimp;
 
 import com.molox.createimp.block.batch_mechanical_crafter.BatchMechanicalCrafterRenderer;
+import com.molox.createimp.block.batch_repackager.BatchRepackagerRenderer;
+import com.molox.createimp.block.batch_repackager.BatchRepackagerVisual;
 import com.molox.createimp.block.brass_scrap_bucket.BrassScrapBucketRenderer;
 import com.molox.createimp.block.labeled_redstone_link.LabeledRedstoneLinkRenderer;
 import com.molox.createimp.client.NetworkManagerClientHandler;
@@ -12,7 +14,6 @@ import com.molox.createimp.screen.BrassScrapBucketScreen;
 import com.molox.createimp.screen.NetworkManagerLabelEditScreen;
 import com.molox.createimp.screen.NetworkManagerLabelEditorScreen;
 import com.simibubi.create.AllPartialModels;
-import com.simibubi.create.api.stress.BlockStressValues;
 import com.simibubi.create.content.kinetics.base.SingleAxisRotatingVisual;
 import com.molox.createimp.block.batch_mechanical_crafter.BatchCrafterCTBehaviour;
 import com.simibubi.create.foundation.block.connected.CTModel;
@@ -73,20 +74,22 @@ public class CreateImpClient {
                 new ItemDescription.Modifier(ModItems.LABELED_REDSTONE_LINK.get().asItem(), FontHelper.Palette.STANDARD_CREATE)
         );
 
-        // 批量动力合成器连接纹理
         CatnipServices.PLATFORM.executeOnClientOnly(() -> () -> {
             ResourceLocation id = ResourceLocation.fromNamespaceAndPath(CreateImp.MODID, "batch_mechanical_crafter");
             com.simibubi.create.CreateClient.MODEL_SWAPPER.getCustomBlockModels()
                     .register(id, model -> new CTModel(model, new BatchCrafterCTBehaviour()));
         });
 
-        // 批量动力合成器 Flywheel 齿轮旋转 Visual
-        event.enqueueWork(() ->
-                SimpleBlockEntityVisualizer.builder(ModBlockEntityTypes.BATCH_MECHANICAL_CRAFTER.get())
-                        .factory(SingleAxisRotatingVisual.of(AllPartialModels.SHAFTLESS_COGWHEEL))
-                        .skipVanillaRender(be -> false)
-                        .apply()
-        );
+        event.enqueueWork(() -> {
+            SimpleBlockEntityVisualizer.builder(ModBlockEntityTypes.BATCH_MECHANICAL_CRAFTER.get())
+                    .factory(SingleAxisRotatingVisual.of(AllPartialModels.SHAFTLESS_COGWHEEL))
+                    .skipVanillaRender(be -> false)
+                    .apply();
+            SimpleBlockEntityVisualizer.builder(ModBlockEntityTypes.BATCH_REPACKAGER.get())
+                    .factory(BatchRepackagerVisual::new)
+                    .skipVanillaRender(be -> false)
+                    .apply();
+        });
     }
 
     private static void onRegisterMenuScreens(RegisterMenuScreensEvent event) {
@@ -110,6 +113,10 @@ public class CreateImpClient {
         event.registerBlockEntityRenderer(
                 ModBlockEntityTypes.BATCH_MECHANICAL_CRAFTER.get(),
                 BatchMechanicalCrafterRenderer::new
+        );
+        event.registerBlockEntityRenderer(
+                ModBlockEntityTypes.BATCH_REPACKAGER.get(),
+                BatchRepackagerRenderer::new
         );
     }
 

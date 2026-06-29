@@ -31,4 +31,8 @@ public class ModItems {
     public static final DeferredItem<BlockItem> BATCH_MECHANICAL_CRAFTER =
             ITEMS.registerSimpleBlockItem("batch_mechanical_crafter", ModBlocks.BATCH_MECHANICAL_CRAFTER,
                     new Item.Properties());
+
+    public static final DeferredItem<BlockItem> BATCH_REPACKAGER =
+            ITEMS.registerSimpleBlockItem("batch_repackager", ModBlocks.BATCH_REPACKAGER,
+                    new Item.Properties());
 }

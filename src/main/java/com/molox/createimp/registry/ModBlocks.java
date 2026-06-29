@@ -3,6 +3,7 @@ package com.molox.createimp.registry;
 import com.molox.createimp.CreateImp;
 import com.molox.createimp.block.andesite_scrap_bucket.AndesiteScrapBucketBlock;
 import com.molox.createimp.block.batch_mechanical_crafter.BatchMechanicalCrafterBlock;
+import com.molox.createimp.block.batch_repackager.BatchRepackagerBlock;
 import com.molox.createimp.block.brass_scrap_bucket.BrassScrapBucketBlock;
 import com.molox.createimp.block.labeled_redstone_link.LabeledRedstoneLinkBlock;
 import com.simibubi.create.AllBlocks;
@@ -44,5 +45,10 @@ public class ModBlocks {
     public static final DeferredBlock<BatchMechanicalCrafterBlock> BATCH_MECHANICAL_CRAFTER =
             BLOCKS.register("batch_mechanical_crafter", () -> new BatchMechanicalCrafterBlock(
                     BlockBehaviour.Properties.ofFullCopy(AllBlocks.MECHANICAL_CRAFTER.get())
+            ));
+
+    public static final DeferredBlock<BatchRepackagerBlock> BATCH_REPACKAGER =
+            BLOCKS.register("batch_repackager", () -> new BatchRepackagerBlock(
+                    BlockBehaviour.Properties.ofFullCopy(AllBlocks.REPACKAGER.get())
             ));
 }

@@ -1,0 +1,139 @@
+package com.molox.createimp.block.batch_repackager;
+
+import com.molox.createimp.registry.ModBlockEntityTypes;
+import com.simibubi.create.compat.Mods;
+import com.simibubi.create.compat.computercraft.events.ComputerEvent;
+import com.simibubi.create.compat.computercraft.events.PackageEvent;
+import com.simibubi.create.compat.computercraft.events.RepackageEvent;
+import com.simibubi.create.content.logistics.BigItemStack;
+import com.simibubi.create.content.logistics.box.PackageItem;
+import com.simibubi.create.content.logistics.crate.BottomlessItemHandler;
+import com.simibubi.create.content.logistics.packager.PackagerBlockEntity;
+import com.simibubi.create.content.logistics.packager.PackagerItemHandler;
+import com.simibubi.create.content.logistics.packager.PackagingRequest;
+import com.simibubi.create.content.logistics.packager.repackager.PackageRepackageHelper;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.entity.BlockEntityType;
+import net.minecraft.world.level.block.state.BlockState;
+import net.neoforged.neoforge.capabilities.Capabilities;
+import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
+import net.neoforged.neoforge.items.IItemHandler;
+
+import java.util.List;
+
+public class BatchRepackagerBlockEntity extends PackagerBlockEntity {
+
+    public PackageRepackageHelper repackageHelper = new PackageRepackageHelper();
+
+    public BatchRepackagerBlockEntity(BlockEntityType<?> typeIn, BlockPos pos, BlockState state) {
+        super(typeIn, pos, state);
+    }
+
+    public static void registerCapabilities(RegisterCapabilitiesEvent event) {
+        event.registerBlockEntity(Capabilities.ItemHandler.BLOCK,
+                ModBlockEntityTypes.BATCH_REPACKAGER.get(),
+                (be, context) -> be.inventory);
+    }
+
+    @Override
+    public boolean unwrapBox(ItemStack box, boolean simulate) {
+        if (this.animationTicks > 0) {
+            return false;
+        }
+        IItemHandler targetInv = this.targetInventory.getInventory();
+        if (targetInv == null || targetInv instanceof PackagerItemHandler) {
+            return false;
+        }
+        boolean targetIsCreativeCrate = targetInv instanceof BottomlessItemHandler;
+        boolean anySpace = false;
+        for (int slot = 0; slot < targetInv.getSlots(); ++slot) {
+            ItemStack remainder = targetInv.insertItem(slot, box, simulate);
+            if (!remainder.isEmpty()) continue;
+            anySpace = true;
+            break;
+        }
+        if (!targetIsCreativeCrate && !anySpace) {
+            return false;
+        }
+        if (simulate) {
+            return true;
+        }
+        this.computerBehaviour.prepareComputerEvent((ComputerEvent) new PackageEvent(box, "package_received"));
+        this.previouslyUnwrapped = box;
+        this.animationInward = true;
+        this.animationTicks = 20;
+        this.notifyUpdate();
+        return true;
+    }
+
+    @Override
+    public void recheckIfLinksPresent() {
+    }
+
+    @Override
+    public boolean redstoneModeActive() {
+        return true;
+    }
+
+    @Override
+    public void attemptToSend(List<PackagingRequest> queuedRequests) {
+        if (!this.heldBox.isEmpty() || this.animationTicks != 0 || this.buttonCooldown > 0) {
+            return;
+        }
+        if (!this.queuedExitingPackages.isEmpty()) {
+            return;
+        }
+        IItemHandler targetInv = this.targetInventory.getInventory();
+        if (targetInv == null || targetInv instanceof PackagerItemHandler) {
+            return;
+        }
+        this.attemptToRepackage(targetInv);
+        if (this.heldBox.isEmpty()) {
+            return;
+        }
+        this.updateSignAddress();
+        if (!this.signBasedAddress.isBlank()) {
+            PackageItem.addAddress(this.heldBox, this.signBasedAddress);
+        }
+    }
+
+    protected void attemptToRepackage(IItemHandler targetInv) {
+        this.repackageHelper.clear();
+        int completedOrderId = -1;
+        for (int slot = 0; slot < targetInv.getSlots(); ++slot) {
+            ItemStack extracted = targetInv.extractItem(slot, 1, true);
+            if (extracted.isEmpty() || !PackageItem.isPackage(extracted)) continue;
+            if (!this.repackageHelper.isFragmented(extracted)) {
+                targetInv.extractItem(slot, 1, false);
+                this.heldBox = extracted.copy();
+                this.animationInward = false;
+                this.animationTicks = 20;
+                this.notifyUpdate();
+                return;
+            }
+            completedOrderId = this.repackageHelper.addPackageFragment(extracted);
+            if (completedOrderId != -1) break;
+        }
+        if (completedOrderId == -1) {
+            return;
+        }
+        List<BigItemStack> boxesToExport = this.repackageHelper.repack(completedOrderId, this.level.getRandom());
+        for (int slot = 0; slot < targetInv.getSlots(); ++slot) {
+            ItemStack extracted = targetInv.extractItem(slot, 1, true);
+            if (extracted.isEmpty() || !PackageItem.isPackage(extracted)
+                    || PackageItem.getOrderId(extracted) != completedOrderId) continue;
+            targetInv.extractItem(slot, 1, false);
+        }
+        if (boxesToExport.isEmpty()) {
+            return;
+        }
+        if (this.computerBehaviour.hasAttachedComputer()) {
+            for (BigItemStack box : boxesToExport) {
+                this.computerBehaviour.prepareComputerEvent((ComputerEvent) new RepackageEvent(box.stack, box.count));
+            }
+        }
+        this.queuedExitingPackages.addAll(boxesToExport);
+        this.notifyUpdate();
+    }
+}
