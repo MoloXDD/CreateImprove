@@ -406,6 +406,7 @@ public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity {
             if (!(neighbor instanceof com.simibubi.create.content.logistics.packager.PackagerBlockEntity packager))
                 continue;
             if (packager.heldBox.isEmpty()) continue;
+            if (packager.animationTicks != 0) continue;
             com.simibubi.create.content.logistics.stockTicker.PackageOrderWithCrafts ctx =
                     com.simibubi.create.content.logistics.box.PackageItem.getOrderContext(packager.heldBox);
             if (ctx == null || ctx.orderedCrafts().isEmpty()) continue;

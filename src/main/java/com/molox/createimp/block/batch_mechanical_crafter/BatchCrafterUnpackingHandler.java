@@ -35,8 +35,11 @@ public enum BatchCrafterUnpackingHandler implements UnpackingHandler {
 
     public static void processBatchPackage(PackagerBlockEntity packager,
                                            BatchMechanicalCrafterBlockEntity crafter) {
+        // 包裹的持有状态以heldBox为唯一真实来源，不读previouslyUnwrapped
+        // (该字段只在动画播放瞬间有意义，animationTicks==0时每tick都会被原版逻辑清空)。
         ItemStack box = packager.heldBox;
         if (box.isEmpty()) return;
+        if (packager.animationTicks > 0) return;
 
         PackageOrderWithCrafts orderContext = PackageItem.getOrderContext(box);
         if (orderContext == null || orderContext.orderedCrafts().isEmpty()) return;
@@ -52,7 +55,6 @@ public enum BatchCrafterUnpackingHandler implements UnpackingHandler {
         int incomingOrderId = PackageItem.getOrderId(box);
         List<PackageOrderWithCrafts.CraftingEntry> allEntries = orderContext.orderedCrafts();
 
-        // orderId不匹配时，新订单覆盖旧进度，从头开始
         if (incomingOrderId != crafter.packageProgressOrderId) {
             crafter.packageProgressOrderId = incomingOrderId;
             crafter.packageProgressEntryIndex = 0;
@@ -62,7 +64,6 @@ public enum BatchCrafterUnpackingHandler implements UnpackingHandler {
 
         int entryIndex = crafter.packageProgressEntryIndex;
 
-        // entryIndex超出范围说明所有entry已完成（不应该发生，但安全起见）
         if (entryIndex >= allEntries.size()) {
             crafter.packageProgressOrderId = -1;
             crafter.packageProgressEntryIndex = 0;
@@ -74,9 +75,6 @@ public enum BatchCrafterUnpackingHandler implements UnpackingHandler {
         PackageOrderWithCrafts.CraftingEntry currentEntry = allEntries.get(entryIndex);
         List<BigItemStack> pattern = currentEntry.pattern().stacks();
 
-        // 初始化当前entry剩余批次。只有当packageProgressEntryRemaining处于初始状态(-1)时，
-        // 才信任包裹自带的currentEntry.count()作为该entry的全局剩余批次；
-        // 否则使用合成器自己跨包裹记忆的剩余值，确保同一entry分散在多个包裹时不会被提前判定为完成。
         int remaining = crafter.packageProgressEntryRemaining < 0
                 ? currentEntry.count()
                 : crafter.packageProgressEntryRemaining;
@@ -96,8 +94,6 @@ public enum BatchCrafterUnpackingHandler implements UnpackingHandler {
             if (!s.isEmpty()) items.add(s.copy());
         }
 
-        // pattern中同一种物品可能出现在配方的多个格子（例如4铁锭围一圈合成铁块）。
-        // 先按物品类型合并，得到每种材料"单批总需求"，用于库存量约束的计算。
         Map<ItemStack, Integer> perBatchNeedByItem = new LinkedHashMap<>();
         for (BigItemStack slot : pattern) {
             if (slot.stack.isEmpty() || slot.count <= 0) continue;
@@ -115,9 +111,6 @@ public enum BatchCrafterUnpackingHandler implements UnpackingHandler {
             }
         }
 
-        // 计算本次批次数：受最小堆叠上限、剩余批次数、包裹里的实际材料量三重约束。
-        // 堆叠上限约束必须逐格独立计算（每个格子是独立槽位，各自上限64），
-        // 不能用合并后的单批总需求去算，否则会把批次数错误地压低。
         int maxBatches = remaining;
         for (BigItemStack slot : pattern) {
             if (slot.stack.isEmpty() || slot.count <= 0) continue;
@@ -126,7 +119,6 @@ public enum BatchCrafterUnpackingHandler implements UnpackingHandler {
         }
         if (maxBatches <= 0) maxBatches = 1;
 
-        // 库存量约束使用合并后的单批总需求，因为库存按物品类型统一计量，不分槽位。
         for (Map.Entry<ItemStack, Integer> e : perBatchNeedByItem.entrySet()) {
             ItemStack material = e.getKey();
             int perBatchNeed = e.getValue();
@@ -137,13 +129,8 @@ public enum BatchCrafterUnpackingHandler implements UnpackingHandler {
             }
             maxBatches = Math.min(maxBatches, available / Math.max(perBatchNeed, 1));
         }
-        // 材料不够，包裹安全卡在打包机里不动
         if (maxBatches <= 0) return;
 
-        // 分配材料到合成器槽位。
-        // Inventory.insertItem 单槽一旦非空即整体拒绝任何后续插入（即使是同种物品），
-        // 因此每个格子所需的数量必须先从items列表里凑齐成一份，再对该槽位调用一次insertItem，
-        // 不能对同一个槽位分多次调用insertItem。
         int totalInserted = 0;
         for (int i = 0; i < pattern.size(); i++) {
             if (i >= inventories.size()) break;
@@ -173,21 +160,17 @@ public enum BatchCrafterUnpackingHandler implements UnpackingHandler {
             int inserted = collected - leftover.getCount();
             totalInserted += inserted;
 
-            // 如果insertItem未能全部接收，把未被接收的部分还给items列表，避免物品凭空消失。
             if (!leftover.isEmpty()) {
                 items.add(leftover);
             }
         }
 
-        // 如果实际没有材料被放进去（合成器phase不是IDLE），不更新进度，包裹留着等待
         if (totalInserted == 0) return;
 
         crafter.checkCompletedRecipe(true);
 
-        // 更新合成器上的进度
         int newRemaining = remaining - maxBatches;
         if (newRemaining <= 0) {
-            // 当前entry完成，推进到下一个
             crafter.packageProgressEntryIndex = entryIndex + 1;
             crafter.packageProgressEntryRemaining = -1;
         } else {
@@ -204,7 +187,6 @@ public enum BatchCrafterUnpackingHandler implements UnpackingHandler {
         box.set(AllDataComponents.PACKAGE_CONTENTS,
                 ItemHelper.containerContentsFromHandler(newContents));
 
-        // 检查包裹内容是否清空
         boolean contentsEmpty = true;
         for (int i = 0; i < newContents.getSlots(); i++) {
             if (!newContents.getStackInSlot(i).isEmpty()) {
@@ -214,12 +196,18 @@ public enum BatchCrafterUnpackingHandler implements UnpackingHandler {
         }
 
         if (contentsEmpty) {
+            // 包裹内容已被吃空：heldBox清空(交还容量给PackagerItemHandler.insertItem的检查)，
+            // 同时借previouslyUnwrapped+animationTicks播放一次性的"消失"动画。
             packager.previouslyUnwrapped = box;
             packager.heldBox = ItemStack.EMPTY;
             packager.animationInward = true;
             packager.animationTicks = 20;
             packager.notifyUpdate();
         } else {
+            // 包裹内容还没吃空：更新后的内容写回heldBox长期持有，
+            // 不触碰previouslyUnwrapped/animationTicks，等待下次合成器槽位腾空时
+            // 由tryProcessPackagerBox重新触发处理。
+            packager.heldBox = box;
             packager.notifyUpdate();
         }
     }
