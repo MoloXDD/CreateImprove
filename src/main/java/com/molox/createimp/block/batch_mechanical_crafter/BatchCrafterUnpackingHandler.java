@@ -17,7 +17,9 @@ import net.neoforged.neoforge.items.ItemStackHandler;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public enum BatchCrafterUnpackingHandler implements UnpackingHandler {
     INSTANCE;
@@ -72,7 +74,9 @@ public enum BatchCrafterUnpackingHandler implements UnpackingHandler {
         PackageOrderWithCrafts.CraftingEntry currentEntry = allEntries.get(entryIndex);
         List<BigItemStack> pattern = currentEntry.pattern().stacks();
 
-        // 初始化当前entry剩余批次
+        // 初始化当前entry剩余批次。只有当packageProgressEntryRemaining处于初始状态(-1)时，
+        // 才信任包裹自带的currentEntry.count()作为该entry的全局剩余批次；
+        // 否则使用合成器自己跨包裹记忆的剩余值，确保同一entry分散在多个包裹时不会被提前判定为完成。
         int remaining = crafter.packageProgressEntryRemaining < 0
                 ? currentEntry.count()
                 : crafter.packageProgressEntryRemaining;
@@ -92,28 +96,54 @@ public enum BatchCrafterUnpackingHandler implements UnpackingHandler {
             if (!s.isEmpty()) items.add(s.copy());
         }
 
-        // 计算本次批次数：受最小堆叠上限、剩余批次数、包裹里的实际材料量三重约束
+        // pattern中同一种物品可能出现在配方的多个格子（例如4铁锭围一圈合成铁块）。
+        // 先按物品类型合并，得到每种材料"单批总需求"，用于库存量约束的计算。
+        Map<ItemStack, Integer> perBatchNeedByItem = new LinkedHashMap<>();
+        for (BigItemStack slot : pattern) {
+            if (slot.stack.isEmpty() || slot.count <= 0) continue;
+            ItemStack key = null;
+            for (ItemStack existingKey : perBatchNeedByItem.keySet()) {
+                if (ItemStack.isSameItemSameComponents(existingKey, slot.stack)) {
+                    key = existingKey;
+                    break;
+                }
+            }
+            if (key == null) {
+                perBatchNeedByItem.put(slot.stack, slot.count);
+            } else {
+                perBatchNeedByItem.put(key, perBatchNeedByItem.get(key) + slot.count);
+            }
+        }
+
+        // 计算本次批次数：受最小堆叠上限、剩余批次数、包裹里的实际材料量三重约束。
+        // 堆叠上限约束必须逐格独立计算（每个格子是独立槽位，各自上限64），
+        // 不能用合并后的单批总需求去算，否则会把批次数错误地压低。
         int maxBatches = remaining;
         for (BigItemStack slot : pattern) {
-            if (slot.stack.isEmpty()) continue;
+            if (slot.stack.isEmpty() || slot.count <= 0) continue;
             int maxByStack = slot.stack.getMaxStackSize() / Math.max(slot.count, 1);
             maxBatches = Math.min(maxBatches, maxByStack);
         }
         if (maxBatches <= 0) maxBatches = 1;
 
-        for (BigItemStack slot : pattern) {
-            if (slot.stack.isEmpty()) continue;
+        // 库存量约束使用合并后的单批总需求，因为库存按物品类型统一计量，不分槽位。
+        for (Map.Entry<ItemStack, Integer> e : perBatchNeedByItem.entrySet()) {
+            ItemStack material = e.getKey();
+            int perBatchNeed = e.getValue();
             int available = 0;
             for (ItemStack item : items) {
-                if (ItemStack.isSameItemSameComponents(item, slot.stack))
+                if (ItemStack.isSameItemSameComponents(item, material))
                     available += item.getCount();
             }
-            maxBatches = Math.min(maxBatches, available / Math.max(slot.count, 1));
+            maxBatches = Math.min(maxBatches, available / Math.max(perBatchNeed, 1));
         }
         // 材料不够，包裹安全卡在打包机里不动
         if (maxBatches <= 0) return;
 
-        // 分配材料到合成器槽位
+        // 分配材料到合成器槽位。
+        // Inventory.insertItem 单槽一旦非空即整体拒绝任何后续插入（即使是同种物品），
+        // 因此每个格子所需的数量必须先从items列表里凑齐成一份，再对该槽位调用一次insertItem，
+        // 不能对同一个槽位分多次调用insertItem。
         int totalInserted = 0;
         for (int i = 0; i < pattern.size(); i++) {
             if (i >= inventories.size()) break;
@@ -121,16 +151,31 @@ public enum BatchCrafterUnpackingHandler implements UnpackingHandler {
             if (slot.stack.isEmpty()) continue;
 
             int needed = slot.count * maxBatches;
-            int rem = needed;
+            int collected = 0;
+            ItemStack combined = ItemStack.EMPTY;
             for (ItemStack item : items) {
-                if (rem <= 0) break;
-                if (!ItemStack.isSameItemSameComponents(item, slot.stack)) continue;
-                int take = Math.min(rem, item.getCount());
-                ItemStack leftover = inventories.get(i).insertItem(0, item.copyWithCount(take), false);
-                int inserted = take - leftover.getCount();
-                item.shrink(inserted);
-                rem -= inserted;
-                totalInserted += inserted;
+                if (collected >= needed) break;
+                if (item.isEmpty() || !ItemStack.isSameItemSameComponents(item, slot.stack)) continue;
+                int take = Math.min(needed - collected, item.getCount());
+                if (take <= 0) continue;
+                if (combined.isEmpty()) {
+                    combined = item.copyWithCount(take);
+                } else {
+                    combined.grow(take);
+                }
+                item.shrink(take);
+                collected += take;
+            }
+
+            if (collected <= 0) continue;
+
+            ItemStack leftover = inventories.get(i).insertItem(0, combined, false);
+            int inserted = collected - leftover.getCount();
+            totalInserted += inserted;
+
+            // 如果insertItem未能全部接收，把未被接收的部分还给items列表，避免物品凭空消失。
+            if (!leftover.isEmpty()) {
+                items.add(leftover);
             }
         }
 

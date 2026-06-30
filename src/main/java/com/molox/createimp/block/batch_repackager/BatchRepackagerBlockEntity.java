@@ -1,17 +1,18 @@
 package com.molox.createimp.block.batch_repackager;
 
 import com.molox.createimp.registry.ModBlockEntityTypes;
-import com.simibubi.create.compat.Mods;
+import com.simibubi.create.AllDataComponents;
 import com.simibubi.create.compat.computercraft.events.ComputerEvent;
 import com.simibubi.create.compat.computercraft.events.PackageEvent;
 import com.simibubi.create.compat.computercraft.events.RepackageEvent;
 import com.simibubi.create.content.logistics.BigItemStack;
 import com.simibubi.create.content.logistics.box.PackageItem;
 import com.simibubi.create.content.logistics.crate.BottomlessItemHandler;
+import com.simibubi.create.content.logistics.packager.InventorySummary;
 import com.simibubi.create.content.logistics.packager.PackagerBlockEntity;
 import com.simibubi.create.content.logistics.packager.PackagerItemHandler;
 import com.simibubi.create.content.logistics.packager.PackagingRequest;
-import com.simibubi.create.content.logistics.packager.repackager.PackageRepackageHelper;
+import com.simibubi.create.content.logistics.stockTicker.PackageOrderWithCrafts;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntityType;
@@ -19,12 +20,17 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.items.IItemHandler;
+import net.neoforged.neoforge.items.ItemStackHandler;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class BatchRepackagerBlockEntity extends PackagerBlockEntity {
 
-    public PackageRepackageHelper repackageHelper = new PackageRepackageHelper();
+    public BatchPackageRepackageHelper repackageHelper = new BatchPackageRepackageHelper();
+    protected Map<Integer, List<ItemStack>> collectedFragments = new HashMap<>();
 
     public BatchRepackagerBlockEntity(BlockEntityType<?> typeIn, BlockPos pos, BlockState state) {
         super(typeIn, pos, state);
@@ -98,13 +104,59 @@ public class BatchRepackagerBlockEntity extends PackagerBlockEntity {
         }
     }
 
+    protected boolean isFragmented(ItemStack box) {
+        return box.has(AllDataComponents.PACKAGE_ORDER_DATA);
+    }
+
+    protected int addPackageFragment(ItemStack box) {
+        int collectedOrderId = PackageItem.getOrderId(box);
+        if (collectedOrderId == -1) {
+            return -1;
+        }
+        List<ItemStack> collectedOrder = this.collectedFragments.computeIfAbsent(
+                collectedOrderId, k -> new ArrayList<>());
+        collectedOrder.add(box);
+        if (!this.isOrderComplete(collectedOrderId)) {
+            return -1;
+        }
+        return collectedOrderId;
+    }
+
+    private boolean isOrderComplete(int orderId) {
+        boolean finalLinkReached = false;
+        int linkCounter = 0;
+        while (linkCounter < 1000 && !finalLinkReached) {
+            int packageCounter = 0;
+            while (packageCounter < 1000) {
+                ItemStack matched = null;
+                for (ItemStack box : this.collectedFragments.get(orderId)) {
+                    PackageItem.PackageOrderData data = box.get(AllDataComponents.PACKAGE_ORDER_DATA);
+                    if (linkCounter != data.linkIndex() || packageCounter != data.fragmentIndex()) continue;
+                    matched = box;
+                    break;
+                }
+                if (matched == null) {
+                    return false;
+                }
+                PackageItem.PackageOrderData matchedData = matched.get(AllDataComponents.PACKAGE_ORDER_DATA);
+                finalLinkReached = matchedData.isFinalLink();
+                if (matchedData.isFinal()) {
+                    break;
+                }
+                packageCounter++;
+            }
+            linkCounter++;
+        }
+        return true;
+    }
+
     protected void attemptToRepackage(IItemHandler targetInv) {
-        this.repackageHelper.clear();
+        this.collectedFragments.clear();
         int completedOrderId = -1;
         for (int slot = 0; slot < targetInv.getSlots(); ++slot) {
             ItemStack extracted = targetInv.extractItem(slot, 1, true);
             if (extracted.isEmpty() || !PackageItem.isPackage(extracted)) continue;
-            if (!this.repackageHelper.isFragmented(extracted)) {
+            if (!this.isFragmented(extracted)) {
                 targetInv.extractItem(slot, 1, false);
                 this.heldBox = extracted.copy();
                 this.animationInward = false;
@@ -112,13 +164,38 @@ public class BatchRepackagerBlockEntity extends PackagerBlockEntity {
                 this.notifyUpdate();
                 return;
             }
-            completedOrderId = this.repackageHelper.addPackageFragment(extracted);
+            completedOrderId = this.addPackageFragment(extracted);
             if (completedOrderId != -1) break;
         }
         if (completedOrderId == -1) {
             return;
         }
-        List<BigItemStack> boxesToExport = this.repackageHelper.repack(completedOrderId, this.level.getRandom());
+
+        String address = "";
+        PackageOrderWithCrafts orderContext = null;
+        InventorySummary summary = new InventorySummary();
+        for (ItemStack box : this.collectedFragments.get(completedOrderId)) {
+            address = PackageItem.getAddress(box);
+            if (box.has(AllDataComponents.PACKAGE_ORDER_DATA)) {
+                PackageOrderWithCrafts context = box.get(AllDataComponents.PACKAGE_ORDER_DATA).orderContext();
+                if (context != null && !context.isEmpty()) {
+                    orderContext = context;
+                }
+            }
+            ItemStackHandler contents = PackageItem.getContents(box);
+            for (int slot = 0; slot < contents.getSlots(); ++slot) {
+                summary.add(contents.getStackInSlot(slot));
+            }
+        }
+
+        List<BigItemStack> boxesToExport;
+        if (orderContext != null && !orderContext.orderedCrafts().isEmpty()) {
+            boxesToExport = this.repackageHelper.repackBasedOnRecipes(
+                    summary, orderContext, address, completedOrderId, this.level.getRandom());
+        } else {
+            boxesToExport = List.of();
+        }
+
         for (int slot = 0; slot < targetInv.getSlots(); ++slot) {
             ItemStack extracted = targetInv.extractItem(slot, 1, true);
             if (extracted.isEmpty() || !PackageItem.isPackage(extracted)
