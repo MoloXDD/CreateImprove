@@ -1,12 +1,12 @@
 package com.molox.createimp.mixin;
 
 import com.molox.createimp.CreateImp;
+import com.molox.createimp.client.ClientCreativeSyncHelper;
 import com.molox.createimp.item.NetworkManagerItem;
 import com.molox.createimp.item.NetworkSelectedState;
 import com.molox.createimp.registry.ModDataComponents;
 import com.molox.createimp.util.PackageUnpackHelper;
 import com.simibubi.create.content.logistics.packagerLink.LogisticallyLinkedBlockItem;
-import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
@@ -43,7 +43,7 @@ public class MixinAbstractContainerMenu {
                             int inventoryMenuSlot = resolveInventoryMenuSlot(targetSlot, player.getInventory());
                             if (inventoryMenuSlot >= 0) {
                                 LogisticallyLinkedBlockItem.assignFrequency(target, player, state.networkId());
-                                Minecraft.getInstance().gameMode.handleCreativeModeItemAdd(target, inventoryMenuSlot);
+                                ClientCreativeSyncHelper.syncCreativeModeItemAdd(target, inventoryMenuSlot);
                             }
                         }
                     } else {
