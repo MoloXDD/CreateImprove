@@ -159,8 +159,9 @@ public abstract class MixinFactoryPanelBehaviour implements IFactoryPanelBehavio
 
         int batchesNeeded = (gap + recipeOutput - 1) / recipeOutput;
 
+        // 第一轮遍历：先收集每种原料的"单批总需求"(不乘batchesNeeded)，
+        // 即同一物品来自多个connection时，各connection.amount的总和。
         HashMap<UUID, Map<ItemStack, FactoryPanelBehaviour.ItemStackConnections>> consolidated = new HashMap<>();
-        boolean failed = false;
 
         for (FactoryPanelConnection connection : targetedBy.values()) {
             FactoryPanelBehaviour source = FactoryPanelBehaviour.at(
@@ -175,57 +176,80 @@ public abstract class MixinFactoryPanelBehaviour implements IFactoryPanelBehavio
                 return;
             }
 
-            long totalNeeded = (long) connection.amount * batchesNeeded;
-            int clamped = (int) Math.min(totalNeeded, Integer.MAX_VALUE);
-
             Map<ItemStack, FactoryPanelBehaviour.ItemStackConnections> networkMap =
                     consolidated.computeIfAbsent(source.network,
                             $ -> new Object2ObjectOpenCustomHashMap<>(ItemStackLinkedSet.TYPE_AND_TAG));
             networkMap.computeIfAbsent(item, $ -> new FactoryPanelBehaviour.ItemStackConnections(item));
             FactoryPanelBehaviour.ItemStackConnections isc = networkMap.get(item);
             isc.add(connection);
-            isc.totalAmount += clamped;
+            // 这里先只累加"单批所需总量"，不乘batchesNeeded，
+            // 留到下面按实际库存反推可执行批次时再统一相乘。
+            isc.totalAmount += connection.amount;
         }
 
-        HashMultimap<UUID, BigItemStack> toRequest = HashMultimap.create();
+        // 第二轮：按各物品的实际网络库存，反推"这种物品最多能撑几个完整批次"，
+        // 取所有物品里的最小值，并与原计划batchesNeeded取较小者，
+        // 得到这次实际要执行的批次数。这样无论哪种原料库存不足，
+        // 发出的请求始终是"单批所需总量"的整数倍，不会出现半批材料。
+        int actualBatches = batchesNeeded;
         for (Map.Entry<UUID, Map<ItemStack, FactoryPanelBehaviour.ItemStackConnections>> entry
                 : consolidated.entrySet()) {
             UUID net = entry.getKey();
             InventorySummary summary = LogisticsManager.getSummaryOfNetwork(net, true);
             for (FactoryPanelBehaviour.ItemStackConnections isc : entry.getValue().values()) {
-                if (isc.totalAmount == 0 || isc.item.isEmpty()
-                        || summary.getCountOf(isc.item) < isc.totalAmount) {
+                int perBatchNeed = isc.totalAmount;
+                if (perBatchNeed <= 0 || isc.item.isEmpty()) {
+                    actualBatches = 0;
+                    continue;
+                }
+                int available = summary.getCountOf(isc.item);
+                int batchesThisItemCanSupport = available / perBatchNeed;
+                actualBatches = Math.min(actualBatches, batchesThisItemCanSupport);
+            }
+        }
+
+        if (actualBatches <= 0) {
+            // 一个完整批次都凑不出，本次彻底放弃，不发出任何请求，
+            // 等待下次tick库存补充后重试。
+            for (Map<ItemStack, FactoryPanelBehaviour.ItemStackConnections> networkMap : consolidated.values()) {
+                for (FactoryPanelBehaviour.ItemStackConnections isc : networkMap.values()) {
                     for (FactoryPanelConnection conn : isc) {
                         sendEffect(conn.from, false);
                     }
-                    failed = true;
-                    continue;
                 }
-                toRequest.put(net, new BigItemStack(isc.item, isc.totalAmount));
+            }
+            ci.cancel();
+            return;
+        }
+
+        // 第三轮：用actualBatches重新计算每种物品的实际请求总量并发出。
+        HashMultimap<UUID, BigItemStack> toRequest = HashMultimap.create();
+        for (Map.Entry<UUID, Map<ItemStack, FactoryPanelBehaviour.ItemStackConnections>> entry
+                : consolidated.entrySet()) {
+            UUID net = entry.getKey();
+            for (FactoryPanelBehaviour.ItemStackConnections isc : entry.getValue().values()) {
+                long actualTotal = (long) isc.totalAmount * actualBatches;
+                int clamped = (int) Math.min(actualTotal, Integer.MAX_VALUE);
+                toRequest.put(net, new BigItemStack(isc.item, clamped));
                 for (FactoryPanelConnection conn : isc) {
                     sendEffect(conn.from, true);
                 }
             }
         }
 
-        if (failed) {
-            ci.cancel();
-            return;
-        }
-
         PackageOrderWithCrafts craftContext = PackageOrderWithCrafts.empty();
         if (!activeCraftingArrangement.isEmpty()) {
             // 不能用PackageOrderWithCrafts.singleRecipe()——它构造出的CraftingEntry.count()
-            // 永远硬编码为1，会丢失按量请求模式算出的真实批次数(batchesNeeded)，
-            // 导致理包机只把1批材料当作配方包裹打出，其余材料被当成不带配方的余料处理。
-            // 这里直接构造CraftingEntry，把count字段正确填为batchesNeeded。
+            // 永远硬编码为1，会丢失真实批次数。这里用actualBatches（按库存反推后
+            // 实际能执行的批次数），而不是原计划的batchesNeeded，
+            // 确保理包机收到的配方声明量与实际送出的材料量完全一致。
             craftContext = new PackageOrderWithCrafts(
                     PackageOrder.empty(),
                     List.of(new PackageOrderWithCrafts.CraftingEntry(
                             new PackageOrder(activeCraftingArrangement.stream()
                                     .map(s -> new BigItemStack(s.copyWithCount(1)))
                                     .toList()),
-                            batchesNeeded)));
+                            actualBatches)));
         }
 
         ArrayList<Multimap<PackagerBlockEntity, PackagingRequest>> requests = new ArrayList<>();
@@ -252,8 +276,11 @@ public abstract class MixinFactoryPanelBehaviour implements IFactoryPanelBehavio
 
         RequestPromiseQueue promises = Create.LOGISTICS.getQueuedPromises(network);
         if (promises != null) {
+            // 承诺量必须用actualBatches而不是原计划的batchesNeeded，
+            // 否则会向库存系统过度声明"即将收到的产物量"，
+            // 但实际合成出来的产物只有actualBatches批，造成promisedSatisfied误判。
             promises.add(new RequestPromise(
-                    new BigItemStack(filterItem, batchesNeeded * recipeOutput)));
+                    new BigItemStack(filterItem, actualBatches * recipeOutput)));
         }
 
         panelBE.advancements.awardPlayer(AllAdvancements.FACTORY_GAUGE);
