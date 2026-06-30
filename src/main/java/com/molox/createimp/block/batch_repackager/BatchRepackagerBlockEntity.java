@@ -193,7 +193,9 @@ public class BatchRepackagerBlockEntity extends PackagerBlockEntity {
             boxesToExport = this.repackageHelper.repackBasedOnRecipes(
                     summary, orderContext, address, completedOrderId, this.level.getRandom());
         } else {
-            boxesToExport = List.of();
+            // 没有配方信息的普通分片订单（不带合成表的包裹）：不走配方重打逻辑，
+            // 直接把汇总到的所有材料按原版方式紧凑打包成新包裹输出，避免材料凭空消失。
+            boxesToExport = this.repackageHelper.repackPlainMaterials(summary, address, completedOrderId);
         }
 
         for (int slot = 0; slot < targetInv.getSlots(); ++slot) {

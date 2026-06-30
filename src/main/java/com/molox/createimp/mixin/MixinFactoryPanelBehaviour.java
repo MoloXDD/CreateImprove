@@ -215,10 +215,17 @@ public abstract class MixinFactoryPanelBehaviour implements IFactoryPanelBehavio
 
         PackageOrderWithCrafts craftContext = PackageOrderWithCrafts.empty();
         if (!activeCraftingArrangement.isEmpty()) {
-            craftContext = PackageOrderWithCrafts.singleRecipe(
-                    activeCraftingArrangement.stream()
-                            .map(s -> new BigItemStack(s.copyWithCount(1)))
-                            .toList());
+            // 不能用PackageOrderWithCrafts.singleRecipe()——它构造出的CraftingEntry.count()
+            // 永远硬编码为1，会丢失按量请求模式算出的真实批次数(batchesNeeded)，
+            // 导致理包机只把1批材料当作配方包裹打出，其余材料被当成不带配方的余料处理。
+            // 这里直接构造CraftingEntry，把count字段正确填为batchesNeeded。
+            craftContext = new PackageOrderWithCrafts(
+                    PackageOrder.empty(),
+                    List.of(new PackageOrderWithCrafts.CraftingEntry(
+                            new PackageOrder(activeCraftingArrangement.stream()
+                                    .map(s -> new BigItemStack(s.copyWithCount(1)))
+                                    .toList()),
+                            batchesNeeded)));
         }
 
         ArrayList<Multimap<PackagerBlockEntity, PackagingRequest>> requests = new ArrayList<>();
