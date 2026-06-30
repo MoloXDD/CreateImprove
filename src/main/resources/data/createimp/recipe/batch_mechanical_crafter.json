@@ -1,0 +1,23 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " E ",
+    " R ",
+    " T "
+  ],
+  "key": {
+    "E": {
+      "item": "create:electron_tube"
+    },
+    "R": {
+      "item": "create:railway_casing"
+    },
+    "T": {
+      "item": "minecraft:crafting_table"
+    }
+  },
+  "result": {
+    "id": "createimp:batch_mechanical_crafter",
+    "count": 1
+  }
+}

@@ -69,5 +69,11 @@
   "text.autoconfig.createimp.option.batchMechanicalCrafterConfig": "批量动力合成器配置",
   "text.autoconfig.createimp.option.batchMechanicalCrafterConfig.maxSpeedStressImpact": "满转速应力消耗（SU）",
   "text.autoconfig.createimp.option.batchMechanicalCrafterConfig.showItemCount": "显示物品数量",
-  "block.createimp.batch_repackager": "批量理包机"
+  "block.createimp.batch_repackager": "批量理包机",
+  "block.createimp.batch_repackager.tooltip.summary": "与_理包机_用法相同，用于将进行_批量合成_的包裹处理为批量动力合成器可以接受的格式，支持_原材料数量超过单个包裹容量_的复数包裹输入输出，同时也支持_单次请求含有多个合成表_的包裹输入输出。",
+  "block.createimp.batch_repackager.tooltip.condition1": "输入带有合成请求的包裹时",
+  "block.createimp.batch_repackager.tooltip.behaviour1": "将_单次请求_的_合成表_所需的材料以_单次合成所需材料倍数_的形式依次输出。",
+  "block.createimp.batch_repackager.tooltip.condition2": "输入带有多个合成请求的包裹时",
+  "block.createimp.batch_repackager.tooltip.behaviour2": "将_单次请求_的_多个合成表_所需的材料以_单次合成所需材料倍数_的形式依_合成表次序_输出，_不同合成表_所需的材料会被放入_不同的包裹_。",
+  "block.createimp.batch_mechanical_crafter.tooltip.summary": "支持_批量合成_的_动力合成器_，用法与动力合成器相同，每个格子容许放下_一组_物品，并同时进行合成，当你需要用它处理带有合成请求的包裹时，你总是需要配合_批量理包机_使用。"
 }

@@ -73,6 +73,14 @@ public class CreateImpClient {
                 ModItems.LABELED_REDSTONE_LINK.get().asItem(),
                 new ItemDescription.Modifier(ModItems.LABELED_REDSTONE_LINK.get().asItem(), FontHelper.Palette.STANDARD_CREATE)
         );
+        TooltipModifier.REGISTRY.register(
+                ModItems.BATCH_REPACKAGER.get().asItem(),
+                new ItemDescription.Modifier(ModItems.BATCH_REPACKAGER.get().asItem(), FontHelper.Palette.STANDARD_CREATE)
+        );
+        TooltipModifier.REGISTRY.register(
+                ModItems.BATCH_MECHANICAL_CRAFTER.get().asItem(),
+                new ItemDescription.Modifier(ModItems.BATCH_MECHANICAL_CRAFTER.get().asItem(), FontHelper.Palette.STANDARD_CREATE)
+        );
 
         CatnipServices.PLATFORM.executeOnClientOnly(() -> () -> {
             ResourceLocation id = ResourceLocation.fromNamespaceAndPath(CreateImp.MODID, "batch_mechanical_crafter");

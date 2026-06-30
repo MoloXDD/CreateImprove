@@ -69,5 +69,11 @@
   "text.autoconfig.createimp.option.batchMechanicalCrafterConfig": "Batch Mechanical Crafter Config",
   "text.autoconfig.createimp.option.batchMechanicalCrafterConfig.maxSpeedStressImpact": "Stress Impact at Max Speed (SU)",
   "text.autoconfig.createimp.option.batchMechanicalCrafterConfig.showItemCount": "Show Item Count",
-  "block.createimp.batch_repackager": "Batch Repackager"
+  "block.createimp.batch_repackager": "Batch Repackager",
+  "block.createimp.batch_repackager.tooltip.summary": "Functions the same as a _Repackager_, processing packages from _Batch Crafting_ requests into a format the Batch Mechanical Crafter can accept. Supports multiple package input/output when _raw material quantity exceeds a single package capacity_, and also supports packages where _a single request contains multiple recipes_.",
+  "block.createimp.batch_repackager.tooltip.condition1": "When receiving a package with a crafting request",
+  "block.createimp.batch_repackager.tooltip.behaviour1": "Outputs the materials required by the _single requested recipe_ as _multiples of the amount needed for one craft_.",
+  "block.createimp.batch_repackager.tooltip.condition2": "When receiving a package with multiple crafting requests",
+  "block.createimp.batch_repackager.tooltip.behaviour2": "Outputs the materials required by the _multiple requested recipes_ as _multiples of the amount needed for one craft_, in _recipe order_. Materials for _different recipes_ are placed into _different packages_.",
+  "block.createimp.batch_mechanical_crafter.tooltip.summary": "A _Mechanical Crafter_ that supports _batch crafting_. Works the same as a regular Mechanical Crafter, but each slot can hold a _full stack_ of items and crafts them simultaneously. When processing packages with crafting requests, it always needs to be paired with a _Batch Repackager_."
 }
