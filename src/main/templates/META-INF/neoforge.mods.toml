@@ -84,6 +84,7 @@ ordering="NONE"
 side="BOTH"
 
 
+
 [[dependencies.${mod_id}]]
 modId="jei"
 type="optional"
