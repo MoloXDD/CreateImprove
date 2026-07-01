@@ -6,6 +6,7 @@ import com.molox.createimp.block.batch_mechanical_crafter.BatchMechanicalCrafter
 import com.molox.createimp.block.batch_repackager.BatchRepackagerBlock;
 import com.molox.createimp.block.brass_scrap_bucket.BrassScrapBucketBlock;
 import com.molox.createimp.block.labeled_redstone_link.LabeledRedstoneLinkBlock;
+import com.molox.createimp.block.template_panel.TemplatePanelBlock;
 import com.simibubi.create.AllBlocks;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.SoundType;
@@ -50,5 +51,10 @@ public class ModBlocks {
     public static final DeferredBlock<BatchRepackagerBlock> BATCH_REPACKAGER =
             BLOCKS.register("batch_repackager", () -> new BatchRepackagerBlock(
                     BlockBehaviour.Properties.ofFullCopy(AllBlocks.REPACKAGER.get())
+            ));
+
+    public static final DeferredBlock<TemplatePanelBlock> TEMPLATE_PANEL =
+            BLOCKS.register("template_panel", () -> new TemplatePanelBlock(
+                    BlockBehaviour.Properties.ofFullCopy(AllBlocks.FACTORY_GAUGE.get())
             ));
 }

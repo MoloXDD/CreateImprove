@@ -1,6 +1,7 @@
 package com.molox.createimp.client;
 
 import com.molox.createimp.CreateImp;
+import com.molox.createimp.block.template_panel.TemplatePanelBlockEntity;
 import com.molox.createimp.item.NetworkManagerItem;
 import com.molox.createimp.item.NetworkSelectedState;
 import com.molox.createimp.network.ApplyNetworkPacket;
@@ -81,7 +82,8 @@ public class NetworkManagerClientHandler {
         if (be == null) return;
 
         boolean isTarget = NetworkManagerItem.getBehaviour(be) != null
-                || be instanceof FactoryPanelBlockEntity;
+                || be instanceof FactoryPanelBlockEntity
+                || be instanceof TemplatePanelBlockEntity;
         if (!isTarget) return;
 
         event.setCanceled(true);

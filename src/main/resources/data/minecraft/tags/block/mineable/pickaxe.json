@@ -4,6 +4,7 @@
     "createimp:brass_scrap_bucket",
     "createimp:labeled_redstone_link",
     "createimp:batch_mechanical_crafter",
-    "createimp:batch_repackager"
+    "createimp:batch_repackager",
+    "createimp:template_panel"
   ]
 }

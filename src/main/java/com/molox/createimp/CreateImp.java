@@ -12,8 +12,12 @@ import com.molox.createimp.network.SaveFactoryPanelDemandModePacket;
 import com.molox.createimp.network.SaveLabeledRedstoneLinkConfigPacket;
 import com.molox.createimp.network.SaveNetworkManagerDataPacket;
 import com.molox.createimp.network.SaveNetworkManagerSearchPacket;
+import com.molox.createimp.network.SaveTemplatePanelDemandModePacket;
 import com.molox.createimp.network.SetNetworkSelectionPacket;
+import com.molox.createimp.network.TemplatePanelConfigurationPacket;
+import com.molox.createimp.network.TemplatePanelConnectionPacket;
 import com.molox.createimp.network.UpdateBrassScrapBucketAmountPacket;
+import com.molox.createimp.block.template_panel.TemplatePanelBlockEntity;
 import com.molox.createimp.registry.ModBlockEntityTypes;
 import com.molox.createimp.registry.ModBlocks;
 import com.molox.createimp.registry.ModCapabilities;
@@ -92,7 +96,8 @@ public class CreateImp {
         if (be == null) return;
 
         boolean isTarget = NetworkManagerItem.getBehaviour(be) != null
-                || be instanceof FactoryPanelBlockEntity;
+                || be instanceof FactoryPanelBlockEntity
+                || be instanceof TemplatePanelBlockEntity;
         if (!isTarget) return;
 
         event.setCanceled(true);
@@ -171,6 +176,21 @@ public class CreateImp {
                 SaveFactoryPanelDemandModePacket.TYPE,
                 SaveFactoryPanelDemandModePacket.STREAM_CODEC,
                 SaveFactoryPanelDemandModePacket::handle
+        );
+        registrar.playToServer(
+                TemplatePanelConnectionPacket.TYPE,
+                TemplatePanelConnectionPacket.STREAM_CODEC,
+                TemplatePanelConnectionPacket::handle
+        );
+        registrar.playToServer(
+                TemplatePanelConfigurationPacket.TYPE,
+                TemplatePanelConfigurationPacket.STREAM_CODEC,
+                TemplatePanelConfigurationPacket::handle
+        );
+        registrar.playToServer(
+                SaveTemplatePanelDemandModePacket.TYPE,
+                SaveTemplatePanelDemandModePacket.STREAM_CODEC,
+                SaveTemplatePanelDemandModePacket::handle
         );
     }
 

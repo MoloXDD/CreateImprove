@@ -3,7 +3,7 @@
   "block.createimp.andesite_scrap_bucket.tooltip.summary": "摧毁_一切_输入的物品与流体",
   "block.createimp.brass_scrap_bucket": "黄铜废料桶",
   "block.createimp.brass_scrap_bucket.tooltip.summary": "摧毁_一切_输入的物品与流体，并在其中汲取少量_经验颗粒_。",
-  "itemGroup.createimp": "Create Improve",
+  "itemGroup.createimp": "机械动力：改进",
   "text.autoconfig.createimp.title": "Create Improve 配置",
   "text.autoconfig.createimp.option.brassScrapBucket": "黄铜废料桶配置",
   "text.autoconfig.createimp.option.brassScrapBucket.itemsPerNugget": "生成经验颗粒的物品数",
@@ -75,5 +75,6 @@
   "block.createimp.batch_repackager.tooltip.behaviour1": "将_单次请求_的_合成表_所需的材料以_单次合成所需材料倍数_的形式依次输出。",
   "block.createimp.batch_repackager.tooltip.condition2": "输入带有多个合成请求的包裹时",
   "block.createimp.batch_repackager.tooltip.behaviour2": "将_单次请求_的_多个合成表_所需的材料以_单次合成所需材料倍数_的形式依_合成表次序_输出，_不同合成表_所需的材料会被放入_不同的包裹_。",
-  "block.createimp.batch_mechanical_crafter.tooltip.summary": "支持_批量合成_的_动力合成器_，用法与动力合成器相同，每个格子容许放下_一组_物品，并同时进行合成，当你需要用它处理带有合成请求的包裹时，你总是需要配合_批量理包机_使用。"
+  "block.createimp.batch_mechanical_crafter.tooltip.summary": "支持_批量合成_的_动力合成器_，用法与动力合成器相同，每个格子容许放下_一组_物品，并同时进行合成，当你需要用它处理带有合成请求的包裹时，你总是需要配合_批量理包机_使用。",
+  "block.createimp.template_panel": "模板仪表"
 }

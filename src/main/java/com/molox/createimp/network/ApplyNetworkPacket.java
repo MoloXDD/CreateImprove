@@ -1,6 +1,9 @@
 package com.molox.createimp.network;
 
 import com.molox.createimp.CreateImp;
+import com.molox.createimp.block.template_panel.TemplatePanelBehaviour;
+import com.molox.createimp.block.template_panel.TemplatePanelBlock;
+import com.molox.createimp.block.template_panel.TemplatePanelBlockEntity;
 import com.molox.createimp.item.NetworkManagerItem;
 import com.molox.createimp.item.NetworkSelectedState;
 import com.molox.createimp.registry.ModDataComponents;
@@ -80,13 +83,14 @@ public record ApplyNetworkPacket(
 
             LogisticallyLinkedBehaviour linkedBehaviour = NetworkManagerItem.getBehaviour(be);
             boolean isFactoryPanel = be instanceof FactoryPanelBlockEntity;
-            if (linkedBehaviour == null && !isFactoryPanel) return;
+            boolean isTemplatePanel = be instanceof TemplatePanelBlockEntity;
+            if (linkedBehaviour == null && !isFactoryPanel && !isTemplatePanel) return;
 
             if (packet.applyToWholeNetwork()) {
-                handleWholeNetwork(player, level, be, linkedBehaviour, isFactoryPanel,
+                handleWholeNetwork(player, level, be, linkedBehaviour, isFactoryPanel, isTemplatePanel,
                         pos, packet.clickLocation(), newNetworkId);
             } else {
-                handleSingle(player, level, be, linkedBehaviour, isFactoryPanel,
+                handleSingle(player, level, be, linkedBehaviour, isFactoryPanel, isTemplatePanel,
                         pos, packet.clickLocation(), newNetworkId);
             }
 
@@ -99,11 +103,14 @@ public record ApplyNetworkPacket(
 
     private static void handleSingle(ServerPlayer player, Level level, BlockEntity be,
                                      LogisticallyLinkedBehaviour linkedBehaviour,
-                                     boolean isFactoryPanel, BlockPos pos, Vec3 clickLocation,
+                                     boolean isFactoryPanel, boolean isTemplatePanel,
+                                     BlockPos pos, Vec3 clickLocation,
                                      UUID newNetworkId) {
         if (linkedBehaviour != null) {
             NetworkManagerItem.reassignNetwork(linkedBehaviour, be, newNetworkId);
-        } else {
+            return;
+        }
+        if (isFactoryPanel) {
             FactoryPanelBehaviour targeted = getTargetedBehaviour(
                     (FactoryPanelBlockEntity) be, pos,
                     level.getBlockState(pos), clickLocation);
@@ -111,20 +118,38 @@ public record ApplyNetworkPacket(
             targeted.setNetwork(newNetworkId);
             ((FactoryPanelBlockEntity) be).notifyUpdate();
             ((FactoryPanelBlockEntity) be).setChanged();
+            return;
+        }
+        if (isTemplatePanel) {
+            TemplatePanelBehaviour targeted = getTargetedTemplateBehaviour(
+                    (TemplatePanelBlockEntity) be, pos,
+                    level.getBlockState(pos), clickLocation);
+            if (targeted == null || !targeted.isActive()) return;
+            targeted.setNetwork(newNetworkId);
+            ((TemplatePanelBlockEntity) be).notifyUpdate();
+            ((TemplatePanelBlockEntity) be).setChanged();
         }
     }
 
     private static void handleWholeNetwork(ServerPlayer player, Level level, BlockEntity be,
                                            LogisticallyLinkedBehaviour linkedBehaviour,
-                                           boolean isFactoryPanel, BlockPos pos, Vec3 clickLocation,
+                                           boolean isFactoryPanel, boolean isTemplatePanel,
+                                           BlockPos pos, Vec3 clickLocation,
                                            UUID newNetworkId) {
         UUID oldNetworkId = null;
 
         if (linkedBehaviour != null) {
             oldNetworkId = NetworkManagerItem.getFreqId(be);
-        } else {
+        } else if (isFactoryPanel) {
             FactoryPanelBehaviour targeted = getTargetedBehaviour(
                     (FactoryPanelBlockEntity) be, pos,
+                    level.getBlockState(pos), clickLocation);
+            if (targeted != null && targeted.isActive() && targeted.network != null) {
+                oldNetworkId = targeted.network;
+            }
+        } else if (isTemplatePanel) {
+            TemplatePanelBehaviour targeted = getTargetedTemplateBehaviour(
+                    (TemplatePanelBlockEntity) be, pos,
                     level.getBlockState(pos), clickLocation);
             if (targeted != null && targeted.isActive() && targeted.network != null) {
                 oldNetworkId = targeted.network;
@@ -132,7 +157,7 @@ public record ApplyNetworkPacket(
         }
 
         if (oldNetworkId == null) {
-            handleSingle(player, level, be, linkedBehaviour, isFactoryPanel,
+            handleSingle(player, level, be, linkedBehaviour, isFactoryPanel, isTemplatePanel,
                     pos, clickLocation, newNetworkId);
             return;
         }
@@ -149,6 +174,7 @@ public record ApplyNetworkPacket(
         }
 
         updateFactoryPanels(level, finalOldNetworkId, newNetworkId);
+        updateTemplatePanels(level, finalOldNetworkId, newNetworkId);
     }
 
     private static FactoryPanelBehaviour getTargetedBehaviour(
@@ -161,6 +187,20 @@ public record ApplyNetworkPacket(
             return b instanceof FactoryPanelBehaviour fpb ? fpb : null;
         } catch (Exception e) {
             CreateImp.LOGGER.error("NetworkManager: failed to get targeted FactoryPanelBehaviour", e);
+            return null;
+        }
+    }
+
+    private static TemplatePanelBehaviour getTargetedTemplateBehaviour(
+            TemplatePanelBlockEntity tpbe, BlockPos pos, BlockState state, Vec3 clickLocation) {
+        try {
+            TemplatePanelBlock.PanelSlot slot = TemplatePanelBlock.getTargetedSlot(pos, state, clickLocation);
+            if (slot == null) return null;
+            var type = TemplatePanelBehaviour.getTypeForSlot(slot);
+            var b = BlockEntityBehaviour.get(tpbe, type);
+            return b instanceof TemplatePanelBehaviour tpb ? tpb : null;
+        } catch (Exception e) {
+            CreateImp.LOGGER.error("NetworkManager: failed to get targeted TemplatePanelBehaviour", e);
             return null;
         }
     }
@@ -199,6 +239,43 @@ public record ApplyNetworkPacket(
                 }
             }
             if (changed) fpbe.setChanged();
+        }
+    }
+
+    private static void updateTemplatePanels(Level level, UUID oldId, UUID newId) {
+        java.util.Set<TemplatePanelBlockEntity> found = new java.util.HashSet<>();
+        try {
+            Field tickersField = Level.class.getDeclaredField("blockEntityTickers");
+            tickersField.setAccessible(true);
+            List<?> tickers = (List<?>) tickersField.get(level);
+
+            for (Object wrapper : tickers) {
+                BlockEntity be = unwrapTickingBlockEntity(wrapper);
+                if (be instanceof TemplatePanelBlockEntity tpbe) {
+                    found.add(tpbe);
+                }
+            }
+        } catch (Exception e) {
+            CreateImp.LOGGER.error("NetworkManager: failed to scan level for template panels", e);
+        }
+
+        for (TemplatePanelBlockEntity tpbe : found) {
+            if (tpbe.isRemoved()) continue;
+            boolean changed = false;
+            for (var type : new com.simibubi.create.foundation.blockEntity.behaviour.BehaviourType[]{
+                    TemplatePanelBehaviour.TOP_LEFT, TemplatePanelBehaviour.TOP_RIGHT,
+                    TemplatePanelBehaviour.BOTTOM_LEFT, TemplatePanelBehaviour.BOTTOM_RIGHT
+            }) {
+                var b = BlockEntityBehaviour.get(tpbe, type);
+                if (!(b instanceof TemplatePanelBehaviour tpb)) continue;
+                if (!tpb.isActive()) continue;
+                if (oldId.equals(tpb.network)) {
+                    tpb.setNetwork(newId);
+                    tpbe.notifyUpdate();
+                    changed = true;
+                }
+            }
+            if (changed) tpbe.setChanged();
         }
     }
 

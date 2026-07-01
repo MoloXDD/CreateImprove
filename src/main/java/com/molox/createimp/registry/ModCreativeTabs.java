@@ -23,6 +23,7 @@ public class ModCreativeTabs {
                         output.accept(ModItems.LABELED_REDSTONE_LINK.get());
                         output.accept(ModItems.BATCH_MECHANICAL_CRAFTER.get());
                         output.accept(ModItems.BATCH_REPACKAGER.get());
+                        output.accept(ModItems.TEMPLATE_PANEL.get());
                     })
                     .build());
 }

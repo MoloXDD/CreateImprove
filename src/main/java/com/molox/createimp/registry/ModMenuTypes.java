@@ -4,6 +4,7 @@ import com.molox.createimp.CreateImp;
 import com.molox.createimp.screen.BrassScrapBucketMenu;
 import com.molox.createimp.screen.NetworkManagerLabelEditMenu;
 import com.molox.createimp.screen.NetworkManagerLabelEditorMenu;
+import com.molox.createimp.screen.TemplatePanelSetItemMenu;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.world.inventory.MenuType;
 import net.neoforged.neoforge.common.extensions.IMenuTypeExtension;
@@ -26,4 +27,8 @@ public class ModMenuTypes {
     public static final DeferredHolder<MenuType<?>, MenuType<BrassScrapBucketMenu>> BRASS_SCRAP_BUCKET =
             MENU_TYPES.register("brass_scrap_bucket",
                     () -> IMenuTypeExtension.create(BrassScrapBucketMenu::new));
+
+    public static final DeferredHolder<MenuType<?>, MenuType<TemplatePanelSetItemMenu>> TEMPLATE_PANEL_SET_ITEM =
+            MENU_TYPES.register("template_panel_set_item",
+                    () -> IMenuTypeExtension.create(TemplatePanelSetItemMenu::new));
 }

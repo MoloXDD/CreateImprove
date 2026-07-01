@@ -75,5 +75,6 @@
   "block.createimp.batch_repackager.tooltip.behaviour1": "Outputs the materials required by the _single requested recipe_ as _multiples of the amount needed for one craft_.",
   "block.createimp.batch_repackager.tooltip.condition2": "When receiving a package with multiple crafting requests",
   "block.createimp.batch_repackager.tooltip.behaviour2": "Outputs the materials required by the _multiple requested recipes_ as _multiples of the amount needed for one craft_, in _recipe order_. Materials for _different recipes_ are placed into _different packages_.",
-  "block.createimp.batch_mechanical_crafter.tooltip.summary": "A _Mechanical Crafter_ that supports _batch crafting_. Works the same as a regular Mechanical Crafter, but each slot can hold a _full stack_ of items and crafts them simultaneously. When processing packages with crafting requests, it always needs to be paired with a _Batch Repackager_."
+  "block.createimp.batch_mechanical_crafter.tooltip.summary": "A _Mechanical Crafter_ that supports _batch crafting_. Works the same as a regular Mechanical Crafter, but each slot can hold a _full stack_ of items and crafts them simultaneously. When processing packages with crafting requests, it always needs to be paired with a _Batch Repackager_.",
+  "block.createimp.template_panel": "Template Panel"
 }

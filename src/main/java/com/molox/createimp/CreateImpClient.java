@@ -5,6 +5,9 @@ import com.molox.createimp.block.batch_repackager.BatchRepackagerRenderer;
 import com.molox.createimp.block.batch_repackager.BatchRepackagerVisual;
 import com.molox.createimp.block.brass_scrap_bucket.BrassScrapBucketRenderer;
 import com.molox.createimp.block.labeled_redstone_link.LabeledRedstoneLinkRenderer;
+import com.molox.createimp.block.template_panel.TemplatePanelConnectionHandler;
+import com.molox.createimp.block.template_panel.TemplatePanelModel;
+import com.molox.createimp.block.template_panel.TemplatePanelRenderer;
 import com.molox.createimp.client.NetworkManagerClientHandler;
 import com.molox.createimp.registry.ModBlockEntityTypes;
 import com.molox.createimp.registry.ModBlocks;
@@ -13,6 +16,7 @@ import com.molox.createimp.registry.ModMenuTypes;
 import com.molox.createimp.screen.BrassScrapBucketScreen;
 import com.molox.createimp.screen.NetworkManagerLabelEditScreen;
 import com.molox.createimp.screen.NetworkManagerLabelEditorScreen;
+import com.molox.createimp.screen.TemplatePanelSetItemScreen;
 import com.simibubi.create.AllPartialModels;
 import com.simibubi.create.content.kinetics.base.SingleAxisRotatingVisual;
 import com.molox.createimp.block.batch_mechanical_crafter.BatchCrafterCTBehaviour;
@@ -54,9 +58,12 @@ public class CreateImpClient {
 
         NeoForge.EVENT_BUS.addListener(CreateImpClient::onClientTick);
         NeoForge.EVENT_BUS.addListener(EventPriority.HIGH, CreateImpClient::onRightClickBlock);
+        NeoForge.EVENT_BUS.addListener(EventPriority.HIGH, CreateImpClient::onRightClickBlockTemplatePanel);
     }
 
     private static void onClientSetup(FMLClientSetupEvent event) {
+        com.molox.createimp.block.template_panel.TemplatePanelModel.init();
+
         TooltipModifier.REGISTRY.register(
                 ModItems.ANDESITE_SCRAP_BUCKET.get().asItem(),
                 new ItemDescription.Modifier(ModItems.ANDESITE_SCRAP_BUCKET.get().asItem(), FontHelper.Palette.STANDARD_CREATE)
@@ -83,9 +90,13 @@ public class CreateImpClient {
         );
 
         CatnipServices.PLATFORM.executeOnClientOnly(() -> () -> {
-            ResourceLocation id = ResourceLocation.fromNamespaceAndPath(CreateImp.MODID, "batch_mechanical_crafter");
+            ResourceLocation batchCrafterId = ResourceLocation.fromNamespaceAndPath(CreateImp.MODID, "batch_mechanical_crafter");
             com.simibubi.create.CreateClient.MODEL_SWAPPER.getCustomBlockModels()
-                    .register(id, model -> new CTModel(model, new BatchCrafterCTBehaviour()));
+                    .register(batchCrafterId, model -> new CTModel(model, new BatchCrafterCTBehaviour()));
+
+            ResourceLocation templatePanelId = ResourceLocation.fromNamespaceAndPath(CreateImp.MODID, "template_panel");
+            com.simibubi.create.CreateClient.MODEL_SWAPPER.getCustomBlockModels()
+                    .register(templatePanelId, TemplatePanelModel::new);
         });
 
         event.enqueueWork(() -> {
@@ -107,6 +118,8 @@ public class CreateImpClient {
                 NetworkManagerLabelEditScreen::new);
         event.register(ModMenuTypes.BRASS_SCRAP_BUCKET.get(),
                 BrassScrapBucketScreen::new);
+        event.register(ModMenuTypes.TEMPLATE_PANEL_SET_ITEM.get(),
+                TemplatePanelSetItemScreen::new);
     }
 
     private static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {
@@ -126,6 +139,10 @@ public class CreateImpClient {
                 ModBlockEntityTypes.BATCH_REPACKAGER.get(),
                 BatchRepackagerRenderer::new
         );
+        event.registerBlockEntityRenderer(
+                ModBlockEntityTypes.TEMPLATE_PANEL.get(),
+                TemplatePanelRenderer::new
+        );
     }
 
     private static void onRegisterGuiLayers(RegisterGuiLayersEvent event) {
@@ -138,9 +155,14 @@ public class CreateImpClient {
 
     private static void onClientTick(ClientTickEvent.Pre event) {
         NetworkManagerClientHandler.tick();
+        TemplatePanelConnectionHandler.clientTick();
     }
 
     private static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
         NetworkManagerClientHandler.onRightClickBlock(event);
+    }
+
+    private static void onRightClickBlockTemplatePanel(PlayerInteractEvent.RightClickBlock event) {
+        TemplatePanelConnectionHandler.onRightClick(event);
     }
 }

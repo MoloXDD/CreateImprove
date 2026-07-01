@@ -1,5 +1,8 @@
 package com.molox.createimp.item;
 
+import com.molox.createimp.block.template_panel.TemplatePanelBehaviour;
+import com.molox.createimp.block.template_panel.TemplatePanelBlock;
+import com.molox.createimp.block.template_panel.TemplatePanelBlockEntity;
 import com.molox.createimp.network.OpenNetworkManagerGuiPacket;
 import com.molox.createimp.registry.ModDataComponents;
 import com.molox.createimp.registry.ModMenuTypes;
@@ -92,8 +95,8 @@ public class NetworkManagerItem extends Item {
         if (be == null) return InteractionResult.PASS;
 
         LogisticallyLinkedBehaviour linkedBehaviour = getBehaviour(be);
-        boolean isFactoryPanel = be instanceof FactoryPanelBlockEntity;
-        if (linkedBehaviour == null && !isFactoryPanel) return InteractionResult.PASS;
+        boolean isPanel = be instanceof FactoryPanelBlockEntity || be instanceof TemplatePanelBlockEntity;
+        if (linkedBehaviour == null && !isPanel) return InteractionResult.PASS;
 
         if (level.isClientSide()) {
             com.molox.createimp.client.NetworkManagerClientHandler.startLongPressTracking(
@@ -128,6 +131,17 @@ public class NetworkManagerItem extends Item {
             if (networkId == null && be instanceof FactoryPanelBlockEntity fpbe) {
                 FactoryPanelBehaviour targeted = getTargetedBehaviour(
                         fpbe,
+                        context.getClickedPos(),
+                        level.getBlockState(context.getClickedPos()),
+                        context.getClickLocation()
+                );
+                if (targeted != null && targeted.isActive() && targeted.network != null) {
+                    networkId = targeted.network;
+                }
+            }
+            if (networkId == null && be instanceof TemplatePanelBlockEntity tpbe) {
+                TemplatePanelBehaviour targeted = getTargetedTemplateBehaviour(
+                        tpbe,
                         context.getClickedPos(),
                         level.getBlockState(context.getClickedPos()),
                         context.getClickLocation()
@@ -179,6 +193,21 @@ public class NetworkManagerItem extends Item {
             return b instanceof FactoryPanelBehaviour fpb ? fpb : null;
         } catch (Exception e) {
             Create.LOGGER.error("NetworkManager: failed to get targeted FactoryPanelBehaviour", e);
+            return null;
+        }
+    }
+
+    public static TemplatePanelBehaviour getTargetedTemplateBehaviour(
+            TemplatePanelBlockEntity tpbe, net.minecraft.core.BlockPos pos,
+            BlockState state, Vec3 clickLocation) {
+        try {
+            TemplatePanelBlock.PanelSlot slot = TemplatePanelBlock.getTargetedSlot(pos, state, clickLocation);
+            if (slot == null) return null;
+            var type = TemplatePanelBehaviour.getTypeForSlot(slot);
+            var b = BlockEntityBehaviour.get(tpbe, type);
+            return b instanceof TemplatePanelBehaviour tpb ? tpb : null;
+        } catch (Exception e) {
+            Create.LOGGER.error("NetworkManager: failed to get targeted TemplatePanelBehaviour", e);
             return null;
         }
     }

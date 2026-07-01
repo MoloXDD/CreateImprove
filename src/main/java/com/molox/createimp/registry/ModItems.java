@@ -35,4 +35,9 @@ public class ModItems {
     public static final DeferredItem<BlockItem> BATCH_REPACKAGER =
             ITEMS.registerSimpleBlockItem("batch_repackager", ModBlocks.BATCH_REPACKAGER,
                     new Item.Properties());
+
+    public static final DeferredItem<com.molox.createimp.block.template_panel.TemplatePanelBlockItem> TEMPLATE_PANEL =
+            ITEMS.register("template_panel",
+                    () -> new com.molox.createimp.block.template_panel.TemplatePanelBlockItem(
+                            ModBlocks.TEMPLATE_PANEL.get(), new Item.Properties()));
 }
