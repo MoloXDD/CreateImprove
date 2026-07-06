@@ -3,6 +3,7 @@ package com.molox.createimp.registry;
 import com.molox.createimp.CreateImp;
 import com.molox.createimp.item.NetworkLabel;
 import com.molox.createimp.item.NetworkSelectedState;
+import com.molox.createimp.item.TemplateOrderTarget;
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.codec.ByteBufCodecs;
@@ -35,6 +36,14 @@ public class ModDataComponents {
             DATA_COMPONENTS.register("network_manager_search", () ->
                     DataComponentType.<String>builder()
                             .persistent(com.mojang.serialization.Codec.STRING)
+                            .build()
+            );
+
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<TemplateOrderTarget>> TEMPLATE_ORDER_TARGET =
+            DATA_COMPONENTS.register("template_order_target", () ->
+                    DataComponentType.<TemplateOrderTarget>builder()
+                            .persistent(TemplateOrderTarget.CODEC)
+                            .networkSynchronized(TemplateOrderTarget.STREAM_CODEC)
                             .build()
             );
 }

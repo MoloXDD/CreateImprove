@@ -1,7 +1,9 @@
 package com.molox.createimp.client;
 
 import com.molox.createimp.CreateImp;
+import com.molox.createimp.block.template_panel.TemplatePanelBehaviour;
 import com.molox.createimp.block.template_panel.TemplatePanelBlockEntity;
+import com.molox.createimp.block.template_panel.TemplatePanelConnectionHandler;
 import com.molox.createimp.item.NetworkManagerItem;
 import com.molox.createimp.item.NetworkSelectedState;
 import com.molox.createimp.network.ApplyNetworkPacket;
@@ -10,6 +12,7 @@ import com.molox.createimp.screen.NetworkManagerConfigScreen;
 import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelBlockEntity;
 import com.simibubi.create.content.logistics.packagerLink.LogisticallyLinkedBehaviour;
 import com.simibubi.create.content.logistics.packagerLink.LogisticallyLinkedClientHandler;
+import net.createmod.catnip.animation.AnimationTickHolder;
 import net.createmod.catnip.gui.ScreenOpener;
 import net.createmod.catnip.outliner.Outliner;
 import net.minecraft.client.Minecraft;
@@ -115,6 +118,35 @@ public class NetworkManagerClientHandler {
             previouslyHeldFrequencyField.set(null, uuid);
         } catch (Exception ignored) {
         }
+    }
+
+    private static UUID getPreviouslyHeldFrequency() {
+        initField();
+        if (previouslyHeldFrequencyField == null) return null;
+        try {
+            return (UUID) previouslyHeldFrequencyField.get(null);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    public static void tickTemplatePanelOutline(TemplatePanelBehaviour behaviour) {
+        UUID heldFrequency = getPreviouslyHeldFrequency();
+        if (heldFrequency == null || !heldFrequency.equals(behaviour.network)) {
+            return;
+        }
+        Minecraft mc = Minecraft.getInstance();
+        LocalPlayer player = mc.player;
+        if (player == null) return;
+        if (!player.blockPosition().closerThan(behaviour.getPos(), 64)) return;
+
+        Outliner.getInstance()
+                .showAABB(behaviour, TemplatePanelConnectionHandler
+                        .getBB(behaviour.blockEntity.getBlockState(), behaviour.getPanelPosition())
+                        .inflate(-0.01171875))
+                .lineWidth(0.03125f)
+                .disableLineNormals()
+                .colored(AnimationTickHolder.getTicks() % 16 < 8 ? 7376301 : 9481677);
     }
 
     public static void tick() {

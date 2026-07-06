@@ -47,7 +47,7 @@ public class TemplatePanelConnectionHandler {
         if (connectingFrom == null) {
             return false;
         }
-        TemplatePanelBehaviour at = TemplatePanelBehaviour.at((BlockAndTintGetter) level, connectingFrom);
+        TemplatePanelBehaviour at = TemplatePanelBehaviour.at(level, connectingFrom);
         if (panel.getPanelPosition().equals(connectingFrom) || at == null) {
             player.displayClientMessage(Component.empty(), true);
             connectingFrom = null;
@@ -56,7 +56,10 @@ public class TemplatePanelConnectionHandler {
         }
         String issue = checkForIssues(at, panel);
         if (issue != null) {
-            player.displayClientMessage(CreateLang.translate(issue).style(ChatFormatting.RED).component(), true);
+            Component issueMessage = issue.startsWith("createimp.")
+                    ? Component.translatable(issue).withStyle(ChatFormatting.RED)
+                    : CreateLang.translate(issue).style(ChatFormatting.RED).component();
+            player.displayClientMessage(issueMessage, true);
             connectingFrom = null;
             connectingFromBox = null;
             AllSoundEvents.DENY.playAt(player.level(), (Vec3i) player.blockPosition(), 1.0f, 1.0f, false);
@@ -73,6 +76,35 @@ public class TemplatePanelConnectionHandler {
         return true;
     }
 
+    /**
+     * 判断把 to 作为 from 的新上游连接是否会形成环路。
+     * 从 to 出发，沿着它自己已有的 targetedBy（即 to 自己的上游）做广度优先遍历，
+     * 如果能追溯到 from 的坐标，说明这条新连接建立后会形成一个闭环。
+     * 只需要遍历模板仪表节点：原版工厂仪表没有 targetedBy 指向我们的模板仪表的可能性
+     * （这是双方连接单向性带来的天然限制，已在文档中确认，无需处理）。
+     */
+    private static boolean wouldFormLoop(TemplatePanelBehaviour from, TemplatePanelBehaviour to) {
+        TemplatePanelPosition target = from.getPanelPosition();
+        java.util.Set<TemplatePanelPosition> visited = new java.util.HashSet<>();
+        java.util.ArrayDeque<TemplatePanelPosition> queue = new java.util.ArrayDeque<>();
+        queue.add(to.getPanelPosition());
+        while (!queue.isEmpty()) {
+            TemplatePanelPosition current = queue.poll();
+            if (!visited.add(current)) {
+                continue;
+            }
+            if (current.equals(target)) {
+                return true;
+            }
+            TemplatePanelBehaviour currentBehaviour = TemplatePanelBehaviour.at(to.getWorld(), current);
+            if (currentBehaviour == null) {
+                continue;
+            }
+            queue.addAll(currentBehaviour.targetedBy.keySet());
+        }
+        return false;
+    }
+
     @Nullable
     private static String checkForIssues(TemplatePanelBehaviour from, TemplatePanelBehaviour to) {
         if (from == null) {
@@ -83,6 +115,9 @@ public class TemplatePanelConnectionHandler {
         }
         if (from.targetedBy.size() >= 9) {
             return "factory_panel.cannot_add_more_inputs";
+        }
+        if (wouldFormLoop(from, to)) {
+            return "createimp.message.factory_panel.connection_would_loop";
         }
         BlockState state1 = to.blockEntity.getBlockState();
         BlockState state2 = from.blockEntity.getBlockState();

@@ -76,5 +76,10 @@
   "block.createimp.batch_repackager.tooltip.condition2": "输入带有多个合成请求的包裹时",
   "block.createimp.batch_repackager.tooltip.behaviour2": "将_单次请求_的_多个合成表_所需的材料以_单次合成所需材料倍数_的形式依_合成表次序_输出，_不同合成表_所需的材料会被放入_不同的包裹_。",
   "block.createimp.batch_mechanical_crafter.tooltip.summary": "支持_批量合成_的_动力合成器_，用法与动力合成器相同，每个格子容许放下_一组_物品，并同时进行合成，当你需要用它处理带有合成请求的包裹时，你总是需要配合_批量理包机_使用。",
-  "block.createimp.template_panel": "模板仪表"
+  "block.createimp.template_panel": "模板仪表",
+  "createimp.message.factory_panel.connection_would_loop": "形成循环的非法连接",
+  "createimp.gui.stock_keeper.template_category": "模板",
+  "createimp.item.template_order_token.name": "%s 模板",
+  "createimp.item.template_order_token.tooltip_prefix": "使用材料",
+  "createimp.item.template_order_token.tooltip_suffix": " 的配方"
 }

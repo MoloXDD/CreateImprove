@@ -60,7 +60,9 @@ public class TemplatePanelBlockEntity extends SmartBlockEntity {
         this.pruneStaleConnections();
         if (this.activePanels() == 0) {
             this.level.setBlockAndUpdate(this.worldPosition, Blocks.AIR.defaultBlockState());
+            return;
         }
+        this.updateTemplateChainValidity();
     }
 
     private void pruneStaleConnections() {
@@ -80,6 +82,13 @@ public class TemplatePanelBlockEntity extends SmartBlockEntity {
                 this.redraw = true;
                 this.notifyUpdate();
             }
+        }
+    }
+
+    private void updateTemplateChainValidity() {
+        for (TemplatePanelBehaviour behaviour : this.panels.values()) {
+            if (!behaviour.isActive()) continue;
+            behaviour.validTemplateChain = behaviour.computeChainValidity(new java.util.HashSet<>());
         }
     }
 

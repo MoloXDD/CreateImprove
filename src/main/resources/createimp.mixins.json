@@ -10,7 +10,12 @@
     "MixinFactoryPanelScreen",
     "AbstractSimiScreenAccessor",
     "MixinMechanicalCraftingRecipe",
-    "MixinPackagerItemHandler"
+    "MixinPackagerItemHandler",
+    "MixinLogisticalStockRequestPacket",
+    "MixinStockTickerBlockEntity",
+    "MixinStockKeeperRequestScreen",
+    "StockKeeperCategoryEntryAccessor",
+    "MixinStockTickerInteractionHandler"
   ],
   "client": [],
   "injectors": {

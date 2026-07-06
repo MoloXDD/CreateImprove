@@ -1,5 +1,7 @@
 package com.molox.createimp.block.template_panel;
 
+import com.google.common.cache.Cache;
+import com.molox.createimp.client.NetworkManagerClientHandler;
 import com.molox.createimp.registry.ModBlocks;
 import com.molox.createimp.registry.ModItems;
 import com.simibubi.create.Create;
@@ -17,6 +19,7 @@ import com.simibubi.create.foundation.blockEntity.behaviour.ValueSettingsBehavio
 import com.simibubi.create.foundation.blockEntity.behaviour.ValueSettingsBoard;
 import com.simibubi.create.foundation.blockEntity.behaviour.filtering.FilteringBehaviour;
 import com.simibubi.create.foundation.utility.CreateLang;
+import com.simibubi.create.foundation.utility.TickBasedCache;
 import net.createmod.catnip.codecs.CatnipCodecUtils;
 import net.createmod.catnip.codecs.CatnipCodecs;
 import net.createmod.catnip.gui.ScreenOpener;
@@ -51,12 +54,20 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.neoforge.common.Tags;
 
+import java.lang.ref.Reference;
+import java.lang.ref.WeakReference;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+
+import com.molox.createimp.item.TemplateOrderTarget;
 
 public class TemplatePanelBehaviour extends FilteringBehaviour implements MenuProvider {
 
@@ -64,6 +75,9 @@ public class TemplatePanelBehaviour extends FilteringBehaviour implements MenuPr
     public static final BehaviourType<TemplatePanelBehaviour> TOP_RIGHT = new BehaviourType<>();
     public static final BehaviourType<TemplatePanelBehaviour> BOTTOM_LEFT = new BehaviourType<>();
     public static final BehaviourType<TemplatePanelBehaviour> BOTTOM_RIGHT = new BehaviourType<>();
+
+    private static final Cache<UUID, Cache<TemplatePanelPosition, WeakReference<TemplatePanelBehaviour>>> NETWORK_REGISTRY
+            = new TickBasedCache<>(20, true);
 
     public Map<TemplatePanelPosition, TemplatePanelConnection> targetedBy;
     public Set<TemplatePanelPosition> targeting;
@@ -75,6 +89,7 @@ public class TemplatePanelBehaviour extends FilteringBehaviour implements MenuPr
     public boolean active;
     public boolean demandMode;
     public int lastReportedLevelInStorage;
+    public boolean validTemplateChain;
 
     public TemplatePanelBehaviour(TemplatePanelBlockEntity be, TemplatePanelBlock.PanelSlot slot) {
         super(be, new TemplatePanelSlotPositioning(slot));
@@ -87,11 +102,134 @@ public class TemplatePanelBehaviour extends FilteringBehaviour implements MenuPr
         this.active = false;
         this.demandMode = false;
         this.lastReportedLevelInStorage = 0;
+        this.validTemplateChain = false;
         this.network = UUID.randomUUID();
     }
 
     public void setNetwork(UUID network) {
         this.network = network;
+    }
+
+    public static Collection<TemplatePanelBehaviour> getAllPresent(UUID network) {
+        if (network == null) {
+            return Collections.emptyList();
+        }
+        Cache<TemplatePanelPosition, WeakReference<TemplatePanelBehaviour>> cache = NETWORK_REGISTRY.getIfPresent(network);
+        if (cache == null) {
+            return Collections.emptyList();
+        }
+        return new LinkedList<>(cache.asMap().values()).stream()
+                .map(Reference::get)
+                .filter(b -> b != null && b.isActive() && !b.blockEntity.isRemoved())
+                .toList();
+    }
+
+    public static List<TemplateOrderTarget> collectOrderableTemplates(UUID network) {
+        if (network == null) {
+            return List.of();
+        }
+        List<TemplateOrderTarget> result = new java.util.ArrayList<>();
+        for (TemplatePanelBehaviour behaviour : getAllPresent(network)) {
+            if (!behaviour.validTemplateChain) {
+                continue;
+            }
+            ItemStack filter = behaviour.getFilter();
+            if (filter.isEmpty()) {
+                continue;
+            }
+            List<ItemStack> ingredients = behaviour.collectLeafIngredients();
+            if (ingredients.isEmpty()) {
+                continue;
+            }
+            result.add(new TemplateOrderTarget(network, behaviour.getPanelPosition(), filter.copy(), ingredients));
+        }
+        return result;
+    }
+
+    public List<ItemStack> collectLeafIngredients() {
+        List<ItemStack> result = new java.util.ArrayList<>();
+        this.collectLeafIngredients(new java.util.HashSet<>(), result);
+        return result;
+    }
+
+    private void collectLeafIngredients(java.util.Set<TemplatePanelPosition> visiting, List<ItemStack> result) {
+        TemplatePanelPosition self = this.getPanelPosition();
+        if (!visiting.add(self)) {
+            return;
+        }
+        try {
+            Level level = this.getWorld();
+            for (TemplatePanelPosition from : this.targetedBy.keySet()) {
+                if (!level.isLoaded(from.pos())) {
+                    continue;
+                }
+                BlockEntity be = level.getBlockEntity(from.pos());
+                if (be instanceof TemplatePanelBlockEntity tpbe) {
+                    TemplatePanelBehaviour upstream = tpbe.panels.get(from.slot());
+                    if (upstream == null || !upstream.isActive()) {
+                        continue;
+                    }
+                    upstream.collectLeafIngredients(visiting, result);
+                } else if (be instanceof FactoryPanelBlockEntity fpbe) {
+                    FactoryPanelBlock.PanelSlot vanillaSlot = FactoryPanelBlock.PanelSlot.valueOf(from.slot().name());
+                    FactoryPanelBehaviour upstream = fpbe.panels.get(vanillaSlot);
+                    if (upstream == null || !upstream.isActive()) {
+                        continue;
+                    }
+                    ItemStack filter = upstream.getFilter();
+                    if (filter.isEmpty()) {
+                        continue;
+                    }
+                    boolean alreadyPresent = false;
+                    for (ItemStack existing : result) {
+                        if (ItemStack.isSameItemSameComponents(existing, filter)) {
+                            alreadyPresent = true;
+                            break;
+                        }
+                    }
+                    if (!alreadyPresent) {
+                        result.add(filter.copyWithCount(1));
+                    }
+                }
+            }
+        } finally {
+            visiting.remove(self);
+        }
+    }
+
+    private static void keepAlive(TemplatePanelBehaviour behaviour) {
+        try {
+            Cache<TemplatePanelPosition, WeakReference<TemplatePanelBehaviour>> cache =
+                    NETWORK_REGISTRY.get(behaviour.network, () -> new TickBasedCache<>(400, false));
+            TemplatePanelPosition key = behaviour.getPanelPosition();
+            WeakReference<TemplatePanelBehaviour> reference = cache.get(key, () -> new WeakReference<>(behaviour));
+            cache.put(key, reference.get() != behaviour ? new WeakReference<>(behaviour) : reference);
+        } catch (ExecutionException e) {
+            Create.LOGGER.error("TemplatePanelBehaviour: failed to keep network registry alive", e);
+        }
+    }
+
+    private static void removeFromRegistry(TemplatePanelBehaviour behaviour) {
+        if (behaviour.network == null) {
+            return;
+        }
+        Cache<TemplatePanelPosition, WeakReference<TemplatePanelBehaviour>> cache = NETWORK_REGISTRY.getIfPresent(behaviour.network);
+        if (cache == null) {
+            return;
+        }
+        cache.invalidate(behaviour.getPanelPosition());
+    }
+
+    @Override
+    public void lazyTick() {
+        super.lazyTick();
+        if (this.getWorld() == null || this.getWorld().isClientSide()) {
+            return;
+        }
+        if (!this.isActive() || this.network == null) {
+            return;
+        }
+        TemplatePanelBehaviour.keepAlive(this);
     }
 
     public static TemplatePanelBehaviour at(BlockAndTintGetter world, TemplatePanelConnection connection) {
@@ -317,6 +455,7 @@ public class TemplatePanelBehaviour extends FilteringBehaviour implements MenuPr
     @Override
     public void destroy() {
         this.disconnectAll();
+        TemplatePanelBehaviour.removeFromRegistry(this);
         super.destroy();
     }
 
@@ -336,6 +475,48 @@ public class TemplatePanelBehaviour extends FilteringBehaviour implements MenuPr
         }
         this.targetedBy.clear();
         this.targeting.clear();
+    }
+
+    public boolean computeChainValidity(java.util.Set<TemplatePanelPosition> visiting) {
+        if (this.getFilter().isEmpty()) {
+            return false;
+        }
+        if (this.targetedBy.isEmpty()) {
+            return false;
+        }
+        TemplatePanelPosition self = this.getPanelPosition();
+        if (!visiting.add(self)) {
+            return false;
+        }
+        try {
+            Level level = this.getWorld();
+            for (TemplatePanelPosition from : this.targetedBy.keySet()) {
+                if (!level.isLoaded(from.pos())) {
+                    return false;
+                }
+                BlockEntity be = level.getBlockEntity(from.pos());
+                if (be instanceof TemplatePanelBlockEntity tpbe) {
+                    TemplatePanelBehaviour upstream = tpbe.panels.get(from.slot());
+                    if (upstream == null || !upstream.isActive()) {
+                        return false;
+                    }
+                    if (!upstream.computeChainValidity(visiting)) {
+                        return false;
+                    }
+                } else if (be instanceof FactoryPanelBlockEntity fpbe) {
+                    FactoryPanelBlock.PanelSlot vanillaSlot = FactoryPanelBlock.PanelSlot.valueOf(from.slot().name());
+                    FactoryPanelBehaviour upstream = fpbe.panels.get(vanillaSlot);
+                    if (upstream == null || !upstream.isActive() || upstream.getFilter().isEmpty()) {
+                        return false;
+                    }
+                } else {
+                    return false;
+                }
+            }
+            return true;
+        } finally {
+            visiting.remove(self);
+        }
     }
 
     @Override
@@ -501,7 +682,14 @@ public class TemplatePanelBehaviour extends FilteringBehaviour implements MenuPr
     @Override
     public void tick() {
         super.tick();
+        if (this.getWorld().isClientSide() && this.isActive()) {
+            this.tickOutline();
+        }
         this.tickStorageMonitor();
+    }
+
+    private void tickOutline() {
+        CatnipServices.PLATFORM.executeOnClientOnly(() -> () -> NetworkManagerClientHandler.tickTemplatePanelOutline(this));
     }
 
     @Override

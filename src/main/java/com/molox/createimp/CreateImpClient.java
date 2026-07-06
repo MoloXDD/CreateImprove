@@ -9,6 +9,7 @@ import com.molox.createimp.block.template_panel.TemplatePanelConnectionHandler;
 import com.molox.createimp.block.template_panel.TemplatePanelModel;
 import com.molox.createimp.block.template_panel.TemplatePanelRenderer;
 import com.molox.createimp.client.NetworkManagerClientHandler;
+import com.molox.createimp.client.TemplateOrderTooltipHandler;
 import com.molox.createimp.registry.ModBlockEntityTypes;
 import com.molox.createimp.registry.ModBlocks;
 import com.molox.createimp.registry.ModItems;
@@ -59,6 +60,7 @@ public class CreateImpClient {
         NeoForge.EVENT_BUS.addListener(CreateImpClient::onClientTick);
         NeoForge.EVENT_BUS.addListener(EventPriority.HIGH, CreateImpClient::onRightClickBlock);
         NeoForge.EVENT_BUS.addListener(EventPriority.HIGH, CreateImpClient::onRightClickBlockTemplatePanel);
+        NeoForge.EVENT_BUS.addListener(TemplateOrderTooltipHandler::onItemTooltip);
     }
 
     private static void onClientSetup(FMLClientSetupEvent event) {
