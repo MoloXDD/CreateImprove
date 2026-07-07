@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    { "item": "createimp:work_warehouse" }
+  ],
+  "result": {
+    "count": 1,
+    "id": "createimp:work_warehouse"
+  }
+}

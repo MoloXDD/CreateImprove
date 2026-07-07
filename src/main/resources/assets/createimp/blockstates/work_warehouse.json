@@ -1,0 +1,33 @@
+{
+  "variants": {
+    "facing=up,axis=z,powered=false":     { "model": "createimp:block/work_warehouse/work_warehouse" },
+    "facing=up,axis=z,powered=true":      { "model": "createimp:block/work_warehouse/work_warehouse_powered" },
+    "facing=up,axis=x,powered=false":     { "model": "createimp:block/work_warehouse/work_warehouse", "y": 90 },
+    "facing=up,axis=x,powered=true":      { "model": "createimp:block/work_warehouse/work_warehouse_powered", "y": 90 },
+
+    "facing=down,axis=z,powered=false":   { "model": "createimp:block/work_warehouse/work_warehouse" },
+    "facing=down,axis=z,powered=true":    { "model": "createimp:block/work_warehouse/work_warehouse_powered" },
+    "facing=down,axis=x,powered=false":   { "model": "createimp:block/work_warehouse/work_warehouse", "y": 90 },
+    "facing=down,axis=x,powered=true":    { "model": "createimp:block/work_warehouse/work_warehouse_powered", "y": 90 },
+
+    "facing=south,axis=z,powered=false":  { "model": "createimp:block/work_warehouse/work_warehouse_vertical" },
+    "facing=south,axis=z,powered=true":   { "model": "createimp:block/work_warehouse/work_warehouse_vertical_powered" },
+    "facing=south,axis=x,powered=false":  { "model": "createimp:block/work_warehouse/work_warehouse_vertical" },
+    "facing=south,axis=x,powered=true":   { "model": "createimp:block/work_warehouse/work_warehouse_vertical_powered" },
+
+    "facing=west,axis=z,powered=false":   { "model": "createimp:block/work_warehouse/work_warehouse_vertical", "y": 90 },
+    "facing=west,axis=z,powered=true":    { "model": "createimp:block/work_warehouse/work_warehouse_vertical_powered", "y": 90 },
+    "facing=west,axis=x,powered=false":   { "model": "createimp:block/work_warehouse/work_warehouse_vertical", "y": 90 },
+    "facing=west,axis=x,powered=true":    { "model": "createimp:block/work_warehouse/work_warehouse_vertical_powered", "y": 90 },
+
+    "facing=north,axis=z,powered=false":  { "model": "createimp:block/work_warehouse/work_warehouse_vertical", "y": 180 },
+    "facing=north,axis=z,powered=true":   { "model": "createimp:block/work_warehouse/work_warehouse_vertical_powered", "y": 180 },
+    "facing=north,axis=x,powered=false":  { "model": "createimp:block/work_warehouse/work_warehouse_vertical", "y": 180 },
+    "facing=north,axis=x,powered=true":   { "model": "createimp:block/work_warehouse/work_warehouse_vertical_powered", "y": 180 },
+
+    "facing=east,axis=z,powered=false":   { "model": "createimp:block/work_warehouse/work_warehouse_vertical", "y": 270 },
+    "facing=east,axis=z,powered=true":    { "model": "createimp:block/work_warehouse/work_warehouse_vertical_powered", "y": 270 },
+    "facing=east,axis=x,powered=false":   { "model": "createimp:block/work_warehouse/work_warehouse_vertical", "y": 270 },
+    "facing=east,axis=x,powered=true":    { "model": "createimp:block/work_warehouse/work_warehouse_vertical_powered", "y": 270 }
+  }
+}

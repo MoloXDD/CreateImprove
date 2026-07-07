@@ -7,6 +7,7 @@ import com.molox.createimp.block.batch_repackager.BatchRepackagerBlockEntity;
 import com.molox.createimp.block.brass_scrap_bucket.BrassScrapBucketBlockEntity;
 import com.molox.createimp.block.labeled_redstone_link.LabeledRedstoneLinkBlockEntity;
 import com.molox.createimp.block.template_panel.TemplatePanelBlockEntity;
+import com.molox.createimp.block.work_warehouse.WorkWarehouseBlockEntity;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.neoforged.neoforge.registries.DeferredHolder;
@@ -56,4 +57,11 @@ public class ModBlockEntityTypes {
                             (pos, state) -> new TemplatePanelBlockEntity(
                                     ModBlockEntityTypes.TEMPLATE_PANEL.get(), pos, state),
                             ModBlocks.TEMPLATE_PANEL.get()).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<WorkWarehouseBlockEntity>> WORK_WAREHOUSE =
+            BLOCK_ENTITY_TYPES.register("work_warehouse",
+                    () -> BlockEntityType.Builder.of(
+                            (pos, state) -> new WorkWarehouseBlockEntity(
+                                    ModBlockEntityTypes.WORK_WAREHOUSE.get(), pos, state),
+                            ModBlocks.WORK_WAREHOUSE.get()).build(null));
 }

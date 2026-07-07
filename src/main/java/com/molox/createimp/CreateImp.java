@@ -7,12 +7,14 @@ import com.molox.createimp.network.OpenLabeledRedstoneLinkGuiPacket;
 import com.molox.createimp.network.OpenNetworkManagerEditPacket;
 import com.molox.createimp.network.OpenNetworkManagerEditorPacket;
 import com.molox.createimp.network.OpenNetworkManagerGuiPacket;
+import com.molox.createimp.network.OpenWorkWarehouseGuiPacket;
 import com.molox.createimp.network.SaveBrassScrapBucketConfigPacket;
 import com.molox.createimp.network.SaveFactoryPanelDemandModePacket;
 import com.molox.createimp.network.SaveLabeledRedstoneLinkConfigPacket;
 import com.molox.createimp.network.SaveNetworkManagerDataPacket;
 import com.molox.createimp.network.SaveNetworkManagerSearchPacket;
 import com.molox.createimp.network.SaveTemplatePanelDemandModePacket;
+import com.molox.createimp.network.SaveWorkWarehouseAddressPacket;
 import com.molox.createimp.network.SetNetworkSelectionPacket;
 import com.molox.createimp.network.TemplatePanelConfigurationPacket;
 import com.molox.createimp.network.TemplatePanelConnectionPacket;
@@ -191,6 +193,16 @@ public class CreateImp {
                 SaveTemplatePanelDemandModePacket.TYPE,
                 SaveTemplatePanelDemandModePacket.STREAM_CODEC,
                 SaveTemplatePanelDemandModePacket::handle
+        );
+        registrar.playToClient(
+                OpenWorkWarehouseGuiPacket.TYPE,
+                OpenWorkWarehouseGuiPacket.STREAM_CODEC,
+                OpenWorkWarehouseGuiPacket::handle
+        );
+        registrar.playToServer(
+                SaveWorkWarehouseAddressPacket.TYPE,
+                SaveWorkWarehouseAddressPacket.STREAM_CODEC,
+                SaveWorkWarehouseAddressPacket::handle
         );
     }
 

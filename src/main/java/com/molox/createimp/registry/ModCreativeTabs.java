@@ -24,6 +24,7 @@ public class ModCreativeTabs {
                         output.accept(ModItems.BATCH_MECHANICAL_CRAFTER.get());
                         output.accept(ModItems.BATCH_REPACKAGER.get());
                         output.accept(ModItems.TEMPLATE_PANEL.get());
+                        output.accept(ModItems.WORK_WAREHOUSE.get());
                     })
                     .build());
 }

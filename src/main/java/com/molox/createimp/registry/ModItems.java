@@ -40,4 +40,9 @@ public class ModItems {
             ITEMS.register("template_panel",
                     () -> new com.molox.createimp.block.template_panel.TemplatePanelBlockItem(
                             ModBlocks.TEMPLATE_PANEL.get(), new Item.Properties()));
+
+    public static final DeferredItem<com.molox.createimp.block.work_warehouse.WorkWarehouseBlockItem> WORK_WAREHOUSE =
+            ITEMS.register("work_warehouse",
+                    () -> new com.molox.createimp.block.work_warehouse.WorkWarehouseBlockItem(
+                            ModBlocks.WORK_WAREHOUSE.get(), new Item.Properties()));
 }

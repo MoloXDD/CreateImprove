@@ -81,5 +81,6 @@
   "createimp.gui.stock_keeper.template_category": "Template",
   "createimp.item.template_order_token.name": "%s Template",
   "createimp.item.template_order_token.tooltip_prefix": "Uses ingredients",
-  "createimp.item.template_order_token.tooltip_suffix": " recipe"
+  "createimp.item.template_order_token.tooltip_suffix": " recipe",
+  "block.createimp.work_warehouse": "Work Warehouse"
 }

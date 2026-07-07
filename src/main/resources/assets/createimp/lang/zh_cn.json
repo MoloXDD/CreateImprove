@@ -81,5 +81,6 @@
   "createimp.gui.stock_keeper.template_category": "模板",
   "createimp.item.template_order_token.name": "%s 模板",
   "createimp.item.template_order_token.tooltip_prefix": "使用材料",
-  "createimp.item.template_order_token.tooltip_suffix": " 的配方"
+  "createimp.item.template_order_token.tooltip_suffix": " 的配方",
+  "block.createimp.work_warehouse": "工作仓库"
 }
