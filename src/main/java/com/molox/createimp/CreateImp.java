@@ -8,6 +8,7 @@ import com.molox.createimp.network.OpenNetworkManagerEditPacket;
 import com.molox.createimp.network.OpenNetworkManagerEditorPacket;
 import com.molox.createimp.network.OpenNetworkManagerGuiPacket;
 import com.molox.createimp.network.OpenWorkWarehouseGuiPacket;
+import com.molox.createimp.network.WorkWarehouseActivateEffectPacket;
 import com.molox.createimp.network.SaveBrassScrapBucketConfigPacket;
 import com.molox.createimp.network.SaveFactoryPanelDemandModePacket;
 import com.molox.createimp.network.SaveLabeledRedstoneLinkConfigPacket;
@@ -20,6 +21,7 @@ import com.molox.createimp.network.TemplatePanelConfigurationPacket;
 import com.molox.createimp.network.TemplatePanelConnectionPacket;
 import com.molox.createimp.network.UpdateBrassScrapBucketAmountPacket;
 import com.molox.createimp.block.template_panel.TemplatePanelBlockEntity;
+import com.molox.createimp.block.work_warehouse.WorkWarehouseUnpackingHandler;
 import com.molox.createimp.registry.ModBlockEntityTypes;
 import com.molox.createimp.registry.ModBlocks;
 import com.molox.createimp.registry.ModCapabilities;
@@ -71,12 +73,14 @@ public class CreateImp {
 
     private static void commonSetup(FMLCommonSetupEvent event) {
         event.enqueueWork(() -> {
-            // 包裹接收功能（动力合成请求）
             UnpackingHandler.REGISTRY.register(
                     ModBlocks.BATCH_MECHANICAL_CRAFTER.get(),
                     BatchCrafterUnpackingHandler.INSTANCE
             );
-            // 应力消耗：满转速（256RPM）下应力 = 配置值，impact = 配置值 / 256.0
+            UnpackingHandler.REGISTRY.register(
+                    ModBlocks.WORK_WAREHOUSE.get(),
+                    WorkWarehouseUnpackingHandler.INSTANCE
+            );
             BlockStressValues.IMPACTS.register(
                     ModBlocks.BATCH_MECHANICAL_CRAFTER.get(),
                     () -> CreateImp.getConfig().batchMechanicalCrafterConfig.maxSpeedStressImpact / 256.0
@@ -203,6 +207,11 @@ public class CreateImp {
                 SaveWorkWarehouseAddressPacket.TYPE,
                 SaveWorkWarehouseAddressPacket.STREAM_CODEC,
                 SaveWorkWarehouseAddressPacket::handle
+        );
+        registrar.playToClient(
+                WorkWarehouseActivateEffectPacket.TYPE,
+                WorkWarehouseActivateEffectPacket.STREAM_CODEC,
+                WorkWarehouseActivateEffectPacket::handle
         );
     }
 

@@ -79,6 +79,8 @@
   "block.createimp.template_panel": "模板仪表",
   "createimp.message.factory_panel.connection_would_loop": "形成循环的非法连接",
   "createimp.gui.stock_keeper.template_category": "模板",
+  "createimp.gui.stock_keeper.no_work_warehouse": "当前无可用工作仓库",
+  "createimp.gui.stock_keeper.work_warehouse_available": "当前可用工作仓库数量：%s",
   "createimp.item.template_order_token.name": "%s 模板",
   "createimp.item.template_order_token.tooltip_prefix": "使用材料",
   "createimp.item.template_order_token.tooltip_suffix": " 的配方",

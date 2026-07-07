@@ -8,9 +8,12 @@ import com.simibubi.create.foundation.block.IBE;
 import com.simibubi.create.foundation.block.WrenchableDirectionalBlock;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.NonNullList;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.Containers;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
@@ -93,6 +96,15 @@ public class WorkWarehouseBlock extends WrenchableDirectionalBlock
     @Override
     public void onRemove(BlockState state, Level level, BlockPos pos,
                          BlockState newState, boolean isMoving) {
+        if (!state.is(newState.getBlock()) || !newState.hasBlockEntity()) {
+            if (level.getBlockEntity(pos) instanceof WorkWarehouseBlockEntity be) {
+                NonNullList<ItemStack> drops = NonNullList.create();
+                for (int i = 0; i < be.storage.getSlots(); i++) {
+                    drops.add(be.storage.getStackInSlot(i));
+                }
+                Containers.dropContents(level, pos, drops);
+            }
+        }
         IBE.onRemove(state, level, pos, newState);
     }
 

@@ -79,6 +79,8 @@
   "block.createimp.template_panel": "Template Panel",
   "createimp.message.factory_panel.connection_would_loop": "Invalid connection: would form a loop",
   "createimp.gui.stock_keeper.template_category": "Template",
+  "createimp.gui.stock_keeper.no_work_warehouse": "No Work Warehouse available",
+  "createimp.gui.stock_keeper.work_warehouse_available": "Available Work Warehouses: %s",
   "createimp.item.template_order_token.name": "%s Template",
   "createimp.item.template_order_token.tooltip_prefix": "Uses ingredients",
   "createimp.item.template_order_token.tooltip_suffix": " recipe",

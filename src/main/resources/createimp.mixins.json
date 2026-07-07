@@ -11,8 +11,11 @@
     "AbstractSimiScreenAccessor",
     "MixinMechanicalCraftingRecipe",
     "MixinPackagerItemHandler",
+    "MixinPackagerBlock",
+    "MixinPackagerBlockEntity",
+    "MixinPackageOrderRequestPacket",
+    "MixinLogisticsManager",
     "MixinLogisticalStockRequestPacket",
-    "MixinStockTickerBlockEntity",
     "MixinStockKeeperRequestScreen",
     "StockKeeperCategoryEntryAccessor",
     "MixinStockTickerInteractionHandler"

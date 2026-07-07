@@ -3,9 +3,11 @@ package com.molox.createimp.mixin;
 import com.llamalad7.mixinextras.injector.v2.WrapWithCondition;
 import com.llamalad7.mixinextras.sugar.Local;
 import com.molox.createimp.CreateImp;
+import com.molox.createimp.block.work_warehouse.WorkWarehouseNetworkHelper;
 import com.molox.createimp.item.TemplateOrderTokenHelper;
 import com.simibubi.create.content.logistics.BigItemStack;
 import com.simibubi.create.content.logistics.stockTicker.StockKeeperRequestScreen;
+import com.simibubi.create.content.logistics.stockTicker.StockTickerBlockEntity;
 import com.simibubi.create.foundation.gui.AllGuiTextures;
 import com.simibubi.create.foundation.utility.CreateLang;
 import net.minecraft.client.gui.GuiGraphics;
@@ -22,6 +24,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 @Mixin(value = StockKeeperRequestScreen.class, remap = false)
 public abstract class MixinStockKeeperRequestScreen {
@@ -50,7 +53,70 @@ public abstract class MixinStockKeeperRequestScreen {
     private Set<Integer> hiddenCategories;
 
     @Shadow
+    public List<BigItemStack> itemsToOrder;
+
+    @Shadow
+    StockTickerBlockEntity blockEntity;
+
+    @Shadow
     public native boolean isSchematicListMode();
+
+    @Shadow
+    private native boolean isConfirmHovered(int mouseX, int mouseY);
+
+    @Unique
+    private boolean createimp$isTemplateSendBlocked() {
+        boolean hasTemplate = false;
+        for (BigItemStack entry : this.itemsToOrder) {
+            if (TemplateOrderTokenHelper.isToken(entry.stack)) {
+                hasTemplate = true;
+                break;
+            }
+        }
+        if (!hasTemplate) {
+            return false;
+        }
+        if (this.blockEntity == null || this.blockEntity.behaviour == null) {
+            return true;
+        }
+        return !WorkWarehouseNetworkHelper.hasAvailableWorkWarehouse(this.blockEntity.behaviour.freqId);
+    }
+
+    @Redirect(method = "renderBg", at = @At(value = "INVOKE",
+            target = "Lcom/simibubi/create/content/logistics/stockTicker/StockKeeperRequestScreen;isConfirmHovered(II)Z"))
+    private boolean createimp$redirectConfirmHoveredRender(StockKeeperRequestScreen instance, int mouseX, int mouseY) {
+        return this.isConfirmHovered(mouseX, mouseY) && !createimp$isTemplateSendBlocked();
+    }
+
+    @Redirect(method = "mouseClicked", at = @At(value = "INVOKE",
+            target = "Lcom/simibubi/create/content/logistics/stockTicker/StockKeeperRequestScreen;isConfirmHovered(II)Z"))
+    private boolean createimp$redirectConfirmHoveredClick(StockKeeperRequestScreen instance, int mouseX, int mouseY) {
+        return this.isConfirmHovered(mouseX, mouseY) && !createimp$isTemplateSendBlocked();
+    }
+
+    @Inject(method = "renderForeground", at = @At("TAIL"))
+    private void createimp$drawWorkWarehouseTooltip(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks, CallbackInfo ci) {
+        if (!this.isConfirmHovered(mouseX, mouseY)) {
+            return;
+        }
+        boolean hasTemplate = false;
+        for (BigItemStack entry : this.itemsToOrder) {
+            if (TemplateOrderTokenHelper.isToken(entry.stack)) {
+                hasTemplate = true;
+                break;
+            }
+        }
+        if (!hasTemplate) {
+            return;
+        }
+        UUID freqId = (this.blockEntity != null && this.blockEntity.behaviour != null)
+                ? this.blockEntity.behaviour.freqId : null;
+        int availableCount = WorkWarehouseNetworkHelper.countAvailableWorkWarehouses(freqId);
+        Component message = availableCount > 0
+                ? Component.translatable("createimp.gui.stock_keeper.work_warehouse_available", availableCount)
+                : Component.translatable("createimp.gui.stock_keeper.no_work_warehouse");
+        graphics.renderComponentTooltip(net.minecraft.client.Minecraft.getInstance().font, List.of(message), mouseX, mouseY);
+    }
 
     @Inject(method = "refreshSearchResults", at = @At("RETURN"))
     private void createimp$pinTemplateCategory(boolean scrollBackUp, CallbackInfo ci) {
