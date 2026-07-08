@@ -35,12 +35,26 @@ public final class WorkWarehouseTemplateSnapshot {
 
     /**
      * 单条上游原料需求：物品种类 + 该连接配置的单次配方消耗数量。
+     * 用于 {@link PanelSnapshot#ingredients()}，仅供后续生产环节参考配方结构。
      */
     public record IngredientEntry(ItemStack item, int amount) {
         public static final Codec<IngredientEntry> CODEC = RecordCodecBuilder.create(instance -> instance.group(
                 ItemStack.CODEC.fieldOf("item").forGetter(IngredientEntry::item),
                 Codec.INT.fieldOf("amount").forGetter(IngredientEntry::amount)
         ).apply(instance, IngredientEntry::new));
+    }
+
+    /**
+     * 需求列表中的一条记录：这份数量的这种物品，需要从这个物流网络里获取，
+     * 才能凑够本次生产所需的原料。同一物品如果分别由链条上不同网络的节点
+     * 满足，会拆成多条各自独立的记录，供工作仓库分别向对应网络发起请求。
+     */
+    public record DemandEntry(UUID network, ItemStack item, int amount) {
+        public static final Codec<DemandEntry> CODEC = RecordCodecBuilder.create(instance -> instance.group(
+                UUIDUtil.CODEC.fieldOf("network").forGetter(DemandEntry::network),
+                ItemStack.CODEC.fieldOf("item").forGetter(DemandEntry::item),
+                Codec.INT.fieldOf("amount").forGetter(DemandEntry::amount)
+        ).apply(instance, DemandEntry::new));
     }
 
     /**

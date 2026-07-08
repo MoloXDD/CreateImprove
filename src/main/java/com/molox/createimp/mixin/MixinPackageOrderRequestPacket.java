@@ -84,6 +84,7 @@ public abstract class MixinPackageOrderRequestPacket {
                     warehouse.setTemplateSnapshot(WorkWarehouseTemplateSnapshot.capture(level, target.position()));
                     warehouse.setDemandList(result.usedFromStockPerTemplate().get(i));
                     warehouse.setRequestedProduct(target.display(), ordered.amount());
+                    warehouse.startMaterialRequestStage();
                 }
             }
         }

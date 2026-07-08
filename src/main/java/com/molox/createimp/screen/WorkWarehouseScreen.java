@@ -38,19 +38,21 @@ public class WorkWarehouseScreen extends AbstractSimiScreen {
 
     private final BlockPos pos;
     private final String initialAddress;
+    private final boolean working;
 
     private AddressEditBox addressBox;
     private IconButton confirmButton;
 
-    private WorkWarehouseScreen(BlockPos pos, String initialAddress) {
+    private WorkWarehouseScreen(BlockPos pos, String initialAddress, boolean working) {
         super(CommonComponents.EMPTY);
         this.pos = pos;
         this.initialAddress = initialAddress;
+        this.working = working;
     }
 
     public static void open(OpenWorkWarehouseGuiPacket packet) {
         Minecraft.getInstance().setScreen(
-                new WorkWarehouseScreen(packet.pos(), packet.addressText()));
+                new WorkWarehouseScreen(packet.pos(), packet.addressText(), packet.working()));
     }
 
     @Override
@@ -67,7 +69,14 @@ public class WorkWarehouseScreen extends AbstractSimiScreen {
         );
         addressBox.setValue(initialAddress);
         addressBox.setTextColor(0x555555);
-        addRenderableWidget(addressBox);
+        if (working) {
+            // 工作中：地址框只绘制不接收任何输入，键盘编辑（setEditable）与鼠标
+            // 点击（含 AddressEditBox 自带的右键清空手势）都不会被派发到它。
+            addressBox.setEditable(false);
+            addRenderableOnly(addressBox);
+        } else {
+            addRenderableWidget(addressBox);
+        }
 
         confirmButton = new IconButton(
                 guiLeft + CONFIRM_BUTTON_X,

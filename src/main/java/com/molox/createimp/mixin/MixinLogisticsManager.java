@@ -71,6 +71,7 @@ public abstract class MixinLogisticsManager {
                 warehouse.setTemplateSnapshot(WorkWarehouseTemplateSnapshot.capture(level, target.position()));
                 warehouse.setDemandList(result.usedFromStockPerTemplate().get(i));
                 warehouse.setRequestedProduct(target.display(), ordered.amount());
+                warehouse.startMaterialRequestStage();
             }
         }
 

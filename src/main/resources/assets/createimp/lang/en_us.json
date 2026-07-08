@@ -93,5 +93,8 @@
   "createimp.gui.work_warehouse.no_active_request": "No active request",
   "createimp.gui.work_warehouse.working": "Working",
   "createimp.gui.work_warehouse.current_request_prefix": "Current Request: ",
-  "createimp.gui.work_warehouse.no_address": "No address set"
+  "createimp.gui.work_warehouse.no_address": "No address set",
+  "createimp.gui.work_warehouse.stage_prefix": "Work Stage: ",
+  "createimp.gui.work_warehouse.stage_requesting_materials_value": "Requesting Materials",
+  "createimp.gui.work_warehouse.stage_production_value": "Production"
 }

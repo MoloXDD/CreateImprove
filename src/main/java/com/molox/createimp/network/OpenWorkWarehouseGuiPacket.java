@@ -11,7 +11,8 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 public record OpenWorkWarehouseGuiPacket(
         BlockPos pos,
-        String addressText
+        String addressText,
+        boolean working
 ) implements CustomPacketPayload {
 
     public static final Type<OpenWorkWarehouseGuiPacket> TYPE =
@@ -22,8 +23,9 @@ public record OpenWorkWarehouseGuiPacket(
                     (buf, pkt) -> {
                         buf.writeBlockPos(pkt.pos());
                         buf.writeUtf(pkt.addressText());
+                        buf.writeBoolean(pkt.working());
                     },
-                    buf -> new OpenWorkWarehouseGuiPacket(buf.readBlockPos(), buf.readUtf())
+                    buf -> new OpenWorkWarehouseGuiPacket(buf.readBlockPos(), buf.readUtf(), buf.readBoolean())
             );
 
     @Override

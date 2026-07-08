@@ -11,6 +11,7 @@ import com.molox.createimp.network.OpenTemplateMaterialsGuiPacket;
 import com.molox.createimp.network.OpenWorkWarehouseGuiPacket;
 import com.molox.createimp.network.RequestTemplateMaterialsPacket;
 import com.molox.createimp.network.WorkWarehouseActivateEffectPacket;
+import com.molox.createimp.network.WorkWarehouseMaterialsReadyEffectPacket;
 import com.molox.createimp.network.SaveBrassScrapBucketConfigPacket;
 import com.molox.createimp.network.SaveFactoryPanelDemandModePacket;
 import com.molox.createimp.network.SaveLabeledRedstoneLinkConfigPacket;
@@ -214,6 +215,11 @@ public class CreateImp {
                 WorkWarehouseActivateEffectPacket.TYPE,
                 WorkWarehouseActivateEffectPacket.STREAM_CODEC,
                 WorkWarehouseActivateEffectPacket::handle
+        );
+        registrar.playToClient(
+                WorkWarehouseMaterialsReadyEffectPacket.TYPE,
+                WorkWarehouseMaterialsReadyEffectPacket.STREAM_CODEC,
+                WorkWarehouseMaterialsReadyEffectPacket::handle
         );
         registrar.playToServer(
                 RequestTemplateMaterialsPacket.TYPE,

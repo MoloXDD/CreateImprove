@@ -60,15 +60,25 @@ public final class TemplateMaterialCalculator {
     }
 
     /**
+     * 单条按网络拆分的"现有材料"记录：这份数量的这种物品，是从这个物流网络的
+     * 库存里确认满足的。同一种物品如果被链条上不同网络的节点分别满足，会各自
+     * 生成一条独立记录，不会像 {@link Result#usedFromStock()} 那样按物品合并。
+     */
+    public record NetworkBigItemStack(UUID network, ItemStack stack, int count) {
+    }
+
+    /**
      * 计算结果：
      * - canCompleteAll / missing / usedFromStock：合计结果，用于材料窗口展示
-     *   （usedFromStock 里既包含模板消耗的库存，也包含普通物品请求占用的库存）。
+     *   （usedFromStock 里既包含模板消耗的库存，也包含普通物品请求占用的库存，
+     *   按物品种类合并展示，不区分网络）。
      * - usedFromStockPerTemplate：与本次请求里出现的模板按顺序一一对应（不含
-     *   普通物品条目），每个模板单独消耗掉的现有库存明细，用于分配给对应
-     *   工作仓库的"需求列表"。
+     *   普通物品条目），每个模板单独消耗掉的现有库存明细，按 (网络, 物品) 拆分，
+     *   供分配给对应工作仓库的"需求列表"使用（工作仓库需要知道每份材料该向
+     *   哪个网络发起请求）。
      */
     public record Result(boolean canCompleteAll, List<BigItemStack> missing, List<BigItemStack> usedFromStock,
-                         List<List<BigItemStack>> usedFromStockPerTemplate, boolean anyChainBroken) {
+                         List<List<NetworkBigItemStack>> usedFromStockPerTemplate, boolean anyChainBroken) {
     }
 
     /**
@@ -125,6 +135,18 @@ public final class TemplateMaterialCalculator {
         }
     }
 
+    private static final class NetworkAccumulator {
+        final UUID network;
+        final ItemStack sample;
+        int count;
+
+        NetworkAccumulator(UUID network, ItemStack sample, int count) {
+            this.network = network;
+            this.sample = sample.copyWithCount(1);
+            this.count = count;
+        }
+    }
+
     /**
      * @param level          用于解析模板链上各仪表的世界
      * @param primaryNetwork 普通物品请求所属的物流网络（即发起这次请求的
@@ -137,7 +159,7 @@ public final class TemplateMaterialCalculator {
         Map<StockKey, Integer> stockCache = new HashMap<>();
         Map<ItemOnlyKey, Accumulator> usedAggTotal = new LinkedHashMap<>();
         Map<ItemOnlyKey, Accumulator> missingAgg = new LinkedHashMap<>();
-        List<List<BigItemStack>> perTemplate = new ArrayList<>();
+        List<List<NetworkBigItemStack>> perTemplate = new ArrayList<>();
 
         // 第一阶段：普通物品请求视为"已经确定要实际发出"的消耗，无条件优先从
         // 共享库存池里扣除，不管它在请求栏里排在模板前面还是后面。这样才能
@@ -167,6 +189,7 @@ public final class TemplateMaterialCalculator {
             }
             OrderedTemplate order = entry.template();
             Map<ItemOnlyKey, Accumulator> usedAggThis = new LinkedHashMap<>();
+            Map<StockKey, NetworkAccumulator> usedAggThisByNetwork = new LinkedHashMap<>();
 
             if (order.amount() > 0) {
                 TemplateOrderTarget target = order.target();
@@ -181,7 +204,7 @@ public final class TemplateMaterialCalculator {
                     int firings = Mth.positiveCeilDiv(order.amount(), Math.max(1, root.recipeOutput));
                     for (TemplatePanelConnection connection : root.targetedBy.values()) {
                         int demand = firings * connection.amount;
-                        processUpstream(level, connection.from, demand, stockCache, usedAggThis, missingAgg);
+                        processUpstream(level, connection.from, demand, stockCache, usedAggThis, usedAggThisByNetwork, missingAgg);
                     }
                 }
             }
@@ -189,7 +212,7 @@ public final class TemplateMaterialCalculator {
             for (Accumulator acc : usedAggThis.values()) {
                 addTo(usedAggTotal, acc.sample, acc.count);
             }
-            perTemplate.add(toList(usedAggThis));
+            perTemplate.add(toNetworkList(usedAggThisByNetwork));
         }
 
         List<BigItemStack> missing = toList(missingAgg);
@@ -204,6 +227,7 @@ public final class TemplateMaterialCalculator {
     private static void processUpstream(Level level, TemplatePanelPosition pos, int demand,
                                         Map<StockKey, Integer> stockCache,
                                         Map<ItemOnlyKey, Accumulator> usedAgg,
+                                        Map<StockKey, NetworkAccumulator> usedAggByNetwork,
                                         Map<ItemOnlyKey, Accumulator> missingAgg) {
         if (demand <= 0) {
             return;
@@ -220,6 +244,10 @@ public final class TemplateMaterialCalculator {
             }
             int deficit = consumeStock(node.network, node.getFilter(), demand, () -> node.getLevelInStorage(),
                     stockCache, usedAgg);
+            int satisfied = demand - deficit;
+            if (satisfied > 0) {
+                addToNetwork(usedAggByNetwork, node.network, node.getFilter(), satisfied);
+            }
             if (deficit <= 0) {
                 return;
             }
@@ -230,7 +258,7 @@ public final class TemplateMaterialCalculator {
             int firings = Mth.positiveCeilDiv(deficit, Math.max(1, node.recipeOutput));
             for (TemplatePanelConnection connection : node.targetedBy.values()) {
                 int nextDemand = firings * connection.amount;
-                processUpstream(level, connection.from, nextDemand, stockCache, usedAgg, missingAgg);
+                processUpstream(level, connection.from, nextDemand, stockCache, usedAgg, usedAggByNetwork, missingAgg);
             }
         } else if (be instanceof FactoryPanelBlockEntity fpbe) {
             FactoryPanelBlock.PanelSlot vanillaSlot = FactoryPanelBlock.PanelSlot.valueOf(pos.slot().name());
@@ -240,6 +268,10 @@ public final class TemplateMaterialCalculator {
             }
             int deficit = consumeStock(node.network, node.getFilter(), demand, node::getLevelInStorage,
                     stockCache, usedAgg);
+            int satisfied = demand - deficit;
+            if (satisfied > 0) {
+                addToNetwork(usedAggByNetwork, node.network, node.getFilter(), satisfied);
+            }
             if (deficit > 0) {
                 addTo(missingAgg, node.getFilter(), deficit);
             }
@@ -280,10 +312,31 @@ public final class TemplateMaterialCalculator {
         }
     }
 
+    private static void addToNetwork(Map<StockKey, NetworkAccumulator> map, UUID network, ItemStack stack, int amount) {
+        if (amount <= 0 || stack.isEmpty()) {
+            return;
+        }
+        StockKey key = new StockKey(network, stack);
+        NetworkAccumulator existing = map.get(key);
+        if (existing == null) {
+            map.put(key, new NetworkAccumulator(network, stack, amount));
+        } else {
+            existing.count += amount;
+        }
+    }
+
     private static List<BigItemStack> toList(Map<ItemOnlyKey, Accumulator> map) {
         List<BigItemStack> result = new ArrayList<>();
         for (Accumulator acc : map.values()) {
             result.add(new BigItemStack(acc.sample, acc.count));
+        }
+        return result;
+    }
+
+    private static List<NetworkBigItemStack> toNetworkList(Map<StockKey, NetworkAccumulator> map) {
+        List<NetworkBigItemStack> result = new ArrayList<>();
+        for (NetworkAccumulator acc : map.values()) {
+            result.add(new NetworkBigItemStack(acc.network, acc.sample, acc.count));
         }
         return result;
     }

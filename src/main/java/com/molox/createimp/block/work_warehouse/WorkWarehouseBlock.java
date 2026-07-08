@@ -89,7 +89,7 @@ public class WorkWarehouseBlock extends WrenchableDirectionalBlock
         if (!(level.getBlockEntity(pos) instanceof WorkWarehouseBlockEntity be))
             return InteractionResult.PASS;
         PacketDistributor.sendToPlayer((ServerPlayer) player,
-                new OpenWorkWarehouseGuiPacket(pos, be.getAddress()));
+                new OpenWorkWarehouseGuiPacket(pos, be.getAddress(), be.isWorking()));
         return InteractionResult.SUCCESS;
     }
 
