@@ -4,6 +4,8 @@ import com.llamalad7.mixinextras.injector.v2.WrapWithCondition;
 import com.llamalad7.mixinextras.sugar.Local;
 import com.molox.createimp.CreateImp;
 import com.molox.createimp.block.work_warehouse.WorkWarehouseNetworkHelper;
+import com.molox.createimp.client.TemplateOrderTooltipHandler;
+import com.molox.createimp.item.TemplateOrderTarget;
 import com.molox.createimp.item.TemplateOrderTokenHelper;
 import com.simibubi.create.content.logistics.BigItemStack;
 import com.simibubi.create.content.logistics.stockTicker.StockKeeperRequestScreen;
@@ -13,6 +15,7 @@ import com.simibubi.create.foundation.utility.CreateLang;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -63,6 +66,32 @@ public abstract class MixinStockKeeperRequestScreen {
 
     @Shadow
     private native boolean isConfirmHovered(int mouseX, int mouseY);
+
+    @Shadow
+    private boolean encodeRequester;
+
+    @Shadow
+    private native BigItemStack getOrderForItem(ItemStack stack);
+
+    @Redirect(method = "mouseClicked", at = @At(value = "INVOKE",
+            target = "Lcom/simibubi/create/content/logistics/stockTicker/StockKeeperRequestScreen;getOrderForItem(Lnet/minecraft/world/item/ItemStack;)Lcom/simibubi/create/content/logistics/BigItemStack;"))
+    private BigItemStack createimp$blockTemplateOrderClick(StockKeeperRequestScreen instance, ItemStack stack) {
+        BigItemStack existing = this.getOrderForItem(stack);
+        if (existing == null && this.encodeRequester && TemplateOrderTokenHelper.isToken(stack)) {
+            return new BigItemStack(stack, 0);
+        }
+        return existing;
+    }
+
+    @Redirect(method = "mouseScrolled", at = @At(value = "INVOKE",
+            target = "Lcom/simibubi/create/content/logistics/stockTicker/StockKeeperRequestScreen;getOrderForItem(Lnet/minecraft/world/item/ItemStack;)Lcom/simibubi/create/content/logistics/BigItemStack;"))
+    private BigItemStack createimp$blockTemplateOrderScroll(StockKeeperRequestScreen instance, ItemStack stack) {
+        BigItemStack existing = this.getOrderForItem(stack);
+        if (existing == null && this.encodeRequester && TemplateOrderTokenHelper.isToken(stack)) {
+            return new BigItemStack(stack, 0);
+        }
+        return existing;
+    }
 
     @Unique
     private boolean createimp$isTemplateSendBlocked() {
@@ -141,8 +170,17 @@ public abstract class MixinStockKeeperRequestScreen {
             filteredDisplayedItems.add(filteredBucket);
         }
         if (templateBucket.isEmpty()) {
+            TemplateOrderTooltipHandler.updateCurrentTemplateDisplays(List.of());
             return;
         }
+        List<ItemStack> templateDisplays = new ArrayList<>();
+        for (BigItemStack entry : templateBucket) {
+            TemplateOrderTarget target = TemplateOrderTokenHelper.getTarget(entry.stack);
+            if (target != null) {
+                templateDisplays.add(target.display());
+            }
+        }
+        TemplateOrderTooltipHandler.updateCurrentTemplateDisplays(templateDisplays);
         this.displayedItems = filteredDisplayedItems;
 
         List<StockKeeperRequestScreen.CategoryEntry> newCategories = new ArrayList<>();

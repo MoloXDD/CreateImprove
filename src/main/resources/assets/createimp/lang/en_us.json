@@ -84,5 +84,6 @@
   "createimp.item.template_order_token.name": "%s Template",
   "createimp.item.template_order_token.tooltip_prefix": "Uses ingredients",
   "createimp.item.template_order_token.tooltip_suffix": " recipe",
+  "createimp.item.template_order_token.tooltip_cannot_request": "Cannot request templates right now",
   "block.createimp.work_warehouse": "Work Warehouse"
 }
