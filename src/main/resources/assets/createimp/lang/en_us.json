@@ -81,9 +81,17 @@
   "createimp.gui.stock_keeper.template_category": "Template",
   "createimp.gui.stock_keeper.no_work_warehouse": "No Work Warehouse available",
   "createimp.gui.stock_keeper.work_warehouse_available": "Available Work Warehouses: %s",
+  "createimp.gui.stock_keeper.not_enough_work_warehouse": "Not enough Work Warehouses available",
   "createimp.item.template_order_token.name": "%s Template",
   "createimp.item.template_order_token.tooltip_prefix": "Uses ingredients",
   "createimp.item.template_order_token.tooltip_suffix": " recipe",
   "createimp.item.template_order_token.tooltip_cannot_request": "Cannot request templates right now",
-  "block.createimp.work_warehouse": "Work Warehouse"
+  "block.createimp.work_warehouse": "Work Warehouse",
+  "createimp.gui.template_materials.title": "Template Required Materials",
+  "createimp.gui.template_materials.missing": "Missing Materials",
+  "createimp.gui.template_materials.used": "Materials Used",
+  "createimp.gui.work_warehouse.no_active_request": "No active request",
+  "createimp.gui.work_warehouse.working": "Working",
+  "createimp.gui.work_warehouse.current_request_prefix": "Current Request: ",
+  "createimp.gui.work_warehouse.no_address": "No address set"
 }

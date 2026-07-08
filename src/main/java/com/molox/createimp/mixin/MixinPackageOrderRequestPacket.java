@@ -1,7 +1,10 @@
 package com.molox.createimp.mixin;
 
+import com.molox.createimp.block.template_panel.TemplateMaterialCalculator;
 import com.molox.createimp.block.work_warehouse.WorkWarehouseBlockEntity;
 import com.molox.createimp.block.work_warehouse.WorkWarehouseNetworkHelper;
+import com.molox.createimp.block.work_warehouse.WorkWarehouseTemplateSnapshot;
+import com.molox.createimp.item.TemplateOrderTarget;
 import com.molox.createimp.item.TemplateOrderTokenHelper;
 import com.simibubi.create.AllSoundEvents;
 import com.simibubi.create.content.logistics.BigItemStack;
@@ -11,6 +14,7 @@ import com.simibubi.create.content.logistics.stockTicker.PackageOrderRequestPack
 import com.simibubi.create.content.logistics.stockTicker.PackageOrderWithCrafts;
 import com.simibubi.create.content.logistics.stockTicker.StockTickerBlockEntity;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.Level;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -39,30 +43,51 @@ public abstract class MixinPackageOrderRequestPacket {
         }
 
         List<BigItemStack> stacks = this.order.orderedStacks().stacks();
-        boolean hasToken = false;
+
+        List<BigItemStack> filtered = new ArrayList<>();
+        List<TemplateMaterialCalculator.RequestEntry> calcEntries = new ArrayList<>();
+        List<TemplateMaterialCalculator.OrderedTemplate> orderedTemplates = new ArrayList<>();
+
         for (BigItemStack entry : stacks) {
             if (TemplateOrderTokenHelper.isToken(entry.stack)) {
-                hasToken = true;
-                break;
+                TemplateOrderTarget target = TemplateOrderTokenHelper.getTarget(entry.stack);
+                if (target != null) {
+                    TemplateMaterialCalculator.OrderedTemplate ordered =
+                            new TemplateMaterialCalculator.OrderedTemplate(target, entry.count);
+                    calcEntries.add(TemplateMaterialCalculator.RequestEntry.ofTemplate(ordered));
+                    orderedTemplates.add(ordered);
+                }
+            } else {
+                filtered.add(entry);
+                calcEntries.add(TemplateMaterialCalculator.RequestEntry.ofRegular(entry.stack.copy(), entry.count));
             }
         }
-        if (!hasToken) {
+
+        if (orderedTemplates.isEmpty()) {
             return;
         }
 
         if (be.behaviour != null) {
-            WorkWarehouseBlockEntity warehouse = WorkWarehouseNetworkHelper.findAvailableWorkWarehouse(be.behaviour.freqId);
-            if (warehouse != null) {
-                warehouse.activate(this.address);
+            List<WorkWarehouseBlockEntity> warehouses = WorkWarehouseNetworkHelper.findAvailableWorkWarehouses(
+                    be.behaviour.freqId, orderedTemplates.size());
+            if (!warehouses.isEmpty()) {
+                Level level = be.getLevel();
+                TemplateMaterialCalculator.Result result =
+                        TemplateMaterialCalculator.calculate(level, be.behaviour.freqId, calcEntries);
+
+                int assignCount = Math.min(warehouses.size(), orderedTemplates.size());
+                for (int i = 0; i < assignCount; i++) {
+                    WorkWarehouseBlockEntity warehouse = warehouses.get(i);
+                    TemplateMaterialCalculator.OrderedTemplate ordered = orderedTemplates.get(i);
+                    TemplateOrderTarget target = ordered.target();
+                    warehouse.activate(this.address);
+                    warehouse.setTemplateSnapshot(WorkWarehouseTemplateSnapshot.capture(level, target.position()));
+                    warehouse.setDemandList(result.usedFromStockPerTemplate().get(i));
+                    warehouse.setRequestedProduct(target.display(), ordered.amount());
+                }
             }
         }
 
-        List<BigItemStack> filtered = new ArrayList<>();
-        for (BigItemStack entry : stacks) {
-            if (!TemplateOrderTokenHelper.isToken(entry.stack)) {
-                filtered.add(entry);
-            }
-        }
         PackageOrderWithCrafts strippedOrder = new PackageOrderWithCrafts(new PackageOrder(filtered), this.order.orderedCrafts());
 
         if (!strippedOrder.isEmpty()) {

@@ -81,9 +81,17 @@
   "createimp.gui.stock_keeper.template_category": "模板",
   "createimp.gui.stock_keeper.no_work_warehouse": "当前无可用工作仓库",
   "createimp.gui.stock_keeper.work_warehouse_available": "当前可用工作仓库数量：%s",
+  "createimp.gui.stock_keeper.not_enough_work_warehouse": "没有足够可用工作仓库",
   "createimp.item.template_order_token.name": "%s 模板",
   "createimp.item.template_order_token.tooltip_prefix": "使用材料",
   "createimp.item.template_order_token.tooltip_suffix": " 的配方",
   "createimp.item.template_order_token.tooltip_cannot_request": "当前无法请求模板",
-  "block.createimp.work_warehouse": "工作仓库"
+  "block.createimp.work_warehouse": "工作仓库",
+  "createimp.gui.template_materials.title": "模板所需材料",
+  "createimp.gui.template_materials.missing": "缺少材料",
+  "createimp.gui.template_materials.used": "现有材料",
+  "createimp.gui.work_warehouse.no_active_request": "没有进行中的请求",
+  "createimp.gui.work_warehouse.working": "工作中",
+  "createimp.gui.work_warehouse.current_request_prefix": "当前请求：",
+  "createimp.gui.work_warehouse.no_address": "未设置地址"
 }

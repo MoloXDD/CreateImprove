@@ -477,8 +477,17 @@ public class TemplatePanelBehaviour extends FilteringBehaviour implements MenuPr
         this.targeting.clear();
     }
 
+    /**
+     * 判定以本节点为终点的模板链是否有效。
+     * 新增规则：本节点未设置地址（recipeAddress 为空）时，与"未设置监测物品/
+     * 未连接"同等对待，直接判定为非法——无论本节点是作为请求根节点被判定，
+     * 还是作为下游节点的上游供应者被递归判定，都统一生效。
+     */
     public boolean computeChainValidity(java.util.Set<TemplatePanelPosition> visiting) {
         if (this.getFilter().isEmpty()) {
+            return false;
+        }
+        if (this.recipeAddress == null || this.recipeAddress.isEmpty()) {
             return false;
         }
         if (this.targetedBy.isEmpty()) {

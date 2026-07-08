@@ -7,6 +7,8 @@ import com.molox.createimp.block.work_warehouse.WorkWarehouseNetworkHelper;
 import com.molox.createimp.client.TemplateOrderTooltipHandler;
 import com.molox.createimp.item.TemplateOrderTarget;
 import com.molox.createimp.item.TemplateOrderTokenHelper;
+import com.molox.createimp.network.RequestTemplateMaterialsPacket;
+import com.molox.createimp.util.StockKeeperRequestScreenInvoker;
 import com.simibubi.create.content.logistics.BigItemStack;
 import com.simibubi.create.content.logistics.stockTicker.StockKeeperRequestScreen;
 import com.simibubi.create.content.logistics.stockTicker.StockTickerBlockEntity;
@@ -16,6 +18,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
+import net.neoforged.neoforge.network.PacketDistributor;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -30,7 +33,7 @@ import java.util.Set;
 import java.util.UUID;
 
 @Mixin(value = StockKeeperRequestScreen.class, remap = false)
-public abstract class MixinStockKeeperRequestScreen {
+public abstract class MixinStockKeeperRequestScreen implements StockKeeperRequestScreenInvoker {
 
     @Unique
     private static final ResourceLocation TEMPLATE_SLOT_BG =
@@ -73,6 +76,26 @@ public abstract class MixinStockKeeperRequestScreen {
     @Shadow
     private native BigItemStack getOrderForItem(ItemStack stack);
 
+    @Shadow
+    private native void sendIt();
+
+    @Shadow
+    public List<com.simibubi.create.content.logistics.stockTicker.CraftableBigItemStack> recipesToOrder;
+
+    @Override
+    public void createimp$invokeSendIt() {
+        this.sendIt();
+    }
+
+    @Override
+    public void createimp$clearRequestBar() {
+        this.itemsToOrder = new ArrayList<>();
+        this.recipesToOrder = new ArrayList<>();
+    }
+
+    @Shadow
+    private native void revalidateOrders();
+
     @Redirect(method = "mouseClicked", at = @At(value = "INVOKE",
             target = "Lcom/simibubi/create/content/logistics/stockTicker/StockKeeperRequestScreen;getOrderForItem(Lnet/minecraft/world/item/ItemStack;)Lcom/simibubi/create/content/logistics/BigItemStack;"))
     private BigItemStack createimp$blockTemplateOrderClick(StockKeeperRequestScreen instance, ItemStack stack) {
@@ -94,21 +117,26 @@ public abstract class MixinStockKeeperRequestScreen {
     }
 
     @Unique
-    private boolean createimp$isTemplateSendBlocked() {
-        boolean hasTemplate = false;
+    private int createimp$countTemplateEntries() {
+        int count = 0;
         for (BigItemStack entry : this.itemsToOrder) {
             if (TemplateOrderTokenHelper.isToken(entry.stack)) {
-                hasTemplate = true;
-                break;
+                count++;
             }
         }
-        if (!hasTemplate) {
+        return count;
+    }
+
+    @Unique
+    private boolean createimp$isTemplateSendBlocked() {
+        int templateCount = createimp$countTemplateEntries();
+        if (templateCount == 0) {
             return false;
         }
         if (this.blockEntity == null || this.blockEntity.behaviour == null) {
             return true;
         }
-        return !WorkWarehouseNetworkHelper.hasAvailableWorkWarehouse(this.blockEntity.behaviour.freqId);
+        return WorkWarehouseNetworkHelper.countAvailableWorkWarehouses(this.blockEntity.behaviour.freqId) < templateCount;
     }
 
     @Redirect(method = "renderBg", at = @At(value = "INVOKE",
@@ -123,28 +151,45 @@ public abstract class MixinStockKeeperRequestScreen {
         return this.isConfirmHovered(mouseX, mouseY) && !createimp$isTemplateSendBlocked();
     }
 
+    /**
+     * 拦截确认键真正触发的发送动作：请求栏内不含模板时，行为与原版完全一致；
+     * 含模板时（此时已确认工作仓库数量足够，否则外层的 isConfirmHovered 重定向
+     * 会让点击根本走不到这里），改为向服务端请求一次材料计算，不清空请求栏，
+     * 不立即真正发送打包请求。
+     */
+    @Redirect(method = "mouseClicked", at = @At(value = "INVOKE",
+            target = "Lcom/simibubi/create/content/logistics/stockTicker/StockKeeperRequestScreen;sendIt()V"))
+    private void createimp$redirectSendIt(StockKeeperRequestScreen instance) {
+        if (createimp$countTemplateEntries() == 0) {
+            this.sendIt();
+            return;
+        }
+        this.revalidateOrders();
+        if (this.itemsToOrder.isEmpty() || this.blockEntity == null) {
+            return;
+        }
+        PacketDistributor.sendToServer(new RequestTemplateMaterialsPacket(
+                this.blockEntity.getBlockPos(), new ArrayList<>(this.itemsToOrder)));
+    }
+
     @Inject(method = "renderForeground", at = @At("TAIL"))
     private void createimp$drawWorkWarehouseTooltip(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks, CallbackInfo ci) {
         if (!this.isConfirmHovered(mouseX, mouseY)) {
             return;
         }
-        boolean hasTemplate = false;
-        for (BigItemStack entry : this.itemsToOrder) {
-            if (TemplateOrderTokenHelper.isToken(entry.stack)) {
-                hasTemplate = true;
-                break;
-            }
-        }
-        if (!hasTemplate) {
+        int templateCount = createimp$countTemplateEntries();
+        if (templateCount == 0) {
             return;
         }
         UUID freqId = (this.blockEntity != null && this.blockEntity.behaviour != null)
                 ? this.blockEntity.behaviour.freqId : null;
         int availableCount = WorkWarehouseNetworkHelper.countAvailableWorkWarehouses(freqId);
-        Component message = availableCount > 0
-                ? Component.translatable("createimp.gui.stock_keeper.work_warehouse_available", availableCount)
-                : Component.translatable("createimp.gui.stock_keeper.no_work_warehouse");
-        graphics.renderComponentTooltip(net.minecraft.client.Minecraft.getInstance().font, List.of(message), mouseX, mouseY);
+        List<Component> lines = new ArrayList<>();
+        if (availableCount < templateCount) {
+            lines.add(Component.translatable("createimp.gui.stock_keeper.not_enough_work_warehouse"));
+        }
+        lines.add(Component.translatable("createimp.gui.stock_keeper.work_warehouse_available", availableCount));
+        graphics.renderComponentTooltip(net.minecraft.client.Minecraft.getInstance().font, lines, mouseX, mouseY);
     }
 
     @Inject(method = "refreshSearchResults", at = @At("RETURN"))
