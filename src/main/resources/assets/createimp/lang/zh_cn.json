@@ -69,6 +69,8 @@
   "text.autoconfig.createimp.option.batchMechanicalCrafterConfig": "批量动力合成器配置",
   "text.autoconfig.createimp.option.batchMechanicalCrafterConfig.maxSpeedStressImpact": "满转速应力消耗（SU）",
   "text.autoconfig.createimp.option.batchMechanicalCrafterConfig.showItemCount": "显示物品数量",
+  "text.autoconfig.createimp.option.workWarehouseConfig": "工作仓库配置",
+  "text.autoconfig.createimp.option.workWarehouseConfig.backToConnectedInventoryAddress": "返回连接库存专用地址",
   "block.createimp.batch_repackager": "批量理包机",
   "block.createimp.batch_repackager.tooltip.summary": "与_理包机_用法相同，用于将进行_批量合成_的包裹处理为批量动力合成器可以接受的格式，支持_原材料数量超过单个包裹容量_的复数包裹输入输出，同时也支持_单次请求含有多个合成表_的包裹输入输出。",
   "block.createimp.batch_repackager.tooltip.condition1": "输入带有合成请求的包裹时",
@@ -96,5 +98,6 @@
   "createimp.gui.work_warehouse.no_address": "未设置地址",
   "createimp.gui.work_warehouse.stage_prefix": "工作阶段：",
   "createimp.gui.work_warehouse.stage_requesting_materials_value": "原料请求",
-  "createimp.gui.work_warehouse.stage_production_value": "生产"
+  "createimp.gui.work_warehouse.stage_production_value": "生产",
+  "createimp.gui.work_warehouse.stage_production_complete_value": "生产完成"
 }

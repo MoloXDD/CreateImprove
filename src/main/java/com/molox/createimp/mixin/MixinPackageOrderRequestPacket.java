@@ -3,7 +3,6 @@ package com.molox.createimp.mixin;
 import com.molox.createimp.block.template_panel.TemplateMaterialCalculator;
 import com.molox.createimp.block.work_warehouse.WorkWarehouseBlockEntity;
 import com.molox.createimp.block.work_warehouse.WorkWarehouseNetworkHelper;
-import com.molox.createimp.block.work_warehouse.WorkWarehouseTemplateSnapshot;
 import com.molox.createimp.item.TemplateOrderTarget;
 import com.molox.createimp.item.TemplateOrderTokenHelper;
 import com.simibubi.create.AllSoundEvents;
@@ -81,7 +80,7 @@ public abstract class MixinPackageOrderRequestPacket {
                     TemplateMaterialCalculator.OrderedTemplate ordered = orderedTemplates.get(i);
                     TemplateOrderTarget target = ordered.target();
                     warehouse.activate(this.address);
-                    warehouse.setTemplateSnapshot(WorkWarehouseTemplateSnapshot.capture(level, target.position()));
+                    warehouse.setTemplateSnapshot(result.snapshotPerTemplate().get(i));
                     warehouse.setDemandList(result.usedFromStockPerTemplate().get(i));
                     warehouse.setRequestedProduct(target.display(), ordered.amount());
                     warehouse.startMaterialRequestStage();
@@ -90,6 +89,17 @@ public abstract class MixinPackageOrderRequestPacket {
         }
 
         PackageOrderWithCrafts strippedOrder = new PackageOrderWithCrafts(new PackageOrder(filtered), this.order.orderedCrafts());
+
+        // 目标地址是工作仓库的特殊地址"/back"时，最终产物直接放回连接库存，
+        // 不走打包机——这份请求里如果同时混着普通物品，这些普通物品原本
+        // 会被编程进红石请求器继续正常发货，但"/back"这个地址对普通物品的
+        // 收货逻辑并不适用（它只是工作仓库自己认识的一个特殊地址，不是一个
+        // 真实存在的、可以被打包机送达的地址），所以这里直接把普通物品的
+        // 请求部分整体取消，不编程进红石请求器。
+        String backAddress = com.molox.createimp.CreateImp.getConfig().workWarehouseConfig.backToConnectedInventoryAddress;
+        if (!backAddress.isBlank() && backAddress.equals(this.address)) {
+            strippedOrder = PackageOrderWithCrafts.empty();
+        }
 
         if (!strippedOrder.isEmpty()) {
             AllSoundEvents.CONFIRM.playOnServer(be.getLevel(), be.getBlockPos());

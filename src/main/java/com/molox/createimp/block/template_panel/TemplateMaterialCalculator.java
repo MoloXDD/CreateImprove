@@ -1,6 +1,8 @@
 package com.molox.createimp.block.template_panel;
 
+import com.molox.createimp.block.work_warehouse.WorkWarehouseTemplateSnapshot;
 import com.molox.createimp.item.TemplateOrderTarget;
+import com.molox.createimp.util.IFactoryPanelBehaviourDemandMode;
 import com.simibubi.create.content.logistics.BigItemStack;
 import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelBehaviour;
 import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelBlock;
@@ -11,16 +13,36 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
  * 服务端专用：根据模板链的配方比例与当前网络库存，递归计算某一批模板下单
  * 请求所需的原料是否足够，并汇总"缺少的材料"与"被现有库存满足的材料"。
+ * <p>
+ * 模板链在结构上是一个有向无环图（DAG），不是树——同一个物理仪表可以同时
+ * 是多个不同下游节点的上游（比如去皮橡木原木既直接喂给橡木木板，橡木木板
+ * 又同时喂给木棍和栏杆两条下游）。本类的计算过程因此分两步：
+ * <p>
+ * 1. 图结构发现（{@link #discoverUpstream}）：从根节点开始沿着上游连接展开，
+ * 用坐标+槽位判断是否为同一个物理仪表，同一个仪表只解析一次，但会记录
+ * 它被哪些下游节点各自引用、各自需要多少。
+ * <p>
+ * 2. 拓扑计算（{@link #buildSnapshotForTemplate}）：先按"消费者先于生产者"
+ * 的拓扑顺序（从根节点出发）汇总每个物理仪表收到的全部下游需求、查库存、
+ * 算批次数——只有当一个仪表的全部下游消费者都已经处理完毕，才能算出这个
+ * 仪表自己收到的总需求，这也是为什么必须按拓扑顺序而不能像单纯的树那样
+ * 边递归边计算。再反过来按"生产者先于消费者"的顺序（即上一步顺序的反向）
+ * 确定每个节点的初始状态——这一步则相反，必须先知道上游是否已经
+ * COMPLETED，才能判断当前节点的状态。
  * <p>
  * 请求栏里同时存在的普通物品请求也会一并参与同一套共享库存池的计算——
  * 它们本质上也是"要从这份库存里拿走一部分"，如果不把它们算进去，模板这边
@@ -35,16 +57,9 @@ public final class TemplateMaterialCalculator {
     private TemplateMaterialCalculator() {
     }
 
-    /**
-     * 一次下单请求：请求的模板本身，以及请求的目标物品数量。
-     */
     public record OrderedTemplate(TemplateOrderTarget target, int amount) {
     }
 
-    /**
-     * 按原始请求栏顺序排列的一个条目：要么是一个模板，要么是一个普通物品请求。
-     * 两者互斥，用 {@link #isTemplate()} 判断具体是哪一种。
-     */
     public record RequestEntry(OrderedTemplate template, ItemStack regularItem, int regularAmount) {
         public static RequestEntry ofTemplate(OrderedTemplate template) {
             return new RequestEntry(template, ItemStack.EMPTY, 0);
@@ -59,32 +74,14 @@ public final class TemplateMaterialCalculator {
         }
     }
 
-    /**
-     * 单条按网络拆分的"现有材料"记录：这份数量的这种物品，是从这个物流网络的
-     * 库存里确认满足的。同一种物品如果被链条上不同网络的节点分别满足，会各自
-     * 生成一条独立记录，不会像 {@link Result#usedFromStock()} 那样按物品合并。
-     */
     public record NetworkBigItemStack(UUID network, ItemStack stack, int count) {
     }
 
-    /**
-     * 计算结果：
-     * - canCompleteAll / missing / usedFromStock：合计结果，用于材料窗口展示
-     *   （usedFromStock 里既包含模板消耗的库存，也包含普通物品请求占用的库存，
-     *   按物品种类合并展示，不区分网络）。
-     * - usedFromStockPerTemplate：与本次请求里出现的模板按顺序一一对应（不含
-     *   普通物品条目），每个模板单独消耗掉的现有库存明细，按 (网络, 物品) 拆分，
-     *   供分配给对应工作仓库的"需求列表"使用（工作仓库需要知道每份材料该向
-     *   哪个网络发起请求）。
-     */
     public record Result(boolean canCompleteAll, List<BigItemStack> missing, List<BigItemStack> usedFromStock,
-                         List<List<NetworkBigItemStack>> usedFromStockPerTemplate, boolean anyChainBroken) {
+                         List<List<NetworkBigItemStack>> usedFromStockPerTemplate, boolean anyChainBroken,
+                         List<List<WorkWarehouseTemplateSnapshot.PanelSnapshot>> snapshotPerTemplate) {
     }
 
-    /**
-     * 库存快照的键：同时区分物流网络与物品种类（含数据组件），
-     * 不同网络的同名物品不会被当作同一份库存处理。
-     */
     private record StockKey(UUID network, ItemStack sample) {
         @Override
         public boolean equals(Object obj) {
@@ -103,10 +100,6 @@ public final class TemplateMaterialCalculator {
         }
     }
 
-    /**
-     * 汇总列表（缺少材料 / 现有材料）的键：只按物品种类（含数据组件）区分，
-     * 不区分物流网络，因为展示给玩家看的是"这个物品一共缺/一共用了多少"。
-     */
     private record ItemOnlyKey(ItemStack sample) {
         @Override
         public boolean equals(Object obj) {
@@ -147,25 +140,27 @@ public final class TemplateMaterialCalculator {
         }
     }
 
-    /**
-     * @param level          用于解析模板链上各仪表的世界
-     * @param primaryNetwork 普通物品请求所属的物流网络（即发起这次请求的
-     *                       仓储管理员自身所在的网络），模板各自的网络仍然
-     *                       各自使用自己 TemplatePanelBehaviour/FactoryPanelBehaviour
-     *                       上记录的 network 字段，不受这个参数影响。
-     * @param entries        按原始请求栏顺序排列的模板与普通物品混合列表
-     */
+    private record ConsumerLink(TemplatePanelPosition consumer, int amountPerConsumerBatch) {
+    }
+
+    private static final class NodeData {
+        boolean template;
+        UUID network;
+        ItemStack filter;
+        int recipeOutput;
+        boolean demandMode;
+        List<ItemStack> craftingArrangement;
+        String address;
+        List<TemplatePanelConnection> ownConnections;
+    }
+
     public static Result calculate(Level level, UUID primaryNetwork, List<RequestEntry> entries) {
         Map<StockKey, Integer> stockCache = new HashMap<>();
         Map<ItemOnlyKey, Accumulator> usedAggTotal = new LinkedHashMap<>();
         Map<ItemOnlyKey, Accumulator> missingAgg = new LinkedHashMap<>();
         List<List<NetworkBigItemStack>> perTemplate = new ArrayList<>();
+        List<List<WorkWarehouseTemplateSnapshot.PanelSnapshot>> snapshotPerTemplate = new ArrayList<>();
 
-        // 第一阶段：普通物品请求视为"已经确定要实际发出"的消耗，无条件优先从
-        // 共享库存池里扣除，不管它在请求栏里排在模板前面还是后面。这样才能
-        // 保证模板接下来计算需求时，看到的是"刨掉普通请求之后真正还剩多少"，
-        // 不会出现模板抢先把库存预订走、导致普通请求反而落空的情况，也不会
-        // 出现两边重复认领同一份库存的情况。
         for (RequestEntry entry : entries) {
             if (entry.isTemplate()) {
                 continue;
@@ -180,8 +175,6 @@ public final class TemplateMaterialCalculator {
                     stockCache, usedAggTotal);
         }
 
-        // 第二阶段：按模板在请求栏里的原始相对顺序，依次用第一阶段扣减后
-        // 剩余的库存计算每个模板的需求，模板之间依然遵循"先到先得"。
         boolean anyChainBroken = false;
         for (RequestEntry entry : entries) {
             if (!entry.isTemplate()) {
@@ -190,22 +183,17 @@ public final class TemplateMaterialCalculator {
             OrderedTemplate order = entry.template();
             Map<ItemOnlyKey, Accumulator> usedAggThis = new LinkedHashMap<>();
             Map<StockKey, NetworkAccumulator> usedAggThisByNetwork = new LinkedHashMap<>();
+            List<WorkWarehouseTemplateSnapshot.PanelSnapshot> snapshotThis = new ArrayList<>();
 
             if (order.amount() > 0) {
                 TemplateOrderTarget target = order.target();
                 TemplatePanelBehaviour root = TemplatePanelBehaviour.at(level, target.position());
                 if (root == null || !root.validTemplateChain) {
-                    // 链已经失效（仪表被拆除、区块卸载、连接/地址被清空等）。
-                    // 保底处理为"这条模板整体视为缺失"，同时标记 anyChainBroken，
-                    // 供材料窗口检测到后立即退回仓管界面并清空请求栏。
                     addTo(missingAgg, target.display(), order.amount());
                     anyChainBroken = true;
                 } else {
-                    int firings = Mth.positiveCeilDiv(order.amount(), Math.max(1, root.recipeOutput));
-                    for (TemplatePanelConnection connection : root.targetedBy.values()) {
-                        int demand = firings * connection.amount;
-                        processUpstream(level, connection.from, demand, stockCache, usedAggThis, usedAggThisByNetwork, missingAgg);
-                    }
+                    buildSnapshotForTemplate(level, target.position(), order.amount(), stockCache,
+                            usedAggThis, usedAggThisByNetwork, missingAgg, snapshotThis);
                 }
             }
 
@@ -213,77 +201,227 @@ public final class TemplateMaterialCalculator {
                 addTo(usedAggTotal, acc.sample, acc.count);
             }
             perTemplate.add(toNetworkList(usedAggThisByNetwork));
+            snapshotPerTemplate.add(snapshotThis);
         }
 
         List<BigItemStack> missing = toList(missingAgg);
         List<BigItemStack> usedFromStock = toList(usedAggTotal);
-        return new Result(missing.isEmpty(), missing, usedFromStock, perTemplate, anyChainBroken);
+        return new Result(missing.isEmpty(), missing, usedFromStock, perTemplate, anyChainBroken, snapshotPerTemplate);
     }
 
-    private static int queryNetworkStock(UUID network, ItemStack item) {
-        return LogisticsManager.getSummaryOfNetwork(network, false).getCountOf(item);
-    }
+    private static void buildSnapshotForTemplate(Level level, TemplatePanelPosition rootPos, int requestedAmount,
+                                                 Map<StockKey, Integer> stockCache,
+                                                 Map<ItemOnlyKey, Accumulator> usedAgg,
+                                                 Map<StockKey, NetworkAccumulator> usedAggByNetwork,
+                                                 Map<ItemOnlyKey, Accumulator> missingAgg,
+                                                 List<WorkWarehouseTemplateSnapshot.PanelSnapshot> snapshotOut) {
+        Map<TemplatePanelPosition, NodeData> discovered = new LinkedHashMap<>();
+        Map<TemplatePanelPosition, List<ConsumerLink>> consumersOf = new LinkedHashMap<>();
 
-    private static void processUpstream(Level level, TemplatePanelPosition pos, int demand,
-                                        Map<StockKey, Integer> stockCache,
-                                        Map<ItemOnlyKey, Accumulator> usedAgg,
-                                        Map<StockKey, NetworkAccumulator> usedAggByNetwork,
-                                        Map<ItemOnlyKey, Accumulator> missingAgg) {
-        if (demand <= 0) {
+        NodeData rootData = resolveNode(level, rootPos);
+        if (rootData == null) {
             return;
         }
-        if (!level.isLoaded(pos.pos())) {
+        discovered.put(rootPos, rootData);
+        for (TemplatePanelConnection conn : rootData.ownConnections) {
+            discoverUpstream(level, conn.from, rootPos, conn.amount, discovered, consumersOf);
+        }
+
+        Map<TemplatePanelPosition, Integer> pendingConsumers = new HashMap<>();
+        for (Map.Entry<TemplatePanelPosition, List<ConsumerLink>> e : consumersOf.entrySet()) {
+            pendingConsumers.put(e.getKey(), e.getValue().size());
+        }
+        Map<TemplatePanelPosition, Integer> batchesOf = new HashMap<>();
+        Map<TemplatePanelPosition, Integer> satisfiedOf = new HashMap<>();
+        List<TemplatePanelPosition> forwardOrder = new ArrayList<>();
+
+        ArrayDeque<TemplatePanelPosition> queue = new ArrayDeque<>();
+        Set<TemplatePanelPosition> enqueued = new HashSet<>();
+        queue.add(rootPos);
+        enqueued.add(rootPos);
+
+        while (!queue.isEmpty()) {
+            TemplatePanelPosition pos = queue.poll();
+            forwardOrder.add(pos);
+            NodeData data = discovered.get(pos);
+
+            int demand = pos.equals(rootPos) ? requestedAmount : sumConsumerDemand(pos, consumersOf, batchesOf);
+
+            if (data == null) {
+                batchesOf.put(pos, 0);
+                satisfiedOf.put(pos, 0);
+            } else {
+                int deficit;
+                int satisfied;
+                if (pos.equals(rootPos)) {
+                    deficit = demand;
+                    satisfied = 0;
+                } else {
+                    deficit = consumeStock(data.network, data.filter, demand,
+                            () -> queryNetworkStock(data.network, data.filter), stockCache, usedAgg);
+                    satisfied = demand - deficit;
+                    if (satisfied > 0) {
+                        addToNetwork(usedAggByNetwork, data.network, data.filter, satisfied);
+                    }
+                }
+                int batches = deficit <= 0 ? 0 : Mth.positiveCeilDiv(deficit, Math.max(1, data.recipeOutput));
+                if (!data.template) {
+                    // 普通仪表是叶子节点，没有上游可以继续追溯，缺口就是真的
+                    // 缺材料，必须无条件记入"缺少材料"，这里之前漏掉了。
+                    if (deficit > 0) {
+                        addTo(missingAgg, data.filter, deficit);
+                    }
+                } else if (batches > 0 && data.ownConnections.isEmpty()) {
+                    // 理论上不会发生（validTemplateChain 已经保证模板节点必有上游），
+                    // 防御性地记为缺失，不让计算结果凭空产生一个无法满足的批次。
+                    addTo(missingAgg, data.filter, deficit);
+                }
+                batchesOf.put(pos, batches);
+                satisfiedOf.put(pos, satisfied);
+            }
+
+            if (data != null && data.template) {
+                for (TemplatePanelConnection conn : data.ownConnections) {
+                    int remaining = pendingConsumers.merge(conn.from, -1, Integer::sum);
+                    if (remaining <= 0 && enqueued.add(conn.from)) {
+                        queue.add(conn.from);
+                    }
+                }
+            }
+        }
+
+        List<TemplatePanelPosition> reverseOrder = new ArrayList<>(forwardOrder);
+        Collections.reverse(reverseOrder);
+
+        Map<TemplatePanelPosition, WorkWarehouseTemplateSnapshot.PanelState> stateOf = new HashMap<>();
+        Map<TemplatePanelPosition, Integer> indexOf = new HashMap<>();
+
+        for (TemplatePanelPosition pos : reverseOrder) {
+            NodeData data = discovered.get(pos);
+            int batches = batchesOf.getOrDefault(pos, 0);
+
+            WorkWarehouseTemplateSnapshot.PanelState state;
+            if (data == null || !data.template || batches <= 0) {
+                state = WorkWarehouseTemplateSnapshot.PanelState.COMPLETED;
+            } else {
+                boolean allUpstreamComplete = !data.ownConnections.isEmpty();
+                for (TemplatePanelConnection conn : data.ownConnections) {
+                    if (stateOf.get(conn.from) != WorkWarehouseTemplateSnapshot.PanelState.COMPLETED) {
+                        allUpstreamComplete = false;
+                        break;
+                    }
+                }
+                state = allUpstreamComplete
+                        ? WorkWarehouseTemplateSnapshot.PanelState.WAITING_MATERIALS
+                        : WorkWarehouseTemplateSnapshot.PanelState.IDLE;
+            }
+            stateOf.put(pos, state);
+
+            List<WorkWarehouseTemplateSnapshot.IngredientEntry> ingredientEntries = new ArrayList<>();
+            if (data != null) {
+                for (TemplatePanelConnection conn : data.ownConnections) {
+                    Integer childIndex = indexOf.get(conn.from);
+                    if (childIndex == null) {
+                        continue;
+                    }
+                    ItemStack childFilter = snapshotOut.get(childIndex).filterItem();
+                    ingredientEntries.add(new WorkWarehouseTemplateSnapshot.IngredientEntry(
+                            childFilter.copy(), conn.amount, childIndex));
+                }
+            }
+
+            int satisfied = satisfiedOf.getOrDefault(pos, 0);
+            int recipeOutput = data != null ? data.recipeOutput : 1;
+            int expectedOutputTotal = pos.equals(rootPos)
+                    ? batches * recipeOutput
+                    : satisfied + batches * recipeOutput;
+
+            snapshotOut.add(new WorkWarehouseTemplateSnapshot.PanelSnapshot(
+                    data != null ? data.network : UUID.randomUUID(),
+                    data != null ? data.filter.copy() : ItemStack.EMPTY,
+                    data != null && data.template,
+                    recipeOutput,
+                    ingredientEntries,
+                    data != null && data.demandMode,
+                    data != null ? data.craftingArrangement : List.of(),
+                    data != null ? data.address : "",
+                    batches, state, expectedOutputTotal));
+            indexOf.put(pos, snapshotOut.size() - 1);
+        }
+    }
+
+    private static int sumConsumerDemand(TemplatePanelPosition pos,
+                                         Map<TemplatePanelPosition, List<ConsumerLink>> consumersOf,
+                                         Map<TemplatePanelPosition, Integer> batchesOf) {
+        int total = 0;
+        for (ConsumerLink link : consumersOf.getOrDefault(pos, List.of())) {
+            Integer consumerBatches = batchesOf.get(link.consumer());
+            total += link.amountPerConsumerBatch() * (consumerBatches != null ? consumerBatches : 0);
+        }
+        return total;
+    }
+
+    private static void discoverUpstream(Level level, TemplatePanelPosition pos, TemplatePanelPosition consumerPos,
+                                         int amount, Map<TemplatePanelPosition, NodeData> discovered,
+                                         Map<TemplatePanelPosition, List<ConsumerLink>> consumersOf) {
+        consumersOf.computeIfAbsent(pos, k -> new ArrayList<>()).add(new ConsumerLink(consumerPos, amount));
+        if (discovered.containsKey(pos)) {
             return;
+        }
+        NodeData data = resolveNode(level, pos);
+        discovered.put(pos, data);
+        if (data != null && data.template) {
+            for (TemplatePanelConnection conn : data.ownConnections) {
+                discoverUpstream(level, conn.from, pos, conn.amount, discovered, consumersOf);
+            }
+        }
+    }
+
+    private static NodeData resolveNode(Level level, TemplatePanelPosition pos) {
+        if (!level.isLoaded(pos.pos())) {
+            return null;
         }
         BlockEntity be = level.getBlockEntity(pos.pos());
         if (be instanceof TemplatePanelBlockEntity tpbe) {
             TemplatePanelBehaviour node = tpbe.panels.get(pos.slot());
             if (node == null || !node.isActive() || node.getFilter().isEmpty()
                     || node.recipeAddress == null || node.recipeAddress.isEmpty()) {
-                return;
+                return null;
             }
-            int deficit = consumeStock(node.network, node.getFilter(), demand, () -> node.getLevelInStorage(),
-                    stockCache, usedAgg);
-            int satisfied = demand - deficit;
-            if (satisfied > 0) {
-                addToNetwork(usedAggByNetwork, node.network, node.getFilter(), satisfied);
-            }
-            if (deficit <= 0) {
-                return;
-            }
-            if (node.targetedBy.isEmpty()) {
-                addTo(missingAgg, node.getFilter(), deficit);
-                return;
-            }
-            int firings = Mth.positiveCeilDiv(deficit, Math.max(1, node.recipeOutput));
-            for (TemplatePanelConnection connection : node.targetedBy.values()) {
-                int nextDemand = firings * connection.amount;
-                processUpstream(level, connection.from, nextDemand, stockCache, usedAgg, usedAggByNetwork, missingAgg);
-            }
+            NodeData data = new NodeData();
+            data.template = true;
+            data.network = node.network;
+            data.filter = node.getFilter().copy();
+            data.recipeOutput = node.recipeOutput;
+            data.demandMode = node.demandMode;
+            data.craftingArrangement = List.copyOf(node.activeCraftingArrangement);
+            data.address = node.recipeAddress;
+            data.ownConnections = new ArrayList<>(node.targetedBy.values());
+            return data;
         } else if (be instanceof FactoryPanelBlockEntity fpbe) {
             FactoryPanelBlock.PanelSlot vanillaSlot = FactoryPanelBlock.PanelSlot.valueOf(pos.slot().name());
             FactoryPanelBehaviour node = fpbe.panels.get(vanillaSlot);
             if (node == null || !node.isActive() || node.getFilter().isEmpty()) {
-                return;
+                return null;
             }
-            int deficit = consumeStock(node.network, node.getFilter(), demand, node::getLevelInStorage,
-                    stockCache, usedAgg);
-            int satisfied = demand - deficit;
-            if (satisfied > 0) {
-                addToNetwork(usedAggByNetwork, node.network, node.getFilter(), satisfied);
-            }
-            if (deficit > 0) {
-                addTo(missingAgg, node.getFilter(), deficit);
-            }
+            NodeData data = new NodeData();
+            data.template = false;
+            data.network = node.network;
+            data.filter = node.getFilter().copy();
+            data.recipeOutput = node.recipeOutput;
+            data.demandMode = ((IFactoryPanelBehaviourDemandMode) node).createimp$isDemandMode();
+            data.craftingArrangement = List.copyOf(node.activeCraftingArrangement);
+            data.address = node.recipeAddress;
+            data.ownConnections = List.of();
+            return data;
         }
+        return null;
     }
 
-    /**
-     * 用共享的库存快照缓存尝试满足一份需求，返回仍未满足的部分（deficit）。
-     * 首次遇到某个 (网络, 物品) 组合时才会真正查询网络库存，之后复用缓存里递减后的余量。
-     * 注意：stockCache 在整个 calculate() 调用范围内共享、按请求栏原始顺序递减，
-     * 模板和普通物品请求都从同一份缓存里扣减，谁在前面谁先拿。
-     */
+    private static int queryNetworkStock(UUID network, ItemStack item) {
+        return LogisticsManager.getSummaryOfNetwork(network, false).getCountOf(item);
+    }
+
     private static int consumeStock(UUID network, ItemStack filter, int demand,
                                     java.util.function.IntSupplier freshValueSupplier,
                                     Map<StockKey, Integer> stockCache,

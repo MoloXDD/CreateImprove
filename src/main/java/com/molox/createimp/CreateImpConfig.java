@@ -22,6 +22,9 @@ public class CreateImpConfig implements ConfigData {
     @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
     public BatchMechanicalCrafterConfig batchMechanicalCrafterConfig = new BatchMechanicalCrafterConfig();
 
+    @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
+    public WorkWarehouseConfig workWarehouseConfig = new WorkWarehouseConfig();
+
     public static class BrassScrapBucket {
         public int itemsPerNugget = 64;
         public int mbPerNugget = 2000;
@@ -47,5 +50,9 @@ public class CreateImpConfig implements ConfigData {
     public static class BatchMechanicalCrafterConfig {
         public int maxSpeedStressImpact = 2048;
         public boolean showItemCount = true;
+    }
+
+    public static class WorkWarehouseConfig {
+        public String backToConnectedInventoryAddress = "/back";
     }
 }
