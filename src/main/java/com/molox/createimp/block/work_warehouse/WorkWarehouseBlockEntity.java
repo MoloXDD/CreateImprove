@@ -99,6 +99,12 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
     private List<WorkWarehouseTemplateSnapshot.InTransitEntry> inTransitList = new ArrayList<>();
 
     /**
+     * 已经通过 {@link #announceProducerCompletions()} 记录过"产物生产完成"
+     * 日志的生产节点下标集合，避免同一个节点被重复通报。只在服务端持久化。
+     */
+    private final Set<Integer> producerCompletionAnnounced = new HashSet<>();
+
+    /**
      * 生产阶段专用："虚拟末端需求"（等待根节点自身产出物返回仓库）是否已经
      * 登记过。用于区分"还没登记"与"登记后已经被满足清空"这两种情况——两者
      * 都会表现为需求列表里找不到 owner 为 OWNER_FINAL_PRODUCT 的条目。
@@ -117,6 +123,210 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
      */
     private ItemStack requestedProduct = ItemStack.EMPTY;
     private int requestedAmount = 0;
+
+    /**
+     * 本次工作在 {@link #activate} 时刻记录的世界时间（{@code level.getGameTime()}），
+     * 供进程面板界面计算并展示"经过时间"。每次重新激活都会覆盖为新的时间点。
+     * 会同步给客户端。
+     */
+    private long activationGameTime = 0;
+
+    public long getActivationGameTime() {
+        return activationGameTime;
+    }
+
+    /**
+     * 本次工作从激活到当前发生过的全部事件日志，只在服务端持久化。
+     * 每条日志都存了记录那一刻相对 {@link #activationGameTime} 的经过 tick 数，
+     * 供以后做"日志详情"界面时使用；{@link #resetToIdle()} 回到空闲状态时
+     * 会被整体清空。
+     */
+    private final List<WorkWarehouseTemplateSnapshot.LogEntry> logEntries = new ArrayList<>();
+
+    /**
+     * 最新一条日志的翻译键、参数与经过时间，专门拆出来单独同步给客户端
+     * （不像 {@link #logEntries} 那样只在服务端持久化），供进程面板界面
+     * 展示"最新日志"这一行使用，避免把完整日志列表也一起同步造成不必要
+     * 的网络开销。
+     */
+    private String latestLogKey = "";
+    private List<WorkWarehouseTemplateSnapshot.LogArg> latestLogArgs = new ArrayList<>();
+    private long latestLogElapsedTicks = 0;
+
+    public List<WorkWarehouseTemplateSnapshot.LogEntry> getLogEntries() {
+        return java.util.Collections.unmodifiableList(logEntries);
+    }
+
+    /**
+     * 按调用方（客户端界面调用时就是那个客户端自己）当前选择的语言，
+     * 把最新一条日志的翻译键+参数解析成最终要显示的文字。
+     */
+    public String getLatestLogMessage() {
+        return new WorkWarehouseTemplateSnapshot.LogEntry(latestLogElapsedTicks, latestLogKey, latestLogArgs)
+                .resolveMessage();
+    }
+
+    public long getLatestLogElapsedTicks() {
+        return latestLogElapsedTicks;
+    }
+
+    /**
+     * 记录一条事件日志：计算当前相对激活时刻的经过 tick 数，追加进
+     * {@link #logEntries}，同时更新同步给客户端的"最新一条日志"字段。
+     * {@code key} 是语言文件里的翻译键，{@code args} 是代入其中 {@code %s}
+     * 占位符的参数——不管是物品名字还是措辞文字，都不在这里直接拼成中文
+     * 字符串存死，而是等界面渲染那一刻，由渲染它的客户端自己的语言解析，
+     * 这样同一条日志在不同语言的客户端上会显示成对应的语言。
+     */
+    private void addLog(String key, WorkWarehouseTemplateSnapshot.LogArg... args) {
+        if (level == null || level.isClientSide()) {
+            return;
+        }
+        long elapsed = Math.max(0, level.getGameTime() - activationGameTime);
+        List<WorkWarehouseTemplateSnapshot.LogArg> argList = List.of(args);
+        logEntries.add(new WorkWarehouseTemplateSnapshot.LogEntry(elapsed, key, argList));
+        latestLogKey = key;
+        latestLogArgs = argList;
+        latestLogElapsedTicks = elapsed;
+        setChanged();
+        notifyUpdate();
+    }
+
+    private static WorkWarehouseTemplateSnapshot.LogArg itemArg(ItemStack item, int amount) {
+        return WorkWarehouseTemplateSnapshot.LogArg.items(
+                List.of(new WorkWarehouseTemplateSnapshot.LogArg.ItemCount(item, amount)));
+    }
+
+    /**
+     * 把同一种物品（按 {@link ItemStack#isSameItemSameComponents}）的数量
+     * 合并到一起，用于日志内容展示——同一次事件里同一种物品可能因为分批
+     * 提取/请求而拆成多个 {@code ItemStack}，日志里应该显示合并后的总量。
+     */
+    private static List<ItemStack> mergeItems(List<ItemStack> items) {
+        List<ItemStack> merged = new ArrayList<>();
+        for (ItemStack item : items) {
+            if (item.isEmpty()) {
+                continue;
+            }
+            boolean found = false;
+            for (int i = 0; i < merged.size(); i++) {
+                if (ItemStack.isSameItemSameComponents(merged.get(i), item)) {
+                    merged.set(i, merged.get(i).copyWithCount(merged.get(i).getCount() + item.getCount()));
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                merged.add(item.copy());
+            }
+        }
+        return merged;
+    }
+
+    private static WorkWarehouseTemplateSnapshot.LogArg itemsArg(List<ItemStack> items) {
+        List<WorkWarehouseTemplateSnapshot.LogArg.ItemCount> counts = new ArrayList<>();
+        for (ItemStack item : items) {
+            if (!item.isEmpty()) {
+                counts.add(new WorkWarehouseTemplateSnapshot.LogArg.ItemCount(item, item.getCount()));
+            }
+        }
+        return WorkWarehouseTemplateSnapshot.LogArg.items(counts);
+    }
+
+    private static WorkWarehouseTemplateSnapshot.LogArg demandEntriesArg(
+            List<WorkWarehouseTemplateSnapshot.DemandEntry> entries) {
+        List<ItemStack> items = new ArrayList<>();
+        for (WorkWarehouseTemplateSnapshot.DemandEntry entry : entries) {
+            items.add(entry.item().copyWithCount(entry.amount()));
+        }
+        return itemsArg(mergeItems(items));
+    }
+
+    private List<ItemStack> currentStorageContents() {
+        List<ItemStack> items = new ArrayList<>();
+        for (int i = 0; i < storage.getSlots(); i++) {
+            ItemStack s = storage.getStackInSlot(i);
+            if (!s.isEmpty()) {
+                items.add(s.copy());
+            }
+        }
+        return mergeItems(items);
+    }
+
+    /**
+     * 生产阶段/最终产物阶段共用的"哪个环节"措辞翻译键：原料请求阶段是
+     * "原料"，生产阶段是"产物"，代入"从连接储存/打包机/物流网络接收%s"
+     * 这类模板的第一个参数。
+     */
+    private WorkWarehouseTemplateSnapshot.LogArg materialOrProductLabelArg() {
+        return WorkWarehouseTemplateSnapshot.LogArg.key(stage == WorkStage.PRODUCTION
+                ? "createimp.log.label_product" : "createimp.log.label_material");
+    }
+
+    /**
+     * 目标地址在日志里的呈现：如果这个地址正好是配置里的"返回连接库存"
+     * 专用地址，就显示成翻译后的"连接储存/连接库存"这类 UI 词汇，否则
+     * 原样显示玩家自己设置的地址字符串（不需要翻译）。
+     */
+    private WorkWarehouseTemplateSnapshot.LogArg addressArg(String address, String connectedStorageKey) {
+        String backAddr = backToConnectedInventoryAddress();
+        if (!backAddr.isBlank() && backAddr.equals(address)) {
+            return WorkWarehouseTemplateSnapshot.LogArg.key(connectedStorageKey);
+        }
+        return WorkWarehouseTemplateSnapshot.LogArg.text(address);
+    }
+
+    /**
+     * 快照列表里，每个已经登记过产出需求（即已经变为 COMPLETED，或者材料
+     * 计算阶段就已经被现有库存直接满足）的生产节点，一旦它自己登记出去的
+     * 全部产出需求条目（{@link WorkWarehouseTemplateSnapshot.DemandEntry#sourceProducerIndex()}
+     * 等于该节点下标）都从需求列表里清空，就代表这个节点的产出物已经
+     * 全部到达仓库——包括根节点自己（对应的是"虚拟末端需求"清空，也就是
+     * 整次生产彻底完成的那一刻），每个节点只会被记录一次。
+     */
+    private void announceProducerCompletions() {
+        Set<Integer> remainingProducers = new HashSet<>();
+        for (WorkWarehouseTemplateSnapshot.DemandEntry entry : demandList) {
+            if (entry.sourceProducerIndex() >= 0) {
+                remainingProducers.add(entry.sourceProducerIndex());
+            }
+        }
+        for (int i = 0; i < templateSnapshot.size(); i++) {
+            WorkWarehouseTemplateSnapshot.PanelSnapshot node = templateSnapshot.get(i);
+            if (node.state() != WorkWarehouseTemplateSnapshot.PanelState.COMPLETED) {
+                continue;
+            }
+            if (remainingProducers.contains(i) || producerCompletionAnnounced.contains(i)) {
+                continue;
+            }
+            // 叶子节点（普通仪表，不是模板仪表）本身不生产任何东西，只是原料
+            // 来源，不需要"生产完成"这条日志；最开始材料计算阶段就已经被
+            // 现有库存直接满足的模板仪表（requiredBatches 为 0，从来没有真正
+            // 走过 completeNode 的寄出流程）同样不需要——它没有"开始生产"，
+            // 也就谈不上"生产完成"。这两种情况都直接标记为已通报，跳过日志。
+            producerCompletionAnnounced.add(i);
+            if (!node.templatePanel() || node.requiredBatches() == 0) {
+                continue;
+            }
+            addLog("createimp.log.node_production_complete",
+                    itemArg(node.filterItem(), node.expectedOutputTotal()));
+        }
+    }
+
+    /**
+     * 整次生产彻底完成的共用处理：{@link #registerFinalDemand} 里虚拟末端
+     * 需求数量为 0 的特殊分支，和 {@link #reconcileDemandList()} 里需求列表
+     * 正常清空的分支，都会走到这里，避免两处各自重复写一遍同样的三条日志。
+     */
+    private void markProductionComplete() {
+        productionComplete = true;
+        setChanged();
+        notifyUpdate();
+        addLog("createimp.log.all_production_complete");
+        addLog("createimp.log.all_products", itemsArg(currentStorageContents()));
+        addLog("createimp.log.enter_production_complete");
+        attemptFinalShipment();
+    }
 
     public WorkWarehouseBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState state) {
         super(type, pos, state);
@@ -169,6 +379,7 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
             return;
         }
         setTargetAddress(targetAddress);
+        activationGameTime = level.getGameTime();
         setWorking(true);
         if (level instanceof ServerLevel serverLevel) {
             Vec3 center = Vec3.atCenterOf(worldPosition);
@@ -185,8 +396,11 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         if (level == null || level.isClientSide()) {
             return;
         }
-        CreateImp.LOGGER.info("[WorkWarehouse {}] 进入原料请求阶段，初始需求列表: {}", worldPosition,
-                demandList.stream().map(e -> e.item().getItem() + " x" + e.amount() + "(owner=" + e.ownerNode() + ")").toList());
+        addLog("createimp.log.request_sent",
+                itemArg(requestedProduct, requestedAmount),
+                addressArg(targetAddress, "createimp.log.connected_storage_short"));
+        addLog("createimp.log.enter_requesting_materials");
+        addLog("createimp.log.waiting_materials", demandEntriesArg(demandList));
         monitorConnectedInventory();
         requestRemainingDemandFromNetwork();
         reconcileDemandList();
@@ -206,6 +420,7 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
             return;
         }
         List<WorkWarehouseTemplateSnapshot.DemandEntry> updated = new ArrayList<>();
+        List<ItemStack> transferred = new ArrayList<>();
         boolean changed = false;
         for (WorkWarehouseTemplateSnapshot.DemandEntry entry : demandList) {
             ItemStack toMatch = entry.item();
@@ -218,17 +433,17 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
             changed = true;
             ItemHandlerHelper.insertItemStacked(storage, extracted, false);
             decrementInTransit(extracted.copy());
+            transferred.add(extracted.copy());
             int remaining = entry.amount() - extracted.getCount();
-            CreateImp.LOGGER.info("[WorkWarehouse {}] 连接库存转移: {} x{} -> 仓库内部存储 (owner={}, 该条需求剩余 {})",
-                    worldPosition, extracted.getItem(), extracted.getCount(), entry.ownerNode(), Math.max(remaining, 0));
             if (remaining > 0) {
-                updated.add(new WorkWarehouseTemplateSnapshot.DemandEntry(entry.network(), entry.item(), remaining, entry.ownerNode()));
+                updated.add(new WorkWarehouseTemplateSnapshot.DemandEntry(entry.network(), entry.item(), remaining,
+                        entry.ownerNode(), entry.sourceProducerIndex()));
             }
         }
         if (changed) {
             demandList = updated;
             setChanged();
-            logStorageSnapshot("连接库存转移后");
+            addLog("createimp.log.received_from_storage", materialOrProductLabelArg(), itemsArg(mergeItems(transferred)));
             reconcileDemandList();
         }
     }
@@ -269,13 +484,13 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
             if (shortfall <= 0) {
                 continue;
             }
-            CreateImp.LOGGER.info("[WorkWarehouse {}] 需求列表条目 owner={} 物品 {} 还缺 {}（需求 {} - 在途 {}），准备向网络 {} 发起请求",
-                    worldPosition, entry.ownerNode(), entry.item().getItem(), shortfall, entry.amount(), inTransit, entry.network());
             shortfallByNetwork.computeIfAbsent(entry.network(), key -> new ArrayList<>())
-                    .add(new WorkWarehouseTemplateSnapshot.DemandEntry(entry.network(), entry.item(), shortfall, entry.ownerNode()));
+                    .add(new WorkWarehouseTemplateSnapshot.DemandEntry(entry.network(), entry.item(), shortfall,
+                            entry.ownerNode(), entry.sourceProducerIndex()));
         }
 
         boolean changed = false;
+        List<ItemStack> requested = new ArrayList<>();
         for (Map.Entry<UUID, List<WorkWarehouseTemplateSnapshot.DemandEntry>> networkGroup : shortfallByNetwork.entrySet()) {
             UUID network = networkGroup.getKey();
             List<BigItemStack> stacks = new ArrayList<>();
@@ -287,10 +502,6 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
                     LogisticsManager.findPackagersForRequest(network, order,
                             extractBehaviour != null ? extractBehaviour.getIdentifiedInventory() : null, address);
             if (requests.isEmpty()) {
-                for (WorkWarehouseTemplateSnapshot.DemandEntry e : networkGroup.getValue()) {
-                    CreateImp.LOGGER.info("[WorkWarehouse {}] 网络 {} 里找不到任何能提供 {} x{} 的打包机，本次请求放弃，等待下次周期性重试",
-                            worldPosition, network, e.item().getItem(), e.amount());
-                }
                 continue;
             }
             boolean tooBusy = false;
@@ -301,10 +512,6 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
                 }
             }
             if (tooBusy) {
-                for (WorkWarehouseTemplateSnapshot.DemandEntry e : networkGroup.getValue()) {
-                    CreateImp.LOGGER.info("[WorkWarehouse {}] 网络 {} 里找到的打包机暂时太忙，物品 {} x{} 本次请求放弃，等待下次周期性重试",
-                            worldPosition, network, e.item().getItem(), e.amount());
-                }
                 continue;
             }
 
@@ -321,19 +528,18 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
             for (WorkWarehouseTemplateSnapshot.DemandEntry e : networkGroup.getValue()) {
                 int matchedAmount = takeMatchAmount(matched, e.item(), e.amount());
                 if (matchedAmount <= 0) {
-                    CreateImp.LOGGER.info("[WorkWarehouse {}] 网络 {} 里没有找到任何能提供 {} x{} 的库存（本批里其他物品可能找到了，但这一种没有），本次请求放弃，等待下次周期性重试",
-                            worldPosition, network, e.item().getItem(), e.amount());
                     continue;
                 }
                 addInTransit(e.network(), e.item(), matchedAmount, e.ownerNode());
                 changed = true;
-                CreateImp.LOGGER.info("[WorkWarehouse {}] 向网络 {} 请求打包成功: {} x{} -> 仓库地址 \"{}\"{}",
-                        worldPosition, network, e.item().getItem(), matchedAmount, address,
-                        matchedAmount < e.amount() ? "（只匹配到部分数量，剩余 " + (e.amount() - matchedAmount) + " 等待下次重试）" : "");
+                requested.add(e.item().copyWithCount(matchedAmount));
             }
         }
         if (changed) {
             setChanged();
+            addLog("createimp.log.requested_from_network",
+                    materialOrProductLabelArg(), itemsArg(mergeItems(requested)),
+                    WorkWarehouseTemplateSnapshot.LogArg.text(address));
         }
     }
 
@@ -394,7 +600,8 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
                 toConsume -= consumed;
                 int remaining = entry.amount() - consumed;
                 working.set(i, remaining > 0
-                        ? new WorkWarehouseTemplateSnapshot.DemandEntry(entry.network(), entry.item(), remaining, entry.ownerNode())
+                        ? new WorkWarehouseTemplateSnapshot.DemandEntry(entry.network(), entry.item(), remaining,
+                        entry.ownerNode(), entry.sourceProducerIndex())
                         : null);
             }
             int consumedTotal = originalCount - toConsume;
@@ -405,8 +612,7 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         working.removeIf(java.util.Objects::isNull);
         demandList = working;
         setChanged();
-        CreateImp.LOGGER.info("[WorkWarehouse {}] 打包机解包/包裹接收，本次消耗物品: {}",
-                worldPosition, items.stream().map(i -> i.getItem() + " x" + i.getCount()).toList());
+        addLog("createimp.log.received_from_packager", materialOrProductLabelArg(), itemsArg(mergeItems(items)));
         // 注意：这里不能同步调用 reconcileDemandList()。这个方法是从
         // WorkWarehouseUnpackingHandler.unpack() 被调用的，而 unpack() 本身
         // 又是在 PackagerBlockEntity.unwrapBox() 内部、"入库动画相关字段
@@ -420,24 +626,6 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         // 因此这里只标记"待处理"，真正的 reconcileDemandList 推迟到下一个
         // tick（彻底跳出 unwrapBox 调用栈之后）再执行。
         pendingReconcile = true;
-    }
-
-    /**
-     * 打印仓库内部存储当前真实的物理内容快照（按物品种类合并计数），用于
-     * 在几个关键节点核对"物理上到底有多少"和"账面需求认为已经到了多少"
-     * 是否一致，方便排查类似"同一批库存被重复认领"这种账面与实物对不上
-     * 的问题。
-     */
-    private void logStorageSnapshot(String context) {
-        Map<String, Integer> counts = new LinkedHashMap<>();
-        for (int i = 0; i < storage.getSlots(); i++) {
-            ItemStack s = storage.getStackInSlot(i);
-            if (s.isEmpty()) {
-                continue;
-            }
-            counts.merge(s.getItem().toString(), s.getCount(), Integer::sum);
-        }
-        CreateImp.LOGGER.info("[WorkWarehouse {}] [仓库存储快照:{}] {}", worldPosition, context, counts);
     }
 
     /**
@@ -462,7 +650,6 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         if (demandList.isEmpty()) {
             return;
         }
-        logStorageSnapshot("settleFromOwnStorage 结算前");
         WorkWarehouseItemStackHandler scratch = storage.copy();
         List<WorkWarehouseTemplateSnapshot.DemandEntry> updated = new ArrayList<>();
         boolean changed = false;
@@ -473,10 +660,9 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
                 extractExact(scratch, entry.item(), claim);
                 changed = true;
                 int remaining = entry.amount() - claim;
-                CreateImp.LOGGER.info("[WorkWarehouse {}] 仓库自身现有库存直接认领: owner={} 物品 {} x{}（该条需求剩余 {}）",
-                        worldPosition, entry.ownerNode(), entry.item().getItem(), claim, Math.max(remaining, 0));
                 if (remaining > 0) {
-                    updated.add(new WorkWarehouseTemplateSnapshot.DemandEntry(entry.network(), entry.item(), remaining, entry.ownerNode()));
+                    updated.add(new WorkWarehouseTemplateSnapshot.DemandEntry(entry.network(), entry.item(), remaining,
+                            entry.ownerNode(), entry.sourceProducerIndex()));
                 }
             } else {
                 updated.add(entry);
@@ -575,13 +761,6 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         this.finalDemandRegistered = false;
         this.productionComplete = false;
         setChanged();
-        for (int i = 0; i < this.templateSnapshot.size(); i++) {
-            WorkWarehouseTemplateSnapshot.PanelSnapshot node = this.templateSnapshot.get(i);
-            CreateImp.LOGGER.info("[WorkWarehouse {}] 快照节点[{}]: {} 批次={} 初始状态={} 预期总产出={} 上游={}",
-                    worldPosition, i, node.filterItem().getItem(), node.requiredBatches(), node.state(),
-                    node.expectedOutputTotal(),
-                    node.ingredients().stream().map(WorkWarehouseTemplateSnapshot.IngredientEntry::sourceIndex).toList());
-        }
     }
 
     public List<WorkWarehouseTemplateSnapshot.DemandEntry> getDemandList() {
@@ -598,7 +777,8 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
             for (TemplateMaterialCalculator.NetworkBigItemStack entry : demand) {
                 this.demandList.add(new WorkWarehouseTemplateSnapshot.DemandEntry(
                         entry.network(), entry.stack().copy(), entry.count(),
-                        WorkWarehouseTemplateSnapshot.DemandEntry.OWNER_INITIAL_GATHER));
+                        WorkWarehouseTemplateSnapshot.DemandEntry.OWNER_INITIAL_GATHER,
+                        WorkWarehouseTemplateSnapshot.DemandEntry.NO_PRODUCER));
             }
         }
         setChanged();
@@ -621,7 +801,9 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         this.stage = newStage;
         setChanged();
         notifyUpdate();
-        CreateImp.LOGGER.info("[WorkWarehouse {}] 工作阶段切换: {} -> {}", worldPosition, oldStage, newStage);
+        if (newStage == WorkStage.PRODUCTION && oldStage == WorkStage.REQUESTING_MATERIALS) {
+            addLog("createimp.log.materials_arrived");
+        }
         if (newStage == WorkStage.PRODUCTION && level instanceof ServerLevel serverLevel) {
             Vec3 center = Vec3.atCenterOf(worldPosition);
             PacketDistributor.sendToPlayersNear(serverLevel, null, center.x, center.y, center.z, 32.0,
@@ -643,7 +825,6 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
      * {@link #reconcileDemandList()} 里被识别为可以进入生产。
      */
     private void beginProductionStage() {
-        logStorageSnapshot("生产阶段开始");
         for (int i = 0; i < templateSnapshot.size(); i++) {
             if (i == rootIndex()) {
                 continue;
@@ -695,10 +876,6 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
     private void registerOutputDemand(int producerIndex) {
         WorkWarehouseTemplateSnapshot.PanelSnapshot producer = templateSnapshot.get(producerIndex);
         List<int[]> consumers = findConsumersOf(producerIndex);
-        if (consumers.isEmpty()) {
-            CreateImp.LOGGER.warn("[WorkWarehouse {}] 节点[{}]({}) 找不到任何下游消费节点，快照结构异常，全部产出按副产物收集",
-                    worldPosition, producerIndex, producer.filterItem().getItem());
-        }
         int allocated = 0;
         for (int[] c : consumers) {
             int consumerIndex = c[0];
@@ -707,20 +884,14 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
                 continue;
             }
             demandList.add(new WorkWarehouseTemplateSnapshot.DemandEntry(
-                    producer.network(), producer.filterItem().copy(), qty, consumerIndex));
+                    producer.network(), producer.filterItem().copy(), qty, consumerIndex, producerIndex));
             allocated += qty;
-            CreateImp.LOGGER.info("[WorkWarehouse {}] 节点[{}]({}) 登记产出需求给节点[{}]: {} x{}",
-                    worldPosition, producerIndex, producer.filterItem().getItem(), consumerIndex,
-                    producer.filterItem().getItem(), qty);
         }
         int surplus = producer.expectedOutputTotal() - allocated;
         if (surplus > 0) {
             demandList.add(new WorkWarehouseTemplateSnapshot.DemandEntry(
                     producer.network(), producer.filterItem().copy(), surplus,
-                    WorkWarehouseTemplateSnapshot.DemandEntry.OWNER_BYPRODUCT));
-            CreateImp.LOGGER.info("[WorkWarehouse {}] 节点[{}]({}) 登记副产物收集需求: {} x{}（预计总产出{} - 消费者需求合计{}）",
-                    worldPosition, producerIndex, producer.filterItem().getItem(),
-                    producer.filterItem().getItem(), surplus, producer.expectedOutputTotal(), allocated);
+                    WorkWarehouseTemplateSnapshot.DemandEntry.OWNER_BYPRODUCT, producerIndex));
         }
         setChanged();
     }
@@ -744,8 +915,6 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         templateSnapshot.set(consumerIndex, node.withState(WorkWarehouseTemplateSnapshot.PanelState.WAITING_MATERIALS));
         setChanged();
         notifyUpdate();
-        CreateImp.LOGGER.info("[WorkWarehouse {}] 节点[{}]({}) 状态切换: IDLE -> WAITING_MATERIALS（全部上游已完成）",
-                worldPosition, consumerIndex, node.filterItem().getItem());
         // 注意：这里不再调用 settleFromOwnStorage()。如果在同一个 tick 的
         // 级联反应里（比如上游节点刚完成、触发这里的下游激活）反复调用它，
         // 每次都会用当前仓库存储的实时快照重新结算一遍需求列表——但如果
@@ -768,18 +937,12 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
     private void registerFinalDemand(WorkWarehouseTemplateSnapshot.PanelSnapshot rootNode) {
         int totalOutput = rootNode.expectedOutputTotal();
         finalDemandRegistered = true;
-        CreateImp.LOGGER.info("[WorkWarehouse {}] 根节点({}) 已完成，登记虚拟末端需求: {} x{} -> 仓库自身地址 \"{}\"",
-                worldPosition, rootNode.filterItem().getItem(), rootNode.filterItem().getItem(), totalOutput, address);
         if (totalOutput <= 0) {
-            productionComplete = true;
-            setChanged();
-            notifyUpdate();
-            CreateImp.LOGGER.info("[WorkWarehouse {}] 虚拟末端需求数量为0，生产直接判定完成", worldPosition);
-            attemptFinalShipment();
+            markProductionComplete();
             return;
         }
         demandList.add(new WorkWarehouseTemplateSnapshot.DemandEntry(rootNode.network(), rootNode.filterItem().copy(),
-                totalOutput, WorkWarehouseTemplateSnapshot.DemandEntry.OWNER_FINAL_PRODUCT));
+                totalOutput, WorkWarehouseTemplateSnapshot.DemandEntry.OWNER_FINAL_PRODUCT, rootIndex()));
         setChanged();
         // 注意：这里不再调用 settleFromOwnStorage()，原因见
         // activateConsumerIfReady 里的说明——避免同一个 tick 内对同一批
@@ -813,7 +976,6 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
      * {@link #attemptFinalShipmentBackToConnectedInventory()}。
      */
     private void attemptFinalShipment() {
-        logStorageSnapshot("尝试最终发货");
         boolean anyItem = false;
         for (int i = 0; i < storage.getSlots(); i++) {
             if (!storage.getStackInSlot(i).isEmpty()) {
@@ -822,7 +984,6 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
             }
         }
         if (!anyItem) {
-            CreateImp.LOGGER.info("[WorkWarehouse {}] 最终产物为空，直接重置为空闲状态", worldPosition);
             resetToIdle();
             return;
         }
@@ -841,16 +1002,14 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         }
         PackagerBlockEntity packager = findDispatchPackager(behaviour.freqId);
         if (packager == null) {
-            CreateImp.LOGGER.info("[WorkWarehouse {}] 生产已完成，但暂时找不到可用打包机寄出最终产物，等待下次重试", worldPosition);
             return;
         }
         for (int i = 0; i < storage.getSlots(); i++) {
             storage.setStackInSlot(i, ItemStack.EMPTY);
         }
         sendItemsSplitIntoPackages(packager, allItems, targetAddress, null, 0, "生产彻底完成后的最终产物打包发货（含副产物）");
-        CreateImp.LOGGER.info("[WorkWarehouse {}] 最终产物（含副产物）已全部寄出 -> 目标地址 \"{}\"，共 {} 种物品: {}",
-                worldPosition, targetAddress, allItems.size(),
-                allItems.stream().map(i -> i.getItem() + " x" + i.getCount()).toList());
+        addLog("createimp.log.final_shipment", itemsArg(mergeItems(allItems)),
+                addressArg(targetAddress, "createimp.log.connected_storage"));
         resetToIdle();
     }
 
@@ -865,8 +1024,6 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
      */
     private void attemptFinalShipmentBackToConnectedInventory() {
         if (extractBehaviour == null || !extractBehaviour.hasInventory()) {
-            CreateImp.LOGGER.info("[WorkWarehouse {}] 目标地址为 \"/back\" 但工作仓库当前没有连接库存，无法送回，等待接好连接库存后重试",
-                    worldPosition);
             return;
         }
         boolean allInserted = true;
@@ -887,11 +1044,10 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
             }
         }
         if (!allInserted) {
-            CreateImp.LOGGER.info("[WorkWarehouse {}] 连接库存已满，部分最终产物未能放回，保留在仓库存储里，等待下次重试", worldPosition);
             return;
         }
-        CreateImp.LOGGER.info("[WorkWarehouse {}] 最终产物（含副产物）已全部放回连接库存: {}",
-                worldPosition, insertedSummary.stream().map(i -> i.getItem() + " x" + i.getCount()).toList());
+        addLog("createimp.log.final_shipment", itemsArg(mergeItems(insertedSummary)),
+                WorkWarehouseTemplateSnapshot.LogArg.key("createimp.log.connected_storage"));
         resetToIdle();
     }
 
@@ -900,6 +1056,8 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
      * 也一并关闭，等待下一次下单重新激活。
      */
     private void resetToIdle() {
+        addLog("createimp.log.enter_idle");
+        archiveHistoryToProcessManagers();
         templateSnapshot = new ArrayList<>();
         demandList = new ArrayList<>();
         inTransitList = new ArrayList<>();
@@ -907,11 +1065,32 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         productionComplete = false;
         requestedProduct = ItemStack.EMPTY;
         requestedAmount = 0;
+        activationGameTime = 0;
+        producerCompletionAnnounced.clear();
+        logEntries.clear();
+        latestLogKey = "";
+        latestLogArgs = new ArrayList<>();
+        latestLogElapsedTicks = 0;
         setStage(WorkStage.IDLE);
         setWorking(false);
         setChanged();
         notifyUpdate();
-        CreateImp.LOGGER.info("[WorkWarehouse {}] 已重置为空闲状态，等待下一次下单", worldPosition);
+    }
+
+    /**
+     * 把这次工作的产物、请求数量、归档时刻的世界时间、以及完整日志历史，
+     * 打包发送给所在物流网络下当前所有现存的进程面板，供它们的"历史请求
+     * 日志"界面展示。发生在 {@link #logEntries} 被清空之前。
+     */
+    private void archiveHistoryToProcessManagers() {
+        if (level == null || behaviour == null || behaviour.freqId == null) {
+            return;
+        }
+        long completionTime = level.getGameTime();
+        for (com.molox.createimp.block.process_manager.ProcessManagerBlockEntity pmbe
+                : com.molox.createimp.block.process_manager.ProcessManagerNetworkHelper.findAll(behaviour.freqId, false)) {
+            pmbe.archiveHistory(requestedProduct, requestedAmount, completionTime, logEntries);
+        }
     }
 
     /**
@@ -934,6 +1113,10 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         if (stage != WorkStage.PRODUCTION || productionComplete) {
             return;
         }
+        // 先通报"上一轮已经完成、产物现在到齐了"的节点，再去扫描这一轮新
+        // 可以完成的节点——保证同一次调用里，"产物生产完成"日志排在"开始
+        // 生产"日志前面，符合日志顺序要求。
+        announceProducerCompletions();
         boolean progressed = true;
         while (progressed) {
             progressed = false;
@@ -961,15 +1144,16 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
             if (progressed) {
                 continue;
             }
+            // 这一轮级联完成之后再检查一次：级联过程中可能刚好也有某个生产者
+            // 自己的产出需求被清空（虽然按现有实现分析不会发生，但多查一次
+            // 开销很小，能多一层保险，避免"生产完成"日志错位到下一个"开始
+            // 生产"日志后面）。
+            announceProducerCompletions();
             if (finalDemandRegistered && demandList.isEmpty()) {
                 // 必须整个需求列表都清空（包括所有归属为副产物的条目）才能判定
                 // 生产彻底完成，不能只看虚拟末端需求是否满足——否则某个副产物
                 // 还在路上没到货时就会提前打包发货、清空缓存，导致这部分永远丢失。
-                productionComplete = true;
-                setChanged();
-                notifyUpdate();
-                CreateImp.LOGGER.info("[WorkWarehouse {}] 需求列表已全部清空（含虚拟末端需求与全部副产物），整次生产彻底完成", worldPosition);
-                attemptFinalShipment();
+                markProductionComplete();
             }
         }
     }
@@ -984,18 +1168,16 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
      */
     private boolean completeNode(int index) {
         WorkWarehouseTemplateSnapshot.PanelSnapshot node = templateSnapshot.get(index);
-        logStorageSnapshot("节点[" + index + "](" + node.filterItem().getItem() + ") 发货前");
-        if (!dispatchNodeIngredients(node)) {
-            CreateImp.LOGGER.info("[WorkWarehouse {}] 节点[{}]({}) 原料已齐但暂时找不到可用打包机，保持 WAITING_MATERIALS 等待重试",
-                    worldPosition, index, node.filterItem().getItem());
+        if (!canDispatchNode(node)) {
             return false;
         }
-        logStorageSnapshot("节点[" + index + "](" + node.filterItem().getItem() + ") 发货后");
+        WorkWarehouseTemplateSnapshot.LogArg productArg = itemArg(node.filterItem(), node.expectedOutputTotal());
+        addLog("createimp.log.node_start_production", productArg);
+        dispatchNodeIngredients(node);
+        addLog("createimp.log.expect_receive_product", productArg);
         templateSnapshot.set(index, node.withState(WorkWarehouseTemplateSnapshot.PanelState.COMPLETED));
         setChanged();
         notifyUpdate();
-        CreateImp.LOGGER.info("[WorkWarehouse {}] 节点[{}]({}) 状态切换: WAITING_MATERIALS -> COMPLETED（原料已寄出）",
-                worldPosition, index, node.filterItem().getItem());
         if (index == rootIndex()) {
             registerFinalDemand(node);
             return true;
@@ -1006,6 +1188,19 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
             activateConsumerIfReady(c[0]);
         }
         return true;
+    }
+
+    /**
+     * 提前判断这个节点这次能不能真的寄出去（有没有可用打包机），不实际
+     * 扣减仓库存储、不实际寄出——只是为了保证"开始生产"这条日志一定能
+     * 排在"发出物品"（可能不止一条，按量请求关闭时每批各发一次）之前：
+     * 先确认能成功，再记日志，再真正执行 {@link #dispatchNodeIngredients}。
+     */
+    private boolean canDispatchNode(WorkWarehouseTemplateSnapshot.PanelSnapshot node) {
+        if (node.ingredients().isEmpty() || node.address() == null || node.address().isBlank()) {
+            return true;
+        }
+        return findDispatchPackager(node.network()) != null;
     }
 
     // ------------------------------------------------------------------
@@ -1085,15 +1280,13 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
      */
     private void sendItemsSplitIntoPackages(PackagerBlockEntity packager, List<ItemStack> items, String address,
                                             List<ItemStack> craftPattern, int craftCount, String sourceDescription) {
+        addLog("createimp.log.items_sent", itemsArg(mergeItems(items)), WorkWarehouseTemplateSnapshot.LogArg.text(address));
         List<ItemStackHandler> chunks = splitIntoPackageChunks(items);
         int chunkCount = chunks.size();
         for (int i = 0; i < chunkCount; i++) {
             ItemStackHandler chunk = chunks.get(i);
             PackageOrderWithCrafts orderContext = buildCraftContext(chunk, craftPattern, craftCount);
             injectPackage(packager, chunk, address, orderContext);
-            CreateImp.LOGGER.info("[WorkWarehouse {}] 发货来源: {}；打包机[{}] 寄出包裹（{}/{}） -> 地址 \"{}\"，内容: {}{}",
-                    worldPosition, sourceDescription, packager.getBlockPos(), i + 1, chunkCount, address,
-                    describeHandlerContents(chunk), orderContext != null ? "（携带合成请求）" : "");
         }
     }
 
@@ -1131,21 +1324,6 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
             }
         }
         return true;
-    }
-
-    private static String describeHandlerContents(ItemStackHandler handler) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < handler.getSlots(); i++) {
-            ItemStack s = handler.getStackInSlot(i);
-            if (s.isEmpty()) {
-                continue;
-            }
-            if (!sb.isEmpty()) {
-                sb.append(", ");
-            }
-            sb.append(s.getItem()).append(" x").append(s.getCount());
-        }
-        return sb.toString();
     }
 
     /**
@@ -1365,8 +1543,6 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
             return;
         }
         ticksSinceLastMonitor = 0;
-        CreateImp.LOGGER.info("[WorkWarehouse {}] [周期性检查] 阶段={} 需求列表条目数={} 请求列表条目数={}",
-                worldPosition, stage, demandList.size(), inTransitList.size());
         monitorConnectedInventory();
         requestRemainingDemandFromNetwork();
         reconcileDemandList();
@@ -1381,6 +1557,18 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
                 ? CatnipCodecUtils.decode(ItemStack.CODEC, registries, tag.get("RequestedProduct")).orElse(ItemStack.EMPTY)
                 : ItemStack.EMPTY;
         requestedAmount = tag.getInt("RequestedAmount");
+        activationGameTime = tag.getLong("ActivationGameTime");
+        latestLogKey = tag.getString("LatestLogKey");
+        latestLogArgs = new ArrayList<>(tag.contains("LatestLogArgs")
+                ? CatnipCodecUtils.decode(WorkWarehouseTemplateSnapshot.LogArg.CODEC.listOf(), registries,
+                tag.get("LatestLogArgs")).orElse(List.of())
+                : List.of());
+        latestLogElapsedTicks = tag.getLong("LatestLogElapsedTicks");
+        logEntries.clear();
+        logEntries.addAll(tag.contains("LogEntries")
+                ? CatnipCodecUtils.decode(WorkWarehouseTemplateSnapshot.LogEntry.CODEC.listOf(), registries,
+                tag.get("LogEntries")).orElse(List.of())
+                : List.of());
         stage = tag.contains("Stage")
                 ? parseStage(tag.getString("Stage"))
                 : WorkStage.IDLE;
@@ -1402,6 +1590,10 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
                     tag.get("InTransitList")).orElse(List.of())
                     : List.of());
             finalDemandRegistered = tag.getBoolean("FinalDemandRegistered");
+            producerCompletionAnnounced.clear();
+            for (int i : tag.getIntArray("ProducerCompletionAnnounced")) {
+                producerCompletionAnnounced.add(i);
+            }
         }
     }
 
@@ -1421,6 +1613,13 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         CatnipCodecUtils.encode(ItemStack.CODEC, registries, requestedProduct)
                 .ifPresent(encoded -> tag.put("RequestedProduct", encoded));
         tag.putInt("RequestedAmount", requestedAmount);
+        tag.putLong("ActivationGameTime", activationGameTime);
+        tag.putString("LatestLogKey", latestLogKey);
+        CatnipCodecUtils.encode(WorkWarehouseTemplateSnapshot.LogArg.CODEC.listOf(), registries, latestLogArgs)
+                .ifPresent(encoded -> tag.put("LatestLogArgs", encoded));
+        tag.putLong("LatestLogElapsedTicks", latestLogElapsedTicks);
+        CatnipCodecUtils.encode(WorkWarehouseTemplateSnapshot.LogEntry.CODEC.listOf(), registries, logEntries)
+                .ifPresent(encoded -> tag.put("LogEntries", encoded));
         tag.putString("Stage", stage.name());
         tag.putBoolean("ProductionComplete", productionComplete);
         if (!clientPacket) {
@@ -1432,6 +1631,8 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
             CatnipCodecUtils.encode(WorkWarehouseTemplateSnapshot.InTransitEntry.CODEC.listOf(), registries, inTransitList)
                     .ifPresent(encoded -> tag.put("InTransitList", encoded));
             tag.putBoolean("FinalDemandRegistered", finalDemandRegistered);
+            tag.putIntArray("ProducerCompletionAnnounced",
+                    producerCompletionAnnounced.stream().mapToInt(Integer::intValue).toArray());
         }
     }
 }

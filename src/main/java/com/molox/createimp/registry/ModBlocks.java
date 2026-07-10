@@ -6,6 +6,7 @@ import com.molox.createimp.block.batch_mechanical_crafter.BatchMechanicalCrafter
 import com.molox.createimp.block.batch_repackager.BatchRepackagerBlock;
 import com.molox.createimp.block.brass_scrap_bucket.BrassScrapBucketBlock;
 import com.molox.createimp.block.labeled_redstone_link.LabeledRedstoneLinkBlock;
+import com.molox.createimp.block.process_manager.ProcessManagerBlock;
 import com.molox.createimp.block.template_panel.TemplatePanelBlock;
 import com.molox.createimp.block.work_warehouse.WorkWarehouseBlock;
 import com.simibubi.create.AllBlocks;
@@ -63,6 +64,14 @@ public class ModBlocks {
             BLOCKS.register("work_warehouse", () -> new WorkWarehouseBlock(
                     BlockBehaviour.Properties.ofFullCopy(Blocks.ANDESITE)
                             .sound(SoundType.NETHERITE_BLOCK)
+                            .noOcclusion()
+                            .requiresCorrectToolForDrops()
+            ));
+
+    public static final DeferredBlock<ProcessManagerBlock> PROCESS_MANAGER =
+            BLOCKS.register("process_manager", () -> new ProcessManagerBlock(
+                    BlockBehaviour.Properties.ofFullCopy(Blocks.ANDESITE)
+                            .sound(SoundType.WOOD)
                             .noOcclusion()
                             .requiresCorrectToolForDrops()
             ));

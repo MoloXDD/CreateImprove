@@ -3,6 +3,7 @@ package com.molox.createimp.block.work_warehouse;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.UUIDUtil;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.List;
@@ -86,7 +87,7 @@ public final class WorkWarehouseTemplateSnapshot {
      * 合并——需求列表本身按记录顺序、依托仓库存储的真实数量逐条扣减，
      * 天然保证不会出现"两个分支同时以为自己的原料都够了"的重复认领。
      */
-    public record DemandEntry(UUID network, ItemStack item, int amount, int ownerNode) {
+    public record DemandEntry(UUID network, ItemStack item, int amount, int ownerNode, int sourceProducerIndex) {
         public static final int OWNER_INITIAL_GATHER = -1;
         public static final int OWNER_FINAL_PRODUCT = -2;
         /**
@@ -97,11 +98,24 @@ public final class WorkWarehouseTemplateSnapshot {
          */
         public static final int OWNER_BYPRODUCT = -3;
 
+        /**
+         * {@code sourceProducerIndex} 取值规则：
+         * <p>
+         * - {@code >= 0}：这份需求是快照列表里下标为该值的节点，在自己变为
+         *   COMPLETED 时（{@link com.molox.createimp.block.work_warehouse.WorkWarehouseBlockEntity#registerOutputDemand}
+         *   / {@code registerFinalDemand}）登记出来的产出需求，用于判断
+         *   "这个生产者自己的产出物是否已经全部到达仓库"。
+         * - {@code NO_PRODUCER}（-1）：这份需求不对应快照列表里的任何一个
+         *   生产节点，即原料请求阶段的一次性初始需求（{@link #OWNER_INITIAL_GATHER}）。
+         */
+        public static final int NO_PRODUCER = -1;
+
         public static final Codec<DemandEntry> CODEC = RecordCodecBuilder.create(instance -> instance.group(
                 UUIDUtil.CODEC.fieldOf("network").forGetter(DemandEntry::network),
                 ItemStack.CODEC.fieldOf("item").forGetter(DemandEntry::item),
                 Codec.INT.fieldOf("amount").forGetter(DemandEntry::amount),
-                Codec.INT.fieldOf("owner_node").forGetter(DemandEntry::ownerNode)
+                Codec.INT.fieldOf("owner_node").forGetter(DemandEntry::ownerNode),
+                Codec.INT.optionalFieldOf("source_producer_index", NO_PRODUCER).forGetter(DemandEntry::sourceProducerIndex)
         ).apply(instance, DemandEntry::new));
     }
 
@@ -173,6 +187,96 @@ public final class WorkWarehouseTemplateSnapshot {
         public PanelSnapshot withState(PanelState newState) {
             return new PanelSnapshot(network, filterItem, templatePanel, recipeOutput, ingredients,
                     demandMode, craftingArrangement, address, requiredBatches, newState, expectedOutputTotal);
+        }
+    }
+
+    /**
+     * 日志消息里的一个 {@code %s} 参数，三选一：
+     * <p>
+     * - {@code text}：不需要翻译的原样文本（比如玩家自己设置的地址）。
+     * - {@code items}：一组物品+数量，解析时会拼成"物品名×数量 物品名×数量"
+     *   这样的字符串，物品名字用 {@link ItemStack#getHoverName()}——这是个
+     *   可翻译的 {@code Component}，在谁的客户端上调用 {@code getString()}
+     *   就会按谁的语言解析，天然支持多语言。
+     * - {@code translationKey}：另一个不带参数的翻译键（比如"连接储存"这种
+     *   UI 文字本身也需要翻译，而不是原样文本），解析时递归翻译。
+     * <p>
+     * 三个字段同一时间只会有一个非空，靠 {@link #resolve()} 按优先级
+     * （translationKey > items > text）解析成最终代入 {@code %s} 的文本。
+     */
+    public record LogArg(String text, List<ItemCount> items, String translationKey) {
+        public static final Codec<LogArg> CODEC = RecordCodecBuilder.create(instance -> instance.group(
+                Codec.STRING.optionalFieldOf("text", "").forGetter(LogArg::text),
+                ItemCount.CODEC.listOf().optionalFieldOf("items", List.of()).forGetter(LogArg::items),
+                Codec.STRING.optionalFieldOf("translation_key", "").forGetter(LogArg::translationKey)
+        ).apply(instance, LogArg::new));
+
+        public static LogArg text(String value) {
+            return new LogArg(value, List.of(), "");
+        }
+
+        public static LogArg items(List<ItemCount> items) {
+            return new LogArg("", items, "");
+        }
+
+        public static LogArg key(String translationKey) {
+            return new LogArg("", List.of(), translationKey);
+        }
+
+        /** 按调用方（渲染时是客户端）自己的语言，把这一个参数解析成最终文本。 */
+        public String resolve() {
+            if (!translationKey.isEmpty()) {
+                return Component.translatable(translationKey).getString();
+            }
+            if (!items.isEmpty()) {
+                StringBuilder sb = new StringBuilder();
+                for (ItemCount ic : items) {
+                    if (!sb.isEmpty()) {
+                        sb.append(" ");
+                    }
+                    sb.append(ic.item().getHoverName().getString()).append("×").append(ic.count());
+                }
+                return sb.toString();
+            }
+            return text;
+        }
+
+        /** 一种物品 + 数量，用于拼成日志里"物品名×数量"这一段。 */
+        public record ItemCount(ItemStack item, int count) {
+            public static final Codec<ItemCount> CODEC = RecordCodecBuilder.create(instance -> instance.group(
+                    ItemStack.CODEC.fieldOf("item").forGetter(ItemCount::item),
+                    Codec.INT.fieldOf("count").forGetter(ItemCount::count)
+            ).apply(instance, ItemCount::new));
+        }
+    }
+
+    /**
+     * 工作仓库自己的事件日志条目：{@code elapsedTicks} 是记录这条日志那一刻，
+     * 距离本次工作被激活（{@code activate()} 记录的世界时间）经过的 tick 数，
+     * 与进程面板界面展示"经过时间"用的是同一个时间基准，只是这里存的是原始
+     * tick 数，格式化成"XX分XX秒"的展示逻辑留给界面层处理。
+     * <p>
+     * 消息本身不再存成拼好的字符串，而是存"翻译键 + 参数列表"——
+     * {@link #resolveMessage()} 会用 {@code Component.translatable(key, 参数...)}
+     * 现场解析，在谁的客户端上调用就按谁当前选择的语言解析，随时切换语言
+     * 都能立刻看到对应语言的日志，不需要重新生成。翻译键对应的语言文件
+     * 模板字符串里保留 {@code _高亮内容_} 这种单下划线标记，解析完之后仍然
+     * 是界面层负责按这个标记解析成两种颜色。
+     */
+    public record LogEntry(long elapsedTicks, String key, List<LogArg> args) {
+        public static final Codec<LogEntry> CODEC = RecordCodecBuilder.create(instance -> instance.group(
+                Codec.LONG.fieldOf("elapsed_ticks").forGetter(LogEntry::elapsedTicks),
+                Codec.STRING.fieldOf("key").forGetter(LogEntry::key),
+                LogArg.CODEC.listOf().optionalFieldOf("args", List.of()).forGetter(LogEntry::args)
+        ).apply(instance, LogEntry::new));
+
+        /** 按调用方（渲染时是客户端）自己的语言，把 key+参数解析成最终要显示的文字。 */
+        public String resolveMessage() {
+            Object[] resolvedArgs = new Object[args.size()];
+            for (int i = 0; i < args.size(); i++) {
+                resolvedArgs[i] = args.get(i).resolve();
+            }
+            return Component.translatable(key, resolvedArgs).getString();
         }
     }
 }

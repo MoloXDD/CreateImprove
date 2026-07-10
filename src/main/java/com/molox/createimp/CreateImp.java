@@ -7,6 +7,7 @@ import com.molox.createimp.network.OpenLabeledRedstoneLinkGuiPacket;
 import com.molox.createimp.network.OpenNetworkManagerEditPacket;
 import com.molox.createimp.network.OpenNetworkManagerEditorPacket;
 import com.molox.createimp.network.OpenNetworkManagerGuiPacket;
+import com.molox.createimp.network.OpenProcessManagerGuiPacket;
 import com.molox.createimp.network.OpenTemplateMaterialsGuiPacket;
 import com.molox.createimp.network.OpenWorkWarehouseGuiPacket;
 import com.molox.createimp.network.RequestTemplateMaterialsPacket;
@@ -230,6 +231,12 @@ public class CreateImp {
                 OpenTemplateMaterialsGuiPacket.TYPE,
                 OpenTemplateMaterialsGuiPacket.STREAM_CODEC,
                 OpenTemplateMaterialsGuiPacket::handle
+        );
+        registrar.playToClient(
+                OpenProcessManagerGuiPacket.TYPE,
+                OpenProcessManagerGuiPacket.STREAM_CODEC,
+                (packet, context) -> context.enqueueWork(
+                        () -> com.molox.createimp.screen.ProcessManagerScreen.open(packet))
         );
     }
 

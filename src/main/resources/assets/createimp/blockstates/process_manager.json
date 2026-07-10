@@ -1,0 +1,12 @@
+{
+  "variants": {
+    "facing=north,powered=false": { "model": "createimp:block/process_manager/process_manager" },
+    "facing=east,powered=false": { "model": "createimp:block/process_manager/process_manager", "y": 90 },
+    "facing=south,powered=false": { "model": "createimp:block/process_manager/process_manager", "y": 180 },
+    "facing=west,powered=false": { "model": "createimp:block/process_manager/process_manager", "y": 270 },
+    "facing=north,powered=true": { "model": "createimp:block/process_manager/process_manager_powered" },
+    "facing=east,powered=true": { "model": "createimp:block/process_manager/process_manager_powered", "y": 90 },
+    "facing=south,powered=true": { "model": "createimp:block/process_manager/process_manager_powered", "y": 180 },
+    "facing=west,powered=true": { "model": "createimp:block/process_manager/process_manager_powered", "y": 270 }
+  }
+}

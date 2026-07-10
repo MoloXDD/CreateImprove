@@ -6,6 +6,7 @@
     "createimp:batch_mechanical_crafter",
     "createimp:batch_repackager",
     "createimp:template_panel",
-    "createimp:work_warehouse"
+    "createimp:work_warehouse",
+    "createimp:process_manager"
   ]
 }

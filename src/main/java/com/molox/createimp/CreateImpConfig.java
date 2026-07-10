@@ -25,6 +25,9 @@ public class CreateImpConfig implements ConfigData {
     @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
     public WorkWarehouseConfig workWarehouseConfig = new WorkWarehouseConfig();
 
+    @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
+    public ProcessManagerConfig processManagerConfig = new ProcessManagerConfig();
+
     public static class BrassScrapBucket {
         public int itemsPerNugget = 64;
         public int mbPerNugget = 2000;
@@ -54,5 +57,9 @@ public class CreateImpConfig implements ConfigData {
 
     public static class WorkWarehouseConfig {
         public String backToConnectedInventoryAddress = "/back";
+    }
+
+    public static class ProcessManagerConfig {
+        public int historyLogRetentionCount = 10;
     }
 }

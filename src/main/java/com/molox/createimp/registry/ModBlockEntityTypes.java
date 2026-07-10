@@ -6,6 +6,7 @@ import com.molox.createimp.block.batch_mechanical_crafter.BatchMechanicalCrafter
 import com.molox.createimp.block.batch_repackager.BatchRepackagerBlockEntity;
 import com.molox.createimp.block.brass_scrap_bucket.BrassScrapBucketBlockEntity;
 import com.molox.createimp.block.labeled_redstone_link.LabeledRedstoneLinkBlockEntity;
+import com.molox.createimp.block.process_manager.ProcessManagerBlockEntity;
 import com.molox.createimp.block.template_panel.TemplatePanelBlockEntity;
 import com.molox.createimp.block.work_warehouse.WorkWarehouseBlockEntity;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -64,4 +65,11 @@ public class ModBlockEntityTypes {
                             (pos, state) -> new WorkWarehouseBlockEntity(
                                     ModBlockEntityTypes.WORK_WAREHOUSE.get(), pos, state),
                             ModBlocks.WORK_WAREHOUSE.get()).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<ProcessManagerBlockEntity>> PROCESS_MANAGER =
+            BLOCK_ENTITY_TYPES.register("process_manager",
+                    () -> BlockEntityType.Builder.of(
+                            (pos, state) -> new ProcessManagerBlockEntity(
+                                    ModBlockEntityTypes.PROCESS_MANAGER.get(), pos, state),
+                            ModBlocks.PROCESS_MANAGER.get()).build(null));
 }

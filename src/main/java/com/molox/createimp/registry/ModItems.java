@@ -45,4 +45,9 @@ public class ModItems {
             ITEMS.register("work_warehouse",
                     () -> new com.molox.createimp.block.work_warehouse.WorkWarehouseBlockItem(
                             ModBlocks.WORK_WAREHOUSE.get(), new Item.Properties()));
+
+    public static final DeferredItem<com.molox.createimp.block.process_manager.ProcessManagerBlockItem> PROCESS_MANAGER =
+            ITEMS.register("process_manager",
+                    () -> new com.molox.createimp.block.process_manager.ProcessManagerBlockItem(
+                            ModBlocks.PROCESS_MANAGER.get(), new Item.Properties()));
 }

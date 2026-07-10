@@ -1,0 +1,26 @@
+package com.molox.createimp.block.process_manager;
+
+import com.molox.createimp.block.work_warehouse.WorkWarehouseTemplateSnapshot;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
+import net.minecraft.world.item.ItemStack;
+
+import java.util.List;
+
+/**
+ * 进程面板"历史请求日志"界面里的一条记录：某个工作仓库完成一次生产、
+ * 回到空闲状态之前，把这次工作的完整信息打包发给了它所在网络下的这个
+ * 进程面板。{@code completionGameTime} 是归档那一刻的世界时间，用于计算
+ * 界面上"XX分XX秒前"；{@code logEntries} 里每条日志自带的 {@code elapsedTicks}
+ * 仍然是相对那次工作自己激活时刻的经过时间，和实时进程卡片、详情界面
+ * 用的是同一份数据、同一套格式，不需要额外转换。
+ */
+public record ProcessManagerHistoryEntry(ItemStack requestedProduct, int requestedAmount, long completionGameTime,
+                                         List<WorkWarehouseTemplateSnapshot.LogEntry> logEntries) {
+    public static final Codec<ProcessManagerHistoryEntry> CODEC = RecordCodecBuilder.create(instance -> instance.group(
+            ItemStack.CODEC.fieldOf("product").forGetter(ProcessManagerHistoryEntry::requestedProduct),
+            Codec.INT.fieldOf("amount").forGetter(ProcessManagerHistoryEntry::requestedAmount),
+            Codec.LONG.fieldOf("completion_time").forGetter(ProcessManagerHistoryEntry::completionGameTime),
+            WorkWarehouseTemplateSnapshot.LogEntry.CODEC.listOf().fieldOf("logs").forGetter(ProcessManagerHistoryEntry::logEntries)
+    ).apply(instance, ProcessManagerHistoryEntry::new));
+}
