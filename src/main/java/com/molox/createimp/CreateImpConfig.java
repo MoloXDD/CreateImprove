@@ -31,6 +31,9 @@ public class CreateImpConfig implements ConfigData {
     @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
     public ProcessManagerConfig processManagerConfig = new ProcessManagerConfig();
 
+    @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
+    public PackagerAddressFilterConfig packagerAddressFilterConfig = new PackagerAddressFilterConfig();
+
     public static class ScrapBucket {
         public int itemsPerNugget = 64;
         public int mbPerNugget = 2000;
@@ -66,5 +69,9 @@ public class CreateImpConfig implements ConfigData {
 
     public static class ProcessManagerConfig {
         public int historyLogRetentionCount = 10;
+    }
+
+    public static class PackagerAddressFilterConfig {
+        public boolean enabled = true;
     }
 }

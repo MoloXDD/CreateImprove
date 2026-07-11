@@ -144,5 +144,7 @@
   "createimp.gui.process_manager.cancel_request": "Interrupt Request",
   "createimp.gui.process_manager.cancel_confirm_line1": "Interrupt the current request?",
   "createimp.gui.process_manager.cancel_confirm_line2": "After interrupting, all materials currently",
-  "createimp.gui.process_manager.cancel_confirm_line3": "in the warehouse will be sent to the request address, and further materials will be refused."
+  "createimp.gui.process_manager.cancel_confirm_line3": "in the warehouse will be sent to the request address, and further materials will be refused.",
+  "text.autoconfig.createimp.option.packagerAddressFilterConfig": "Packager Address Filter Config",
+  "text.autoconfig.createimp.option.packagerAddressFilterConfig.enabled": "Enabled"
 }

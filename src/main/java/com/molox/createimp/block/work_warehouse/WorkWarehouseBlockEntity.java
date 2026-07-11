@@ -2,6 +2,7 @@ package com.molox.createimp.block.work_warehouse;
 
 import com.molox.createimp.CreateImp;
 import com.molox.createimp.block.template_panel.TemplateMaterialCalculator;
+import com.molox.createimp.util.PackagerSignAddressHelper;
 import com.molox.createimp.network.WorkWarehouseActivateEffectPacket;
 import com.molox.createimp.network.WorkWarehouseMaterialsReadyEffectPacket;
 import com.simibubi.create.api.equipment.goggles.IHaveGoggleInformation;
@@ -1069,7 +1070,7 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
                 allItems.add(s.copy());
             }
         }
-        PackagerBlockEntity packager = findDispatchPackager(behaviour.freqId);
+        PackagerBlockEntity packager = findDispatchPackager(behaviour.freqId, targetAddress);
         if (packager == null) {
             return;
         }
@@ -1207,7 +1208,7 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
                 allItems.add(s.copy());
             }
         }
-        PackagerBlockEntity packager = findDispatchPackager(behaviour.freqId);
+        PackagerBlockEntity packager = findDispatchPackager(behaviour.freqId, targetAddress);
         if (packager == null) {
             return;
         }
@@ -1416,7 +1417,7 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         if (node.ingredients().isEmpty() || node.address() == null || node.address().isBlank()) {
             return true;
         }
-        return findDispatchPackager(node.network()) != null;
+        return findDispatchPackager(node.network(), node.address()) != null;
     }
 
     // ------------------------------------------------------------------
@@ -1432,7 +1433,7 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         if (node.ingredients().isEmpty() || node.address() == null || node.address().isBlank()) {
             return true;
         }
-        PackagerBlockEntity packager = findDispatchPackager(node.network());
+        PackagerBlockEntity packager = findDispatchPackager(node.network(), node.address());
         if (packager == null) {
             return false;
         }
@@ -1596,18 +1597,54 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
 
     /**
      * 找一个可以用来把这批原料真正寄出去的打包机：优先在工作仓库自身任意
-     * 一面贴合的打包机里随机选一个（贴合多个时的选择方式，参照原版多个
-     * 仓储连接站打包机随机分配请求的做法）；如果自身没有贴合任何打包机，
-     * 退而检查工作仓库的连接库存背后是否另外贴合了一个已经通过仓储连接站
-     * 接入本仪表所在网络的打包机，如果有，就借用那一个。两者都找不到则
-     * 返回 null，本次发货放弃，等待下次重试。
+     * 一面贴合的打包机里选一个（贴合多个时按 {@link #pickPackagerByAddress}
+     * 的优先级规则挑选）；如果自身没有贴合任何打包机，退而检查工作仓库的
+     * 连接库存背后是否另外贴合了一个已经通过仓储连接站接入本仪表所在网络
+     * 的打包机，如果有，就借用那一个（贴合多个同样按同一套优先级规则挑选）。
+     * 两者都找不到则返回 null，本次发货放弃，等待下次重试。
      */
-    private PackagerBlockEntity findDispatchPackager(UUID network) {
+    private PackagerBlockEntity findDispatchPackager(UUID network, String address) {
         List<PackagerBlockEntity> adjacent = findAdjacentPackagers();
         if (!adjacent.isEmpty()) {
-            return adjacent.get(RNG.nextInt(adjacent.size()));
+            return pickPackagerByAddress(adjacent, address);
         }
-        return findPackagerServingConnectedInventory(network);
+        return findPackagerServingConnectedInventory(network, address);
+    }
+
+    /**
+     * 从候选打包机里挑一个用来出货，行为跟
+     * {@code MixinLogisticsManager#createimp$selectPackagerLinkByAddress} 里
+     * 针对"同一目标库存被多个仓储连接站打包机瞄准"场景的优先级判断完全
+     * 一致（先挑告示牌地址匹配的，没有再挑没挂告示牌的，都没有则退回原版
+     * 随机），因为这里走的不是 {@code LogisticsManager.findPackagersForRequest}
+     * 那条路径（工作仓库自己的发货逻辑，不经过物流网络的包裹请求分配），
+     * 所以那个 Mixin 管不到这里，需要单独实现一份同样的判断。
+     */
+    private static PackagerBlockEntity pickPackagerByAddress(List<PackagerBlockEntity> candidates, String address) {
+        if (candidates.size() <= 1) {
+            return candidates.get(RNG.nextInt(candidates.size()));
+        }
+        if (!CreateImp.getConfig().packagerAddressFilterConfig.enabled) {
+            return candidates.get(RNG.nextInt(candidates.size()));
+        }
+
+        List<PackagerBlockEntity> matched = new ArrayList<>();
+        List<PackagerBlockEntity> noSign = new ArrayList<>();
+        for (PackagerBlockEntity packager : candidates) {
+            String signAddress = PackagerSignAddressHelper.resolveSignAddress(packager);
+            if (signAddress == null) {
+                noSign.add(packager);
+            } else if (PackageItem.matchAddress(signAddress, address)) {
+                matched.add(packager);
+            }
+        }
+        if (!matched.isEmpty()) {
+            return matched.get(RNG.nextInt(matched.size()));
+        }
+        if (!noSign.isEmpty()) {
+            return noSign.get(RNG.nextInt(noSign.size()));
+        }
+        return candidates.get(RNG.nextInt(candidates.size()));
     }
 
     private List<PackagerBlockEntity> findAdjacentPackagers() {
@@ -1639,7 +1676,7 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
      * {@code PackagerBlockEntity#isTargetingSameInventory}），这里直接复用，
      * 而不是自己重新发明一套坐标扫描逻辑。
      */
-    private PackagerBlockEntity findPackagerServingConnectedInventory(UUID network) {
+    private PackagerBlockEntity findPackagerServingConnectedInventory(UUID network, String address) {
         if (extractBehaviour == null || !extractBehaviour.hasInventory()) {
             return null;
         }
@@ -1663,7 +1700,7 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         if (candidates.isEmpty()) {
             return null;
         }
-        return candidates.get(RNG.nextInt(candidates.size()));
+        return pickPackagerByAddress(candidates, address);
     }
 
     /**

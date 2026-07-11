@@ -144,5 +144,7 @@
   "createimp.gui.process_manager.cancel_request": "中断请求",
   "createimp.gui.process_manager.cancel_confirm_line1": "确定要中断当前请求吗？",
   "createimp.gui.process_manager.cancel_confirm_line2": "中断后，目前工作仓库内的所有材料都会",
-  "createimp.gui.process_manager.cancel_confirm_line3": "被送往请求地址并拒绝接收后续材料"
+  "createimp.gui.process_manager.cancel_confirm_line3": "被送往请求地址并拒绝接收后续材料",
+  "text.autoconfig.createimp.option.packagerAddressFilterConfig": "出库地址过滤功能配置",
+  "text.autoconfig.createimp.option.packagerAddressFilterConfig.enabled": "是否启用"
 }
