@@ -2,6 +2,7 @@ package com.molox.createimp.block.brass_scrap_bucket;
 
 import com.molox.createimp.CreateImp;
 import com.molox.createimp.CreateImpConfig;
+import com.molox.createimp.block.ScrapBucketBlacklist;
 import com.simibubi.create.content.logistics.chute.SmartChuteFilterSlotPositioning;
 import com.simibubi.create.content.logistics.filter.FilterItemStack;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
@@ -250,13 +251,13 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
 
         if (attachType == ATTACH_ITEM) {
             itemTickCounter++;
-            if (itemTickCounter >= config.brassScrapBucket.itemTransferInterval) {
+            if (itemTickCounter >= config.scrapBucket.itemTransferInterval) {
                 itemTickCounter = 0;
                 tickItemDrain(config);
             }
         } else if (attachType == ATTACH_FLUID) {
             fluidTickCounter++;
-            if (fluidTickCounter >= config.brassScrapBucket.fluidTransferInterval) {
+            if (fluidTickCounter >= config.scrapBucket.fluidTransferInterval) {
                 fluidTickCounter = 0;
                 tickFluidDrain(config);
             }
@@ -277,7 +278,7 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
             int limitStacks = keepAmount / itemsPerStack;
             if (occupiedSlots <= limitStacks) return;
 
-            int transferLimit = config.brassScrapBucket.itemTransferAmount;
+            int transferLimit = config.scrapBucket.itemTransferAmount;
             int destroyed = 0;
             int slotsStillToRemove = occupiedSlots - limitStacks;
 
@@ -285,6 +286,7 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
                 ItemStack stack = handler.getStackInSlot(i);
                 if (stack.isEmpty()) continue;
                 if (fis != null && !fis.test(level, stack, false)) continue;
+                if (ScrapBucketBlacklist.isBlacklisted(stack)) continue;
 
                 int canTake = Math.min(stack.getCount(), transferLimit - destroyed);
                 if (canTake <= 0) break;
@@ -292,7 +294,7 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
                 if (extracted.getCount() >= stack.getCount()) slotsStillToRemove--;
                 destroyed += extracted.getCount();
                 itemFill += extracted.getCount();
-                int itemsPerNugget = CreateImp.getConfig().brassScrapBucket.itemsPerNugget;
+                int itemsPerNugget = CreateImp.getConfig().scrapBucket.itemsPerNugget;
                 while (itemFill >= itemsPerNugget && nuggetCount < MAX_NUGGETS) {
                     itemFill -= itemsPerNugget;
                     tryProduceNugget();
@@ -301,13 +303,14 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
                 setChanged();
             }
         } else {
-            int transferLimit = config.brassScrapBucket.itemTransferAmount;
+            int transferLimit = config.scrapBucket.itemTransferAmount;
             int destroyed = 0;
 
             for (int i = 0; i < handler.getSlots() && destroyed < transferLimit; i++) {
                 ItemStack stack = handler.getStackInSlot(i);
                 if (stack.isEmpty()) continue;
                 if (fis != null && !fis.test(level, stack, false)) continue;
+                if (ScrapBucketBlacklist.isBlacklisted(stack)) continue;
 
                 int recalcFiltered = fis != null ? getFilteredCurrentItems() : getAboveCurrentItems();
                 if (recalcFiltered <= keepAmount) break;
@@ -318,7 +321,7 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
                 ItemStack extracted = handler.extractItem(i, canTake, false);
                 destroyed += extracted.getCount();
                 itemFill += extracted.getCount();
-                int itemsPerNugget = CreateImp.getConfig().brassScrapBucket.itemsPerNugget;
+                int itemsPerNugget = CreateImp.getConfig().scrapBucket.itemsPerNugget;
                 while (itemFill >= itemsPerNugget && nuggetCount < MAX_NUGGETS) {
                     itemFill -= itemsPerNugget;
                     tryProduceNugget();
@@ -342,20 +345,21 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
         int limitMb = keepAmount * 1000;
         if (currentMb <= limitMb) return;
 
-        int toDestroy = Math.min(currentMb - limitMb, config.brassScrapBucket.fluidTransferAmount);
+        int toDestroy = Math.min(currentMb - limitMb, config.scrapBucket.fluidTransferAmount);
         int remaining = toDestroy;
 
         for (int i = 0; i < handler.getTanks() && remaining > 0; i++) {
             FluidStack inTank = handler.getFluidInTank(i);
             if (inTank.isEmpty()) continue;
             if (fis != null && !fis.test(level, inTank, false)) continue;
+            if (ScrapBucketBlacklist.isBlacklisted(inTank)) continue;
 
             FluidStack toDrain = new FluidStack(inTank.getFluid(), remaining);
             FluidStack drained = handler.drain(toDrain, IFluidHandler.FluidAction.EXECUTE);
             int drainedAmount = drained.getAmount();
             remaining -= drainedAmount;
             fluidFill += drainedAmount;
-            int mbPerNugget = CreateImp.getConfig().brassScrapBucket.mbPerNugget;
+            int mbPerNugget = CreateImp.getConfig().scrapBucket.mbPerNugget;
             while (fluidFill >= mbPerNugget && nuggetCount < MAX_NUGGETS) {
                 fluidFill -= mbPerNugget;
                 tryProduceNugget();
@@ -433,12 +437,13 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
         @Override
         public ItemStack insertItem(int slot, ItemStack stack, boolean simulate) {
             if (slot != 0 || stack.isEmpty()) return stack;
+            if (ScrapBucketBlacklist.isBlacklisted(stack)) return stack;
             if (!filterIcon.isEmpty()) {
                 FilterItemStack fis = FilterItemStack.of(filterIcon);
                 if (!fis.test(level, stack, false)) return stack;
             }
             if (!simulate) {
-                int itemsPerNugget = CreateImp.getConfig().brassScrapBucket.itemsPerNugget;
+                int itemsPerNugget = CreateImp.getConfig().scrapBucket.itemsPerNugget;
                 itemFill += stack.getCount();
                 while (itemFill >= itemsPerNugget && nuggetCount < MAX_NUGGETS) {
                     itemFill -= itemsPerNugget;
@@ -463,6 +468,7 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
         @Override
         public boolean isItemValid(int slot, ItemStack stack) {
             if (slot != 0) return false;
+            if (ScrapBucketBlacklist.isBlacklisted(stack)) return false;
             if (filterIcon.isEmpty()) return true;
             return FilterItemStack.of(filterIcon).test(level, stack, false);
         }
@@ -472,17 +478,18 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
         @Override public int getTanks() { return 1; }
         @Override public FluidStack getFluidInTank(int tank) { return FluidStack.EMPTY; }
         @Override public int getTankCapacity(int tank) { return Integer.MAX_VALUE; }
-        @Override public boolean isFluidValid(int tank, FluidStack stack) { return true; }
+        @Override public boolean isFluidValid(int tank, FluidStack stack) { return !ScrapBucketBlacklist.isBlacklisted(stack); }
 
         @Override
         public int fill(FluidStack resource, FluidAction action) {
             if (resource.isEmpty()) return 0;
+            if (ScrapBucketBlacklist.isBlacklisted(resource)) return 0;
             if (!filterIcon.isEmpty()) {
                 FilterItemStack fis = FilterItemStack.of(filterIcon);
                 if (!fis.test(level, resource, false)) return 0;
             }
             if (!action.simulate()) {
-                int mbPerNugget = CreateImp.getConfig().brassScrapBucket.mbPerNugget;
+                int mbPerNugget = CreateImp.getConfig().scrapBucket.mbPerNugget;
                 fluidFill += resource.getAmount();
                 while (fluidFill >= mbPerNugget && nuggetCount < MAX_NUGGETS) {
                     fluidFill -= mbPerNugget;

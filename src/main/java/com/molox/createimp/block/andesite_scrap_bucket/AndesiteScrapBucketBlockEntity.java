@@ -1,5 +1,6 @@
 package com.molox.createimp.block.andesite_scrap_bucket;
 
+import com.molox.createimp.block.ScrapBucketBlacklist;
 import com.molox.createimp.registry.ModBlockEntityTypes;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -26,6 +27,7 @@ public class AndesiteScrapBucketBlockEntity extends BlockEntity {
 
         @Override
         public ItemStack insertItem(int slot, ItemStack stack, boolean simulate) {
+            if (ScrapBucketBlacklist.isBlacklisted(stack)) return stack;
             return ItemStack.EMPTY;
         }
 
@@ -41,7 +43,7 @@ public class AndesiteScrapBucketBlockEntity extends BlockEntity {
 
         @Override
         public boolean isItemValid(int slot, ItemStack stack) {
-            return true;
+            return !ScrapBucketBlacklist.isBlacklisted(stack);
         }
     };
 
@@ -63,11 +65,12 @@ public class AndesiteScrapBucketBlockEntity extends BlockEntity {
 
         @Override
         public boolean isFluidValid(int tank, FluidStack stack) {
-            return true;
+            return !ScrapBucketBlacklist.isBlacklisted(stack);
         }
 
         @Override
         public int fill(FluidStack resource, FluidAction action) {
+            if (ScrapBucketBlacklist.isBlacklisted(resource)) return 0;
             return resource.getAmount();
         }
 

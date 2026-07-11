@@ -98,8 +98,8 @@ public class BatchMechanicalCrafterRenderer extends SafeBlockEntityRenderer<Batc
                 ms.translate(centering.x * 0.5, centering.y * 0.5, 0.0);
                 distance += (-4f * (progress - 0.5f) * (progress - 0.5f) + 1f) * 0.25f;
             }
-            boolean onlyRenderFirst = be.phase == BatchMechanicalCrafterBlockEntity.Phase.INSERTING
-                    || be.phase == BatchMechanicalCrafterBlockEntity.Phase.CRAFTING && be.countDown < 1000;
+            boolean onlyRenderFirst = be.phase == BatchMechanicalCrafterBlockEntity.Phase.CRAFTING
+                    && be.countDown < 1000;
             float spacing = distance;
             items.grid.forEach((pair, stack) -> {
                 if (onlyRenderFirst && ((Integer) pair.getLeft() != 0 || (Integer) pair.getRight() != 0))

@@ -4,11 +4,14 @@ import me.shedaniel.autoconfig.ConfigData;
 import me.shedaniel.autoconfig.annotation.Config;
 import me.shedaniel.autoconfig.annotation.ConfigEntry;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Config(name = "createimp")
 public class CreateImpConfig implements ConfigData {
 
     @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
-    public BrassScrapBucket brassScrapBucket = new BrassScrapBucket();
+    public ScrapBucket scrapBucket = new ScrapBucket();
 
     @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
     public QuickUnpack quickUnpack = new QuickUnpack();
@@ -28,13 +31,15 @@ public class CreateImpConfig implements ConfigData {
     @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
     public ProcessManagerConfig processManagerConfig = new ProcessManagerConfig();
 
-    public static class BrassScrapBucket {
+    public static class ScrapBucket {
         public int itemsPerNugget = 64;
         public int mbPerNugget = 2000;
         public int itemTransferAmount = 64;
         public int itemTransferInterval = 10;
         public int fluidTransferAmount = 1024;
         public int fluidTransferInterval = 10;
+        public List<String> blacklistedItems = new ArrayList<>();
+        public List<String> blacklistedFluids = new ArrayList<>();
     }
 
     public static class QuickUnpack {

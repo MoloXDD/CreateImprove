@@ -67,6 +67,8 @@ public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity {
     public int packageProgressEntryIndex = 0;
     public int packageProgressEntryRemaining = -1;
 
+    private boolean tickedOnce = false;
+
 
     public BatchMechanicalCrafterBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState state) {
         super(type, pos, state);
@@ -202,6 +204,7 @@ public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity {
     @Override
     public void tick() {
         super.tick();
+        this.tickedOnce = true;
         if (this.phase == Phase.ACCEPTING) return;
         boolean onClient = this.level.isClientSide;
         boolean runLogic = !onClient || this.isVirtual();
@@ -308,7 +311,7 @@ public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity {
             }
             int prev = this.countDown;
             this.countDown -= this.getCountDownSpeed();
-            if (this.countDown < 1000 && prev >= 1000) {
+            if (this.countDown < 1000 && prev >= 1000 && runLogic) {
                 AllSoundEvents.CRAFTER_CLICK.playOnServer(this.level, (Vec3i) this.worldPosition, 1f, 2f);
                 AllSoundEvents.CRAFTER_CRAFT.playOnServer(this.level, (Vec3i) this.worldPosition);
             }
@@ -395,6 +398,15 @@ public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity {
         this.sendData();
     }
 
+    private void tryProcessPackagerBoxChainWide() {
+        List<BatchMechanicalCrafterBlockEntity> chain = BatchRecipeGridHandler.getAllCraftersOfChain(this);
+        if (chain == null) {
+            this.tryProcessPackagerBox();
+            return;
+        }
+        chain.forEach(BatchMechanicalCrafterBlockEntity::tryProcessPackagerBox);
+    }
+
     private void tryProcessPackagerBox() {
         var facing = this.getBlockState()
                 .getOptionalValue(BatchMechanicalCrafterBlock.HORIZONTAL_FACING);
@@ -424,9 +436,17 @@ public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity {
     }
 
     public void dropItem(Vec3 ejectPos, ItemStack stack) {
-        ItemEntity itemEntity = new ItemEntity(this.level, ejectPos.x, ejectPos.y, ejectPos.z, stack);
-        itemEntity.setDefaultPickUpDelay();
-        this.level.addFreshEntity((Entity) itemEntity);
+        if (stack.isEmpty()) return;
+        int remaining = stack.getCount();
+        int maxStack = Math.max(1, stack.getMaxStackSize());
+        while (remaining > 0) {
+            int dropCount = Math.min(remaining, maxStack);
+            ItemEntity itemEntity = new ItemEntity(this.level, ejectPos.x, ejectPos.y, ejectPos.z,
+                    stack.copyWithCount(dropCount));
+            itemEntity.setDefaultPickUpDelay();
+            this.level.addFreshEntity((Entity) itemEntity);
+            remaining -= dropCount;
+        }
     }
 
     @Override
@@ -435,7 +455,13 @@ public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity {
         if (this.level.isClientSide && !this.isVirtual()) return;
         if (this.phase == Phase.IDLE && this.craftingItemPresent())
             this.checkCompletedRecipe(false);
-        if (this.phase == Phase.INSERTING)
+        // initialize()内部会在behaviour系统完成第一次目标扫描之前，
+        // 提前同步调用一次lazyTick()（SmartBlockEntity.initialize -> this.lazyTick()，
+        // 发生在super.tick()内部、早于tickedOnce被置true的时机）。
+        // 这一刻inserting.hasInventory()必然是false（还没来得及扫描），
+        // 如果照常调用tryInsert()会被误判为"没有可用输出目标"而把整格物品扔到地上。
+        // 跳过这一次，把重试机会留给之后正常的lazyTick周期（此时行为已完成过扫描）。
+        if (this.phase == Phase.INSERTING && this.tickedOnce)
             this.tryInsert();
 
     }
@@ -523,7 +549,17 @@ public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity {
             this.blockEntity = blockEntity;
             this.forbidExtraction();
             this.whenContentsChanged(slot -> {
-                if (this.getItem(slot).isEmpty()) return;
+                if (this.getItem(slot).isEmpty()) {
+                    // 格子刚变空，且合成器处于完全空闲状态（不是begin()消耗物品进入
+                    // ACCEPTING阶段的过程中）——说明这是一次"释放"，可能有打包机内
+                    // 因为该格子曾经非空而被我们卡住的合成请求包裹，此时重新尝试处理
+                    // 整条合成器链上的所有相邻打包机。
+                    if (blockEntity.phase == Phase.IDLE
+                            && blockEntity.getLevel() != null
+                            && !blockEntity.getLevel().isClientSide())
+                        blockEntity.tryProcessPackagerBoxChainWide();
+                    return;
+                }
                 if (blockEntity.phase == Phase.IDLE)
                     blockEntity.checkCompletedRecipe(false);
             });

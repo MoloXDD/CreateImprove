@@ -59,12 +59,15 @@ public enum BatchCrafterUnpackingHandler implements UnpackingHandler {
         PackageOrderWithCrafts.CraftingEntry entry = orderContext.orderedCrafts().get(0);
         List<BigItemStack> pattern = entry.pattern().stacks();
 
-        // 检查合成器槽位是否全空
-        for (int i = 0; i < pattern.size(); i++) {
-            if (i >= inventories.size()) return;
-            if (pattern.get(i).stack.isEmpty()) continue;
-            if (!inventories.get(i).getStackInSlot(0).isEmpty()) return;
+        // 只要合成器链上任意一格已经有物品（不论该格是否被本配方用到），
+        // 就说明链上存在尚未开始组装、或来源不明的旧物品，此时绝不能再把
+        // 包裹的材料插入任何槽位，否则新旧物品会一起被计入同一次合成，
+        // 导致合成结果错乱。此时包裹原样留在打包机内，不做任何处理。
+        for (BatchMechanicalCrafterBlockEntity.Inventory inv : inventories) {
+            if (!inv.getStackInSlot(0).isEmpty()) return;
         }
+        // 配方格数超出了当前合成器链能提供的槽位数，链路配置有问题，同样不处理。
+        if (pattern.size() > inventories.size()) return;
 
         // 取出包裹内容
         ItemStackHandler contents = PackageItem.getContents(box);

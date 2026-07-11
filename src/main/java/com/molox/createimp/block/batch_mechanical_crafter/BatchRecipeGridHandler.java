@@ -203,12 +203,9 @@ public class BatchRecipeGridHandler {
         GroupedItems outputItems = new GroupedItems();
         int remainderSlot = 0;
         int totalOutput = singleResult.getCount() * batches;
-        int maxStack = singleResult.getMaxStackSize();
-        while (totalOutput > 0) {
-            int slotCount = Math.min(totalOutput, maxStack);
-            outputItems.grid.put(Pair.of(remainderSlot, 0), singleResult.copyWithCount(slotCount));
+        if (totalOutput > 0) {
+            outputItems.grid.put(Pair.of(remainderSlot, 0), singleResult.copyWithCount(totalOutput));
             remainderSlot++;
-            totalOutput -= slotCount;
         }
 
         for (Map.Entry<Pair<Integer, Integer>, ItemStack> entry : items.grid.entrySet()) {
@@ -279,7 +276,16 @@ public class BatchRecipeGridHandler {
                 CompoundTag entry = new CompoundTag();
                 entry.putInt("x", pair.getKey());
                 entry.putInt("y", pair.getValue());
-                entry.put("item", stack.saveOptional(registries));
+                if (!stack.isEmpty()) {
+                    // ItemStack.CODEC对count字段写死了[1,99]的范围限制（原版数据组件系统的硬限制，
+                    // 无法绕过配置修改），而本模组的产出物品数量不设上限，可能远超99。
+                    // 因此物品的身份/组件信息用count=1过codec保存，真实数量单独存成一个普通int字段，
+                    // 读取时再手动设置回去，完全绕开codec对count的校验。
+                    entry.put("item", stack.copyWithCount(1).saveOptional(registries));
+                    entry.putInt("count", stack.getCount());
+                } else {
+                    entry.put("item", stack.saveOptional(registries));
+                }
                 gridNBT.add(entry);
             });
             nbt.put("Grid", (Tag) gridNBT);
@@ -293,6 +299,8 @@ public class BatchRecipeGridHandler {
                 int x = entry.getInt("x");
                 int y = entry.getInt("y");
                 ItemStack stack = ItemStack.parseOptional(registries, entry.getCompound("item"));
+                if (!stack.isEmpty() && entry.contains("count"))
+                    stack.setCount(entry.getInt("count"));
                 items.grid.put(Pair.of(x, y), stack);
             });
             return items;
