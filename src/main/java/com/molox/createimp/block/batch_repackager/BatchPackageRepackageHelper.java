@@ -1,6 +1,5 @@
 package com.molox.createimp.block.batch_repackager;
 
-import com.molox.createimp.CreateImp;
 import com.simibubi.create.content.logistics.BigItemStack;
 import com.simibubi.create.content.logistics.box.PackageItem;
 import com.simibubi.create.content.logistics.packager.InventorySummary;
@@ -51,9 +50,6 @@ public class BatchPackageRepackageHelper {
 
             int totalBatchesToAllocate = Math.min(requestedBatches, maxBatchesByStock);
 
-            CreateImp.LOGGER.info("[BatchRepackager] entry pattern={} requestedBatches={} maxBatchesByStock={} totalBatchesToAllocate={}",
-                    describePattern(mergedPattern), requestedBatches, maxBatchesByStock, totalBatchesToAllocate);
-
             if (totalBatchesToAllocate <= 0) continue;
 
             // 从共享库存里为这个entry划出"totalBatchesToAllocate批"对应的材料总量，
@@ -89,10 +85,6 @@ public class BatchPackageRepackageHelper {
                 PackageItem.setOrder(box, orderId, 0, true, 0, true, packageOrderContext);
                 outputPackages.add(new BigItemStack(box, 1));
 
-                CreateImp.LOGGER.info("[BatchRepackager] package #{} built: declaredBatches={} contents={} sharedStockAfter={}",
-                        outputPackages.size(), batchesForThisPackage, describeHandler(target),
-                        describeAvailable(sharedRemainingStock));
-
                 batchesLeftToPack -= batchesForThisPackage;
             }
         }
@@ -100,9 +92,6 @@ public class BatchPackageRepackageHelper {
         // 所有entry处理完毕后，把共享库存里仍有剩余的材料作为余料打包送出，
         // 不携带orderContext，走原版普通包裹流程（不会触发任何合成检查）。
         List<BigItemStack> leftoverPackages = packLeftovers(sharedRemainingStock, address, orderId);
-        if (!leftoverPackages.isEmpty()) {
-            CreateImp.LOGGER.info("[BatchRepackager] {} leftover package(s) built from remaining stock", leftoverPackages.size());
-        }
         outputPackages.addAll(leftoverPackages);
 
         return outputPackages;
@@ -255,30 +244,4 @@ public class BatchPackageRepackageHelper {
         }
     }
 
-    private String describePattern(List<BigItemStack> pattern) {
-        StringBuilder sb = new StringBuilder();
-        for (BigItemStack s : pattern) {
-            if (s.stack.isEmpty()) continue;
-            sb.append(s.stack.getItem()).append("x").append(s.count).append(" ");
-        }
-        return sb.toString();
-    }
-
-    private String describeAvailable(Map<ItemStack, Integer> map) {
-        StringBuilder sb = new StringBuilder();
-        for (Map.Entry<ItemStack, Integer> e : map.entrySet()) {
-            sb.append(e.getKey().getItem()).append("=").append(e.getValue()).append(" ");
-        }
-        return sb.toString();
-    }
-
-    private String describeHandler(ItemStackHandler handler) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < handler.getSlots(); i++) {
-            ItemStack s = handler.getStackInSlot(i);
-            if (s.isEmpty()) continue;
-            sb.append("[").append(i).append("]").append(s.getItem()).append("x").append(s.getCount()).append(" ");
-        }
-        return sb.toString();
-    }
 }

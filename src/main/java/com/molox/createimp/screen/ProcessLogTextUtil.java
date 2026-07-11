@@ -1,5 +1,6 @@
 package com.molox.createimp.screen;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 
@@ -71,28 +72,32 @@ public final class ProcessLogTextUtil {
     /**
      * 把一串 Segment 拆成若干行，每行宽度不超过 {@code maxWidth}。
      * <p>
-     * 换行优先在"空格"处断开（英文按单词换行，不会把一个单词从中间拆开）；
-     * 只有当从当前行开头到某个字符为止，中间完全没有出现过空格（也就是
-     * 中文这种没有空格分词的文字，或者英文里单独一个词本身就超出整行
-     * 宽度的极端情况）时，才退回到按字符硬拆——这样中文和英文用的是同一
-     * 套逻辑，不需要额外判断语言。普通/高亮/时间戳的颜色边界会被保留，
-     * 同一行内可能同时含有不同颜色类别的片段。传入的 segments 为空时
-     * 返回一个只含一个空行的列表，避免调用方需要额外判空。
+     * 只有当前客户端语言**不是**简体中文（zh_cn）时才按"单词"换行（英文
+     * 那种优先在空格处断开，不会把一个单词从中间拆开）；简体中文本身没有
+     * 空格分词的习惯，即使消息里偶尔出现空格（比如多个物品之间用空格
+     * 隔开），也统一按字符硬拆，行为和之前完全一样，不受这次改动影响。
      */
     public static List<List<Segment>> wrap(Font font, List<Segment> segments, int maxWidth) {
-        List<CharUnit> units = new ArrayList<>();
-        for (Segment segment : segments) {
-            for (int i = 0; i < segment.text().length(); i++) {
-                units.add(new CharUnit(segment.text().charAt(i), segment.colorType()));
-            }
-        }
+        boolean useWordWrap = !"zh_cn".equals(Minecraft.getInstance().getLanguageManager().getSelected());
+        return useWordWrap ? wrapByWord(font, segments, maxWidth) : wrapByChar(font, segments, maxWidth);
+    }
+
+    /**
+     * 优先在"空格"处断开（英文按单词换行，不会把一个单词从中间拆开）；
+     * 只有当从当前行开头到某个字符为止，中间完全没有出现过空格（比如
+     * 英文里单独一个词本身就超出整行宽度的极端情况）时，才退回到按字符
+     * 硬拆。普通/高亮/时间戳的颜色边界会被保留，同一行内可能同时含有
+     * 不同颜色类别的片段。
+     */
+    private static List<List<Segment>> wrapByWord(Font font, List<Segment> segments, int maxWidth) {
+        List<CharUnit> units = flatten(segments);
 
         List<List<Segment>> lines = new ArrayList<>();
         int lineStart = 0;
         int i = 0;
         int width = 0;
-        // 当前行内、最近一个空格的下标（绝对下标）和断在那里时这一行占用的宽度；
-        // 没遇到过空格时为 -1，表示这一行目前没有可以断开的位置。
+        // 当前行内、最近一个空格的下标（绝对下标）；没遇到过空格时为 -1，
+        // 表示这一行目前没有可以断开的位置。
         int lastSpaceIndex = -1;
 
         while (i < units.size()) {
@@ -126,6 +131,51 @@ public final class ProcessLogTextUtil {
             lines.add(new ArrayList<>());
         }
         return lines;
+    }
+
+    /**
+     * 纯按字符累计宽度换行，不考虑空格——简体中文用这个，和这次改动之前
+     * 的行为完全一样。
+     */
+    private static List<List<Segment>> wrapByChar(Font font, List<Segment> segments, int maxWidth) {
+        List<CharUnit> units = flatten(segments);
+
+        List<List<Segment>> lines = new ArrayList<>();
+        int lineStart = 0;
+        int i = 0;
+        int width = 0;
+
+        while (i < units.size()) {
+            char c = units.get(i).ch();
+            int charWidth = font.width(String.valueOf(c));
+
+            if (width + charWidth > maxWidth && i > lineStart) {
+                lines.add(buildSegments(units, lineStart, i));
+                lineStart = i;
+                width = 0;
+                continue;
+            }
+
+            width += charWidth;
+            i++;
+        }
+        if (lineStart < units.size()) {
+            lines.add(buildSegments(units, lineStart, units.size()));
+        }
+        if (lines.isEmpty()) {
+            lines.add(new ArrayList<>());
+        }
+        return lines;
+    }
+
+    private static List<CharUnit> flatten(List<Segment> segments) {
+        List<CharUnit> units = new ArrayList<>();
+        for (Segment segment : segments) {
+            for (int i = 0; i < segment.text().length(); i++) {
+                units.add(new CharUnit(segment.text().charAt(i), segment.colorType()));
+            }
+        }
+        return units;
     }
 
     /** 把 [start, end) 范围内的字符按颜色类别重新合并成若干 Segment。 */

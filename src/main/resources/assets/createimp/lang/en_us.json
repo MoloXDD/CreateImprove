@@ -133,5 +133,14 @@
   "createimp.log.label_material": "material",
   "createimp.log.label_product": "product",
   "createimp.log.connected_storage_short": "Connected Storage",
-  "createimp.log.connected_storage": "Connected Storage"
+  "createimp.log.connected_storage": "Connected Storage",
+  "createimp.log.enter_interrupting": "Work Warehouse entered _request interruption state_",
+  "createimp.log.current_storage": "Current Work Warehouse inventory: _%s_",
+  "createimp.log.interrupt_items_sent": "Sent items: _%s_, delivery address: _%s_",
+  "createimp.log.interrupt_success": "Request interruption successful, Work Warehouse entered _idle stage_",
+  "createimp.gui.work_warehouse.stage_interrupting_value": "Interrupting",
+  "createimp.gui.process_manager.cancel_request": "Interrupt Request",
+  "createimp.gui.process_manager.cancel_confirm_line1": "Interrupt the current request?",
+  "createimp.gui.process_manager.cancel_confirm_line2": "After interrupting, all materials currently",
+  "createimp.gui.process_manager.cancel_confirm_line3": "in the warehouse will be sent to the request address, and further materials will be refused."
 }

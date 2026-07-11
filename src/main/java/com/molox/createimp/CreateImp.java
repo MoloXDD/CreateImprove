@@ -8,6 +8,7 @@ import com.molox.createimp.network.OpenNetworkManagerEditPacket;
 import com.molox.createimp.network.OpenNetworkManagerEditorPacket;
 import com.molox.createimp.network.OpenNetworkManagerGuiPacket;
 import com.molox.createimp.network.OpenProcessManagerGuiPacket;
+import com.molox.createimp.network.RequestWorkWarehouseInterruptPacket;
 import com.molox.createimp.network.OpenTemplateMaterialsGuiPacket;
 import com.molox.createimp.network.OpenWorkWarehouseGuiPacket;
 import com.molox.createimp.network.RequestTemplateMaterialsPacket;
@@ -237,6 +238,11 @@ public class CreateImp {
                 OpenProcessManagerGuiPacket.STREAM_CODEC,
                 (packet, context) -> context.enqueueWork(
                         () -> com.molox.createimp.screen.ProcessManagerScreen.open(packet))
+        );
+        registrar.playToServer(
+                RequestWorkWarehouseInterruptPacket.TYPE,
+                RequestWorkWarehouseInterruptPacket.STREAM_CODEC,
+                RequestWorkWarehouseInterruptPacket::handle
         );
     }
 

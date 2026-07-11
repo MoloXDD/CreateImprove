@@ -17,6 +17,16 @@ import java.util.List;
  */
 public record ProcessManagerHistoryEntry(ItemStack requestedProduct, int requestedAmount, long completionGameTime,
                                          List<WorkWarehouseTemplateSnapshot.LogEntry> logEntries) {
+    /**
+     * 防御性归一化：requestedProduct 只是类型标记，真实数量由
+     * requestedAmount 单独承载。原版 ItemStack.CODEC 对内部 count 字段做了
+     * [1,99] 范围校验，一旦意外传入带着真实数量的物品（可能远超 99）会
+     * 导致这条历史记录编码失败、进而拖累整个历史列表都存不进存档。
+     */
+    public ProcessManagerHistoryEntry {
+        requestedProduct = requestedProduct.isEmpty() ? requestedProduct : requestedProduct.copyWithCount(1);
+    }
+
     public static final Codec<ProcessManagerHistoryEntry> CODEC = RecordCodecBuilder.create(instance -> instance.group(
             ItemStack.CODEC.fieldOf("product").forGetter(ProcessManagerHistoryEntry::requestedProduct),
             Codec.INT.fieldOf("amount").forGetter(ProcessManagerHistoryEntry::requestedAmount),

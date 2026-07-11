@@ -118,6 +118,10 @@ public class ProcessManagerScreen extends AbstractSimiScreen {
     /** 一般文字 / 高亮文字（"_xxx_"标记的部分）颜色。 */
     private static final int PROGRESS_LOG_TEXT_COLOR = 0xC0C0C0;
     private static final int PROGRESS_LOG_HIGHLIGHT_COLOR = 0xFFD700;
+    /** "请求中断"分类日志的一般文字颜色（红色），高亮部分依然用 PROGRESS_LOG_HIGHLIGHT_COLOR。 */
+    private static final int PROGRESS_LOG_CANCEL_COLOR = 0xFF5555;
+    /** "请求中断"分类日志里 "_高亮_" 部分专用的颜色（比 PROGRESS_LOG_CANCEL_COLOR 更亮/更淡的红）。 */
+    private static final int PROGRESS_LOG_CANCEL_HIGHLIGHT_COLOR = 0xFF9999;
     /** 日志超长时横向滚动的速度，每 tick 移动多少像素，越大滚得越快。 */
     private static final float PROGRESS_LOG_SCROLL_SPEED = 0.8f;
     /** 单行滚动一轮结束后，到下一轮开头之间的空白间隔（像素）。 */
@@ -354,7 +358,21 @@ public class ProcessManagerScreen extends AbstractSimiScreen {
             int hintY = guiTop + DISPLAY_Y + EMPTY_HINT_Y_OFFSET;
             graphics.drawString(font, emptyHint, hintX, hintY, EMPTY_HINT_COLOR, false);
         }
+    }
 
+    /**
+     * 卡片的 tooltip 之前是在 {@link #renderWindow} 里画的，但 {@code renderWindow}
+     * 是在按钮之类的部件渲染之前调用的，导致 tooltip 有时候会被按钮盖住
+     * （tooltip 在按钮"下面"）。改成重写标准的 {@code render}，先调用
+     * {@code super.render(...)}（背景+自定义内容+全部部件都画完），再在
+     * 最后画 tooltip，保证 tooltip 永远盖在最上层。
+     */
+    @Override
+    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
+        super.render(graphics, mouseX, mouseY, partialTicks);
+
+        float scrollOff = scroll.getValue(partialTicks);
+        int hoveredIndex = getHoveredCardIndex(mouseX, mouseY, scrollOff);
         if (hoveredIndex >= 0) {
             graphics.renderComponentTooltip(font, List.of(
                     Component.translatable("createimp.gui.process_manager.lmb_detail")
@@ -434,7 +452,11 @@ public class ProcessManagerScreen extends AbstractSimiScreen {
         graphics.drawString(font, logLabel, x + PROGRESS_LOG_LABEL_X_OFFSET, y + PROGRESS_LOG_LABEL_Y_OFFSET,
                 PROGRESS_TEXT_COLOR, false);
 
-        renderLogLine(graphics, x, y, warehouse.getLatestLogMessage(), partialTicks, scrollOff);
+        boolean cancelled = warehouse.getLatestLogCategory() == WorkWarehouseTemplateSnapshot.LogCategory.CANCEL;
+        renderLogLine(graphics, x, y, warehouse.getLatestLogMessage(),
+                cancelled ? PROGRESS_LOG_CANCEL_COLOR : PROGRESS_LOG_TEXT_COLOR,
+                cancelled ? PROGRESS_LOG_CANCEL_HIGHLIGHT_COLOR : PROGRESS_LOG_HIGHLIGHT_COLOR,
+                partialTicks, scrollOff);
     }
 
     /**
@@ -467,15 +489,21 @@ public class ProcessManagerScreen extends AbstractSimiScreen {
 
         List<WorkWarehouseTemplateSnapshot.LogEntry> logs = entry.logEntries();
         String lastMessage = logs.isEmpty() ? "" : logs.get(logs.size() - 1).resolveMessage();
-        renderLogLine(graphics, x, y, lastMessage, partialTicks, scrollOff);
+        boolean lastCancelled = !logs.isEmpty() && logs.get(logs.size() - 1).category() == WorkWarehouseTemplateSnapshot.LogCategory.CANCEL;
+        renderLogLine(graphics, x, y, lastMessage,
+                lastCancelled ? PROGRESS_LOG_CANCEL_COLOR : PROGRESS_LOG_TEXT_COLOR,
+                lastCancelled ? PROGRESS_LOG_CANCEL_HIGHLIGHT_COLOR : PROGRESS_LOG_HIGHLIGHT_COLOR,
+                partialTicks, scrollOff);
     }
 
     /**
      * 卡片下方展示一行日志文字（实时卡片用最新日志，历史卡片用该记录最后
-     * 一条日志），单行；一般文字和 {@code _高亮_} 标记的文字分别用
-     * {@link #PROGRESS_LOG_TEXT_COLOR} / {@link #PROGRESS_LOG_HIGHLIGHT_COLOR}
-     * 绘制。内容宽度超出 {@link #PROGRESS_LOG_WIDTH} 时改为横向滚动展示（复制
-     * 一份接在后面首尾相连，滚动到头就无缝回到开头），不做截断也不换行。
+     * 一条日志），单行；{@code normalColor}/{@code highlightColor} 是这一条
+     * 日志一般文字/高亮文字应该用的颜色——普通日志是灰白配金黄，请求中断
+     * 分类是红配更亮的红，两套颜色分类内是绑定的，不会出现"普通文字用了
+     * 中断色但高亮还是金黄"这种混搭。内容宽度超出 {@link #PROGRESS_LOG_WIDTH}
+     * 时改为横向滚动展示（复制一份接在后面首尾相连，滚动到头就无缝回到
+     * 开头），不做截断也不换行。
      * <p>
      * {@code scrollOff} 是外层卡片列表当前的纵向滚动量：{@code drawString}
      * 本身走的是 {@code graphics.pose()} 矩阵栈，会自动叠加外层
@@ -486,6 +514,7 @@ public class ProcessManagerScreen extends AbstractSimiScreen {
      * "一滚动日志就消失了"。
      */
     private void renderLogLine(GuiGraphics graphics, int cardX, int cardY, String message,
+                               int normalColor, int highlightColor,
                                float partialTicks, float scrollOff) {
         if (message == null || message.isEmpty()) {
             return;
@@ -500,16 +529,16 @@ public class ProcessManagerScreen extends AbstractSimiScreen {
         graphics.enableScissor(rowX, scissorY, rowX + PROGRESS_LOG_WIDTH, scissorY + font.lineHeight);
         if (totalWidth <= PROGRESS_LOG_WIDTH) {
             ProcessLogTextUtil.draw(graphics, font, segments, rowX, rowY,
-                    PROGRESS_LOG_TEXT_COLOR, PROGRESS_LOG_HIGHLIGHT_COLOR, PROGRESS_LOG_TEXT_COLOR);
+                    normalColor, highlightColor, normalColor);
         } else {
             int cycle = totalWidth + PROGRESS_LOG_SCROLL_GAP;
             float scrollPixels = (logScrollTicks + partialTicks) * PROGRESS_LOG_SCROLL_SPEED;
             int offset = Math.floorMod((int) scrollPixels, cycle);
             int drawX = rowX - offset;
             ProcessLogTextUtil.draw(graphics, font, segments, drawX, rowY,
-                    PROGRESS_LOG_TEXT_COLOR, PROGRESS_LOG_HIGHLIGHT_COLOR, PROGRESS_LOG_TEXT_COLOR);
+                    normalColor, highlightColor, normalColor);
             ProcessLogTextUtil.draw(graphics, font, segments, drawX + cycle, rowY,
-                    PROGRESS_LOG_TEXT_COLOR, PROGRESS_LOG_HIGHLIGHT_COLOR, PROGRESS_LOG_TEXT_COLOR);
+                    normalColor, highlightColor, normalColor);
         }
         graphics.disableScissor();
     }

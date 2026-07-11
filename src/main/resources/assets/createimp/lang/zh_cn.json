@@ -133,5 +133,14 @@
   "createimp.log.label_material": "原料",
   "createimp.log.label_product": "产物",
   "createimp.log.connected_storage_short": "连接库存",
-  "createimp.log.connected_storage": "连接库存"
+  "createimp.log.connected_storage": "连接库存",
+  "createimp.log.enter_interrupting": "工作仓库进入_请求中断状态_",
+  "createimp.log.current_storage": "目前工作仓库内库存：_%s_",
+  "createimp.log.interrupt_items_sent": "发送物品：_%s_，发送地址：_%s_",
+  "createimp.log.interrupt_success": "请求中断成功，工作仓库进入_空闲阶段_",
+  "createimp.gui.work_warehouse.stage_interrupting_value": "请求中断",
+  "createimp.gui.process_manager.cancel_request": "中断请求",
+  "createimp.gui.process_manager.cancel_confirm_line1": "确定要中断当前请求吗？",
+  "createimp.gui.process_manager.cancel_confirm_line2": "中断后，目前工作仓库内的所有材料都会",
+  "createimp.gui.process_manager.cancel_confirm_line3": "被送往请求地址并拒绝接收后续材料"
 }

@@ -56,7 +56,13 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
     public enum WorkStage {
         IDLE,
         REQUESTING_MATERIALS,
-        PRODUCTION
+        PRODUCTION,
+        /**
+         * 玩家在进程面板详情界面手动确认中断当前请求后进入的阶段：需求
+         * 列表/请求列表已清空，不再接收任何物品、不再产生新的需求，只是
+         * 持续尝试把仓库里现有的物品发出去，发出去之后回到 IDLE。
+         */
+        INTERRUPTING
     }
 
     private static final Random RNG = new Random();
@@ -151,6 +157,7 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
      */
     private String latestLogKey = "";
     private List<WorkWarehouseTemplateSnapshot.LogArg> latestLogArgs = new ArrayList<>();
+    private WorkWarehouseTemplateSnapshot.LogCategory latestLogCategory = WorkWarehouseTemplateSnapshot.LogCategory.NORMAL;
     private long latestLogElapsedTicks = 0;
 
     public List<WorkWarehouseTemplateSnapshot.LogEntry> getLogEntries() {
@@ -162,12 +169,25 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
      * 把最新一条日志的翻译键+参数解析成最终要显示的文字。
      */
     public String getLatestLogMessage() {
-        return new WorkWarehouseTemplateSnapshot.LogEntry(latestLogElapsedTicks, latestLogKey, latestLogArgs)
+        return new WorkWarehouseTemplateSnapshot.LogEntry(latestLogElapsedTicks, latestLogKey, latestLogArgs, latestLogCategory)
                 .resolveMessage();
+    }
+
+    /** 最新一条日志的展示分类（普通/请求中断专用红色），供卡片界面决定颜色。 */
+    public WorkWarehouseTemplateSnapshot.LogCategory getLatestLogCategory() {
+        return latestLogCategory;
     }
 
     public long getLatestLogElapsedTicks() {
         return latestLogElapsedTicks;
+    }
+
+    /**
+     * 记录一条普通分类的事件日志，等价于
+     * {@code addLog(LogCategory.NORMAL, key, args)}。
+     */
+    private void addLog(String key, WorkWarehouseTemplateSnapshot.LogArg... args) {
+        addLog(WorkWarehouseTemplateSnapshot.LogCategory.NORMAL, key, args);
     }
 
     /**
@@ -176,17 +196,20 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
      * {@code key} 是语言文件里的翻译键，{@code args} 是代入其中 {@code %s}
      * 占位符的参数——不管是物品名字还是措辞文字，都不在这里直接拼成中文
      * 字符串存死，而是等界面渲染那一刻，由渲染它的客户端自己的语言解析，
-     * 这样同一条日志在不同语言的客户端上会显示成对应的语言。
+     * 这样同一条日志在不同语言的客户端上会显示成对应的语言。{@code category}
+     * 决定这条日志整体的展示颜色（目前只有"请求中断"这几条用 CANCEL）。
      */
-    private void addLog(String key, WorkWarehouseTemplateSnapshot.LogArg... args) {
+    private void addLog(WorkWarehouseTemplateSnapshot.LogCategory category, String key,
+                        WorkWarehouseTemplateSnapshot.LogArg... args) {
         if (level == null || level.isClientSide()) {
             return;
         }
         long elapsed = Math.max(0, level.getGameTime() - activationGameTime);
         List<WorkWarehouseTemplateSnapshot.LogArg> argList = List.of(args);
-        logEntries.add(new WorkWarehouseTemplateSnapshot.LogEntry(elapsed, key, argList));
+        logEntries.add(new WorkWarehouseTemplateSnapshot.LogEntry(elapsed, key, argList, category));
         latestLogKey = key;
         latestLogArgs = argList;
+        latestLogCategory = category;
         latestLogElapsedTicks = elapsed;
         setChanged();
         notifyUpdate();
@@ -252,6 +275,7 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         }
         return mergeItems(items);
     }
+
 
     /**
      * 生产阶段/最终产物阶段共用的"哪个环节"措辞翻译键：原料请求阶段是
@@ -493,10 +517,24 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         List<ItemStack> requested = new ArrayList<>();
         for (Map.Entry<UUID, List<WorkWarehouseTemplateSnapshot.DemandEntry>> networkGroup : shortfallByNetwork.entrySet()) {
             UUID network = networkGroup.getKey();
-            List<BigItemStack> stacks = new ArrayList<>();
-            for (WorkWarehouseTemplateSnapshot.DemandEntry e : networkGroup.getValue()) {
-                stacks.add(new BigItemStack(e.item(), e.amount()));
+            List<WorkWarehouseTemplateSnapshot.DemandEntry> shortfalls = networkGroup.getValue();
+
+            // 同一个网络内，如果好几条需求都要同一种物品，先按物品把数量合并
+            // 成一条再发出去——这样同一种物品只发一次请求，Create 会尽量把
+            // 它们塞进同一批包裹，不会因为拆成好几条小请求而多发几个包裹、
+            // 拖慢物流效率。因为每种物品现在只对应一条合并后的请求，Create
+            // 返回"这条请求实际匹配到了多少"是唯一、准确、没有归属歧义的
+            // （不像之前"每条需求各自独立发"那样啰嗦，也不像更早"合并发送但
+            // 又用共享池瞎猜每条各分到多少"那样会算错账）。
+            List<ItemMatchAmount> mergedShortfalls = new ArrayList<>();
+            for (WorkWarehouseTemplateSnapshot.DemandEntry e : shortfalls) {
+                addMatchAmount(mergedShortfalls, e.item(), e.amount());
             }
+            List<BigItemStack> stacks = new ArrayList<>();
+            for (ItemMatchAmount m : mergedShortfalls) {
+                stacks.add(new BigItemStack(m.sample, m.count));
+            }
+
             PackageOrderWithCrafts order = PackageOrderWithCrafts.simple(stacks);
             com.google.common.collect.Multimap<PackagerBlockEntity, com.simibubi.create.content.logistics.packager.PackagingRequest> requests =
                     LogisticsManager.findPackagersForRequest(network, order,
@@ -516,8 +554,8 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
             }
 
             // 在 performPackageRequests 真正执行、修改这些 PackagingRequest 的
-            // 数量之前，先统计每种物品各自实际被匹配到多少——这才是这一批里
-            // 真正找到库存的部分，不能直接假设"整批都成功了"。
+            // 数量之前，先按物品汇总一下"这次总共计划匹配到多少"——因为每种
+            // 物品现在只对应一条合并请求，这个汇总值就是准确的实际匹配量。
             List<ItemMatchAmount> matched = new ArrayList<>();
             for (com.simibubi.create.content.logistics.packager.PackagingRequest req : requests.values()) {
                 addMatchAmount(matched, req.item(), req.getCount());
@@ -525,7 +563,10 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
 
             LogisticsManager.performPackageRequests(requests);
 
-            for (WorkWarehouseTemplateSnapshot.DemandEntry e : networkGroup.getValue()) {
+            // 按需求列表原本的先后顺序，把每种物品准确匹配到的总量依次分给
+            // 各条原始需求——库存不够满足全部需求时，排在后面的这一轮先分不
+            // 到，等下一次周期性重试时再继续申请剩余缺口。
+            for (WorkWarehouseTemplateSnapshot.DemandEntry e : shortfalls) {
                 int matchedAmount = takeMatchAmount(matched, e.item(), e.amount());
                 if (matchedAmount <= 0) {
                     continue;
@@ -730,6 +771,19 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         return total;
     }
 
+    /**
+     * 注意：不能假设 {@code handler.extractItem(slot, take, false)} 一次调用
+     * 就能把 {@code take} 这么多全部取走——工作仓库自己的存储（{@link WorkWarehouseItemStackHandler}）
+     * 允许单个槽位无限堆叠，但继承自原版 {@code ItemStackHandler} 的
+     * {@code extractItem} 单次调用仍然会被物品本身的堆叠上限（比如原木/
+     * 木板是 64）截断，一次最多只会真正拿出堆叠上限那么多，返回值的
+     * 数量才是真实拿到的数量。之前这里没有检查返回值，直接假设 take 已经
+     * 全部到手，导致"这一格堆了超过堆叠上限数量"时会少拿一部分，且这部分
+     * 从此再也不会被尝试提取，永远滞留在仓库里、最后被当成多余产物一起
+     * 打包发走——这是"凭空多出来的副产物"的真正原因。现在改成检查真实
+     * 提取到的数量，同一格没拿够就继续对同一格重复提取，直到这一格被
+     * 掏空或者凑够为止。
+     */
     private static void extractExact(ItemStackHandler handler, ItemStack sample, int amount) {
         int remaining = amount;
         for (int i = 0; i < handler.getSlots() && remaining > 0; i++) {
@@ -737,9 +791,19 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
             if (s.isEmpty() || !ItemStack.isSameItemSameComponents(s, sample)) {
                 continue;
             }
-            int take = Math.min(remaining, s.getCount());
-            handler.extractItem(i, take, false);
-            remaining -= take;
+            while (remaining > 0) {
+                ItemStack current = handler.getStackInSlot(i);
+                if (current.isEmpty() || !ItemStack.isSameItemSameComponents(current, sample)) {
+                    break;
+                }
+                int want = Math.min(remaining, current.getCount());
+                ItemStack extracted = handler.extractItem(i, want, false);
+                int actuallyTaken = extracted.getCount();
+                if (actuallyTaken <= 0) {
+                    break;
+                }
+                remaining -= actuallyTaken;
+            }
         }
     }
 
@@ -809,6 +873,11 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
             PacketDistributor.sendToPlayersNear(serverLevel, null, center.x, center.y, center.z, 32.0,
                     new WorkWarehouseMaterialsReadyEffectPacket(worldPosition));
             beginProductionStage();
+        }
+        if (newStage == WorkStage.IDLE && level instanceof ServerLevel serverLevel) {
+            Vec3 center = Vec3.atCenterOf(worldPosition);
+            PacketDistributor.sendToPlayersNear(serverLevel, null, center.x, center.y, center.z, 32.0,
+                    new WorkWarehouseMaterialsReadyEffectPacket(worldPosition));
         }
     }
 
@@ -1007,7 +1076,7 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         for (int i = 0; i < storage.getSlots(); i++) {
             storage.setStackInSlot(i, ItemStack.EMPTY);
         }
-        sendItemsSplitIntoPackages(packager, allItems, targetAddress, null, 0, "生产彻底完成后的最终产物打包发货（含副产物）");
+        sendItemsSplitIntoPackages(packager, allItems, targetAddress, null, 0, "生产彻底完成后的最终产物打包发货（含副产物）", false);
         addLog("createimp.log.final_shipment", itemsArg(mergeItems(allItems)),
                 addressArg(targetAddress, "createimp.log.connected_storage"));
         resetToIdle();
@@ -1022,6 +1091,30 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
      * 就从仓库存储里真正扣减多少；连接库存已经满、插不下的部分保留在仓库
      * 存储里，不清空、等待下一次重试，避免物品凭空消失。
      */
+    /**
+     * 从指定槽位安全地提取"恰好这么多"——和 {@link #extractExact} 同样的
+     * 原因，不能假设 {@code extractItem} 一次调用就能把 amount 全部取走，
+     * 需要检查真实提取到的数量，不够就对同一格重复提取直到取满或者格子
+     * 被掏空。用于"已经确认这一格至少有 amount 那么多"的场景（调用方已经
+     * 用这一格当前的真实数量算出了 amount，只是需要把它真正从存储里移除）。
+     */
+    private static void extractFromSlotExact(ItemStackHandler handler, int slot, int amount) {
+        int remaining = amount;
+        while (remaining > 0) {
+            ItemStack current = handler.getStackInSlot(slot);
+            if (current.isEmpty()) {
+                break;
+            }
+            int want = Math.min(remaining, current.getCount());
+            ItemStack extracted = handler.extractItem(slot, want, false);
+            int actuallyTaken = extracted.getCount();
+            if (actuallyTaken <= 0) {
+                break;
+            }
+            remaining -= actuallyTaken;
+        }
+    }
+
     private void attemptFinalShipmentBackToConnectedInventory() {
         if (extractBehaviour == null || !extractBehaviour.hasInventory()) {
             return;
@@ -1036,7 +1129,7 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
             ItemStack remaining = extractBehaviour.insert(stack.copy());
             int insertedCount = stack.getCount() - remaining.getCount();
             if (insertedCount > 0) {
-                storage.extractItem(i, insertedCount, false);
+                extractFromSlotExact(storage, i, insertedCount);
                 insertedSummary.add(stack.copyWithCount(insertedCount));
             }
             if (!remaining.isEmpty()) {
@@ -1052,12 +1145,134 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
     }
 
     /**
-     * 清空所有本次生产相关的缓存数据，切回空闲阶段，工作状态（POWERED）
-     * 也一并关闭，等待下一次下单重新激活。
+     * 玩家在进程面板详情界面手动确认"中断请求"时调用（服务端，来自
+     * {@code RequestWorkWarehouseInterruptPacket}）。只在正料请求/生产
+     * 这两个"正在工作"的阶段有效，已经在空闲或者已经在中断中都直接忽略。
+     * <p>
+     * 立即清空需求列表/请求列表（不再接收任何物品、不再产生新的需求），
+     * 记录两条中断专属日志（红色分类），然后马上尝试把仓库里现有的物品
+     * 全部发出去；发不出去（找不到打包机/连接库存插不下）就停留在
+     * {@code INTERRUPTING} 阶段，交给 {@link #tick()} 里的周期性重试。
+     */
+    public void requestInterrupt() {
+        if (level == null || level.isClientSide()) {
+            return;
+        }
+        if (stage != WorkStage.REQUESTING_MATERIALS && stage != WorkStage.PRODUCTION) {
+            return;
+        }
+        demandList = new ArrayList<>();
+        inTransitList = new ArrayList<>();
+        setStage(WorkStage.INTERRUPTING);
+        addLog(WorkWarehouseTemplateSnapshot.LogCategory.CANCEL, "createimp.log.enter_interrupting");
+        addLog(WorkWarehouseTemplateSnapshot.LogCategory.CANCEL, "createimp.log.current_storage",
+                itemsArg(currentStorageContents()));
+        setChanged();
+        notifyUpdate();
+        attemptInterruptShipment();
+    }
+
+    /**
+     * {@code INTERRUPTING} 阶段的发货尝试：目标地址是这次请求原本设置的
+     * {@link #targetAddress}，是"返回连接库存专用地址"就走连接库存插入，
+     * 否则找打包机寄出。找不到可用的寄出方式就什么都不做，留在这个阶段，
+     * 等 {@link #tick()} 下一次周期性重试；仓库本身已经没有任何物品时，
+     * 视为中断直接完成。
+     */
+    private void attemptInterruptShipment() {
+        if (stage != WorkStage.INTERRUPTING) {
+            return;
+        }
+        boolean anyItem = false;
+        for (int i = 0; i < storage.getSlots(); i++) {
+            if (!storage.getStackInSlot(i).isEmpty()) {
+                anyItem = true;
+                break;
+            }
+        }
+        if (!anyItem) {
+            completeInterrupt();
+            return;
+        }
+        String backAddress = backToConnectedInventoryAddress();
+        if (!backAddress.isBlank() && backAddress.equals(targetAddress)) {
+            attemptInterruptShipmentBackToConnectedInventory();
+            return;
+        }
+
+        List<ItemStack> allItems = new ArrayList<>();
+        for (int i = 0; i < storage.getSlots(); i++) {
+            ItemStack s = storage.getStackInSlot(i);
+            if (!s.isEmpty()) {
+                allItems.add(s.copy());
+            }
+        }
+        PackagerBlockEntity packager = findDispatchPackager(behaviour.freqId);
+        if (packager == null) {
+            return;
+        }
+        for (int i = 0; i < storage.getSlots(); i++) {
+            storage.setStackInSlot(i, ItemStack.EMPTY);
+        }
+        sendItemsSplitIntoPackages(packager, allItems, targetAddress, null, 0, "请求中断后，把仓库现有物品打包发货", false);
+        addLog(WorkWarehouseTemplateSnapshot.LogCategory.CANCEL, "createimp.log.interrupt_items_sent",
+                itemsArg(mergeItems(allItems)), addressArg(targetAddress, "createimp.log.connected_storage"));
+        completeInterrupt();
+    }
+
+    /** {@code INTERRUPTING} 阶段、目标地址为连接库存专用地址时的发货尝试，写法和 {@link #attemptFinalShipmentBackToConnectedInventory()} 一致。 */
+    private void attemptInterruptShipmentBackToConnectedInventory() {
+        if (extractBehaviour == null || !extractBehaviour.hasInventory()) {
+            return;
+        }
+        boolean allInserted = true;
+        List<ItemStack> insertedSummary = new ArrayList<>();
+        for (int i = 0; i < storage.getSlots(); i++) {
+            ItemStack stack = storage.getStackInSlot(i);
+            if (stack.isEmpty()) {
+                continue;
+            }
+            ItemStack remaining = extractBehaviour.insert(stack.copy());
+            int insertedCount = stack.getCount() - remaining.getCount();
+            if (insertedCount > 0) {
+                extractFromSlotExact(storage, i, insertedCount);
+                insertedSummary.add(stack.copyWithCount(insertedCount));
+            }
+            if (!remaining.isEmpty()) {
+                allInserted = false;
+            }
+        }
+        if (!allInserted) {
+            return;
+        }
+        addLog(WorkWarehouseTemplateSnapshot.LogCategory.CANCEL, "createimp.log.interrupt_items_sent",
+                itemsArg(mergeItems(insertedSummary)),
+                WorkWarehouseTemplateSnapshot.LogArg.key("createimp.log.connected_storage"));
+        completeInterrupt();
+    }
+
+    /**
+     * 正常完成一次生产请求时的收尾：记录"进入空闲阶段"日志、归档完整日志
+     * 给网络内所有进程面板、清空所有残余数据回到空闲。
      */
     private void resetToIdle() {
         addLog("createimp.log.enter_idle");
         archiveHistoryToProcessManagers();
+        clearAllStateAndGoIdle();
+    }
+
+    /**
+     * "请求中断"流程走完（仓库内物品已经全部发出去）之后的收尾：记录专用
+     * 的"请求中断成功"日志（红色分类），归档、清空，和 {@link #resetToIdle()}
+     * 是同一套收尾动作，只是记的日志不一样，所以没有直接复用那个方法。
+     */
+    private void completeInterrupt() {
+        addLog(WorkWarehouseTemplateSnapshot.LogCategory.CANCEL, "createimp.log.interrupt_success");
+        archiveHistoryToProcessManagers();
+        clearAllStateAndGoIdle();
+    }
+
+    private void clearAllStateAndGoIdle() {
         templateSnapshot = new ArrayList<>();
         demandList = new ArrayList<>();
         inTransitList = new ArrayList<>();
@@ -1070,6 +1285,7 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         logEntries.clear();
         latestLogKey = "";
         latestLogArgs = new ArrayList<>();
+        latestLogCategory = WorkWarehouseTemplateSnapshot.LogCategory.NORMAL;
         latestLogElapsedTicks = 0;
         setStage(WorkStage.IDLE);
         setWorking(false);
@@ -1280,13 +1496,38 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
      */
     private void sendItemsSplitIntoPackages(PackagerBlockEntity packager, List<ItemStack> items, String address,
                                             List<ItemStack> craftPattern, int craftCount, String sourceDescription) {
-        addLog("createimp.log.items_sent", itemsArg(mergeItems(items)), WorkWarehouseTemplateSnapshot.LogArg.text(address));
+        sendItemsSplitIntoPackages(packager, items, address, craftPattern, craftCount, sourceDescription, true);
+    }
+
+    /**
+     * {@code logItemsSent} 为 false 时不记录这里通用的"发出物品"日志——
+     * 请求中断流程自己会在调用这个方法之后记一条专用的"发送物品"日志
+     * （红色分类），如果这里还照常记一条，就会变成同一次发货连续出现
+     * 两条颜色不同的日志。
+     */
+    private void sendItemsSplitIntoPackages(PackagerBlockEntity packager, List<ItemStack> items, String address,
+                                            List<ItemStack> craftPattern, int craftCount, String sourceDescription,
+                                            boolean logItemsSent) {
+        if (logItemsSent) {
+            addLog("createimp.log.items_sent", itemsArg(mergeItems(items)), WorkWarehouseTemplateSnapshot.LogArg.text(address));
+        }
         List<ItemStackHandler> chunks = splitIntoPackageChunks(items);
         int chunkCount = chunks.size();
+        // 同一次发货如果因为 9 格容量限制被拆成了多个物理包裹，这些包裹
+        // 必须共用同一个 orderId、并按顺序标好 fragmentIndex/isFinal，批量
+        // 理包机（BatchRepackagerBlockEntity#isOrderComplete）才能正确地把
+        // 它们重新拼回同一份订单——先汇总全部包裹里的真实材料，再判断够不
+        // 够凑够声明的合成批次数。如果每个包裹各自随机生成 orderId、都标成
+        // "自己就是唯一且完整的订单"（之前的写法），批量理包机会把每个包裹
+        // 当成互不相关的独立小订单分别处理：材料分散在不同包裹里时（比如
+        // 木板和木棍因为分包顺序被拆进了不同的包裹），任何一个包裹单独看
+        // 都凑不够声明的批次数，会被误判成"库存不够"直接原样打包退回，
+        // 而不是等所有包裹到齐后一起合成。
+        int orderId = RNG.nextInt();
         for (int i = 0; i < chunkCount; i++) {
             ItemStackHandler chunk = chunks.get(i);
             PackageOrderWithCrafts orderContext = buildCraftContext(chunk, craftPattern, craftCount);
-            injectPackage(packager, chunk, address, orderContext);
+            injectPackage(packager, chunk, address, orderContext, orderId, i, i == chunkCount - 1);
         }
     }
 
@@ -1429,10 +1670,13 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
      * 直接向一个真实打包机"注入"一个已经打好包的包裹，效果与
      * {@code PackagerBlockEntity.attemptToSend} 从自己背后容器里取出物品、
      * 打包、播放弹出动画完全一致——只是物品来源换成了工作仓库自己的内部
-     * 存储，不经过打包机自身的库存查询流程。
+     * 存储，不经过打包机自身的库存查询流程。{@code orderId}/{@code fragmentIndex}/
+     * {@code isFinal} 由调用方（{@link #sendItemsSplitIntoPackages}）统一
+     * 分配，确保同一次发货拆出的多个包裹能被批量理包机正确识别成同一份
+     * 订单的不同碎片，而不是各自独立的订单。
      */
     private static void injectPackage(PackagerBlockEntity packager, ItemStackHandler contents, String address,
-                                      PackageOrderWithCrafts orderContext) {
+                                      PackageOrderWithCrafts orderContext, int orderId, int fragmentIndex, boolean isFinal) {
         ItemStack createdBox = PackageItem.containing(contents);
         PackageItem.clearAddress(createdBox);
         if (address != null && !address.isBlank()) {
@@ -1444,7 +1688,10 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
             // orderedCrafts 里，isEmpty() 永远不会因为 orderedCrafts 有内容
             // 而返回 false。buildCraftContext 只有在节点开启了动力合成模式
             // 时才会返回非 null，所以这里直接判断非 null 就足够。
-            PackageItem.setOrder(createdBox, RNG.nextInt(), 0, true, 0, true, orderContext);
+            // linkIndex 固定传 0、isFinalLink 固定传 true——我们自己的发货
+            // 逻辑里不存在"多个打包机链路分段"这种概念，只有"一次发货拆成
+            // 多个包裹"这一层，用 fragmentIndex/isFinal 表达就够了。
+            PackageItem.setOrder(createdBox, orderId, 0, true, fragmentIndex, isFinal, orderContext);
         }
         if (!packager.heldBox.isEmpty() || packager.animationTicks != 0) {
             packager.queuedExitingPackages.add(new BigItemStack(createdBox, 1));
@@ -1472,7 +1719,12 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
      * 会立即同步给客户端（不像模板链快照/需求列表那样只落盘）。
      */
     public void setRequestedProduct(ItemStack item, int amount) {
-        this.requestedProduct = item == null ? ItemStack.EMPTY : item.copy();
+        // 归一化数量为 1——真实数量由 amount 单独承载。requestedProduct
+        // 用的是原版 ItemStack.CODEC 直接编码，这个 codec 对内部 count 字段
+        // 做了 [1,99] 范围校验，如果调用方传进来的 item 本身就带着请求的
+        // 真实数量（有可能远超 99），这个字段会编码失败，导致整个方块实体
+        // 的存档写入失败（和之前 LogEntries/DemandEntry 那几处是同一类问题）。
+        this.requestedProduct = item == null || item.isEmpty() ? ItemStack.EMPTY : item.copyWithCount(1);
         this.requestedAmount = amount;
         setChanged();
         notifyUpdate();
@@ -1507,6 +1759,9 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
     }
 
     private String stageValueLangKey() {
+        if (stage == WorkStage.INTERRUPTING) {
+            return "gui.work_warehouse.stage_interrupting_value";
+        }
         if (stage == WorkStage.PRODUCTION) {
             return productionComplete
                     ? "gui.work_warehouse.stage_production_complete_value"
@@ -1527,6 +1782,14 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         if (pendingReconcile) {
             pendingReconcile = false;
             reconcileDemandList();
+        }
+        if (stage == WorkStage.INTERRUPTING) {
+            if (++ticksSinceLastMonitor <= 15) {
+                return;
+            }
+            ticksSinceLastMonitor = 0;
+            attemptInterruptShipment();
+            return;
         }
         if (stage == WorkStage.PRODUCTION && productionComplete) {
             if (++ticksSinceLastMonitor <= 15) {
@@ -1563,6 +1826,7 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
                 ? CatnipCodecUtils.decode(WorkWarehouseTemplateSnapshot.LogArg.CODEC.listOf(), registries,
                 tag.get("LatestLogArgs")).orElse(List.of())
                 : List.of());
+        latestLogCategory = parseLogCategory(tag.getString("LatestLogCategory"));
         latestLogElapsedTicks = tag.getLong("LatestLogElapsedTicks");
         logEntries.clear();
         logEntries.addAll(tag.contains("LogEntries")
@@ -1605,6 +1869,14 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         }
     }
 
+    private static WorkWarehouseTemplateSnapshot.LogCategory parseLogCategory(String name) {
+        try {
+            return WorkWarehouseTemplateSnapshot.LogCategory.valueOf(name);
+        } catch (IllegalArgumentException e) {
+            return WorkWarehouseTemplateSnapshot.LogCategory.NORMAL;
+        }
+    }
+
     @Override
     protected void write(CompoundTag tag, HolderLookup.Provider registries, boolean clientPacket) {
         super.write(tag, registries, clientPacket);
@@ -1617,6 +1889,7 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         tag.putString("LatestLogKey", latestLogKey);
         CatnipCodecUtils.encode(WorkWarehouseTemplateSnapshot.LogArg.CODEC.listOf(), registries, latestLogArgs)
                 .ifPresent(encoded -> tag.put("LatestLogArgs", encoded));
+        tag.putString("LatestLogCategory", latestLogCategory.name());
         tag.putLong("LatestLogElapsedTicks", latestLogElapsedTicks);
         CatnipCodecUtils.encode(WorkWarehouseTemplateSnapshot.LogEntry.CODEC.listOf(), registries, logEntries)
                 .ifPresent(encoded -> tag.put("LogEntries", encoded));

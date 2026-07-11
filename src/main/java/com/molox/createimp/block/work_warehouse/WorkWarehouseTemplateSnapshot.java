@@ -63,6 +63,15 @@ public final class WorkWarehouseTemplateSnapshot {
      * COMPLETED"，而不是像原来那样只能靠物品种类隐式对应。
      */
     public record IngredientEntry(ItemStack item, int amount, int sourceIndex) {
+        /**
+         * 和 {@link LogArg.ItemCount} 同样的原因：{@code item} 只是类型标记，
+         * 真实数量由 {@code amount} 单独承载，强制归一化避免调用方不小心把
+         * 真实数量（可能超过 99）带进 {@code item} 自身导致编码失败。
+         */
+        public IngredientEntry {
+            item = item.copyWithCount(1);
+        }
+
         public static final Codec<IngredientEntry> CODEC = RecordCodecBuilder.create(instance -> instance.group(
                 ItemStack.CODEC.fieldOf("item").forGetter(IngredientEntry::item),
                 Codec.INT.fieldOf("amount").forGetter(IngredientEntry::amount),
@@ -88,6 +97,11 @@ public final class WorkWarehouseTemplateSnapshot {
      * 天然保证不会出现"两个分支同时以为自己的原料都够了"的重复认领。
      */
     public record DemandEntry(UUID network, ItemStack item, int amount, int ownerNode, int sourceProducerIndex) {
+        /** 同 {@link IngredientEntry}：item 只是类型标记，强制归一化数量为 1。 */
+        public DemandEntry {
+            item = item.copyWithCount(1);
+        }
+
         public static final int OWNER_INITIAL_GATHER = -1;
         public static final int OWNER_FINAL_PRODUCT = -2;
         /**
@@ -125,6 +139,11 @@ public final class WorkWarehouseTemplateSnapshot {
      * {@code ownerNode} 取值规则相同。
      */
     public record InTransitEntry(UUID network, ItemStack item, int amount, int ownerNode) {
+        /** 同 {@link IngredientEntry}：item 只是类型标记，强制归一化数量为 1。 */
+        public InTransitEntry {
+            item = item.copyWithCount(1);
+        }
+
         public static final Codec<InTransitEntry> CODEC = RecordCodecBuilder.create(instance -> instance.group(
                 UUIDUtil.CODEC.fieldOf("network").forGetter(InTransitEntry::network),
                 ItemStack.CODEC.fieldOf("item").forGetter(InTransitEntry::item),
@@ -166,6 +185,16 @@ public final class WorkWarehouseTemplateSnapshot {
                                 List<IngredientEntry> ingredients, boolean demandMode,
                                 List<ItemStack> craftingArrangement, String address,
                                 int requiredBatches, PanelState state, int expectedOutputTotal) {
+        /**
+         * 同 {@link IngredientEntry}：{@code filterItem} 只是类型标记，真实
+         * 数量由 {@code expectedOutputTotal}/{@code requiredBatches} 单独
+         * 承载，强制归一化避免数量意外超过 99 导致这个节点自身编码失败，
+         * 拖累整份快照列表都存不进存档。
+         */
+        public PanelSnapshot {
+            filterItem = filterItem.copyWithCount(1);
+        }
+
         public static final Codec<PanelSnapshot> CODEC = RecordCodecBuilder.create(instance -> instance.group(
                 UUIDUtil.CODEC.fieldOf("network").forGetter(PanelSnapshot::network),
                 ItemStack.CODEC.fieldOf("filter").forGetter(PanelSnapshot::filterItem),
@@ -187,6 +216,28 @@ public final class WorkWarehouseTemplateSnapshot {
         public PanelSnapshot withState(PanelState newState) {
             return new PanelSnapshot(network, filterItem, templatePanel, recipeOutput, ingredients,
                     demandMode, craftingArrangement, address, requiredBatches, newState, expectedOutputTotal);
+        }
+    }
+
+    /**
+     * 日志条目的展示分类：{@code NORMAL} 是正常颜色，{@code CANCEL} 是"请求
+     * 中断"相关的几条日志专用——整条消息里除了 {@code _高亮_} 部分依然保持
+     * 高亮色之外，其余文字在三处展示（进程卡片最新日志行、历史请求日志
+     * 卡片预览行、详情界面完整换行展示）里都要统一变成红色。这个分类是在
+     * 日志产生的那一刻就打好标签的，不是靠解析文本内容去猜。
+     */
+    public enum LogCategory {
+        NORMAL, CANCEL;
+
+        public static final Codec<LogCategory> CODEC = Codec.STRING.xmap(
+                LogCategory::fromNameSafe, LogCategory::name);
+
+        private static LogCategory fromNameSafe(String name) {
+            try {
+                return LogCategory.valueOf(name);
+            } catch (IllegalArgumentException e) {
+                return NORMAL;
+            }
         }
     }
 
@@ -243,6 +294,17 @@ public final class WorkWarehouseTemplateSnapshot {
 
         /** 一种物品 + 数量，用于拼成日志里"物品名×数量"这一段。 */
         public record ItemCount(ItemStack item, int count) {
+            /**
+             * 强制把 {@code item} 内嵌的数量归一化成 1——真实数量只由 {@code count}
+             * 这个独立字段承载。原版 {@code ItemStack.CODEC} 对内部 count 字段做了
+             * {@code intRange(1, 99)} 校验，如果不归一化，调用方一旦把"物品×实际
+             * 数量"直接拼进 {@code item} 里（比如数量超过 99 的批量物流请求），
+             * 这一条记录就会编码失败，进而拖累整个日志列表都编码失败、静默丢失。
+             */
+            public ItemCount {
+                item = item.copyWithCount(1);
+            }
+
             public static final Codec<ItemCount> CODEC = RecordCodecBuilder.create(instance -> instance.group(
                     ItemStack.CODEC.fieldOf("item").forGetter(ItemCount::item),
                     Codec.INT.fieldOf("count").forGetter(ItemCount::count)
@@ -263,11 +325,12 @@ public final class WorkWarehouseTemplateSnapshot {
      * 模板字符串里保留 {@code _高亮内容_} 这种单下划线标记，解析完之后仍然
      * 是界面层负责按这个标记解析成两种颜色。
      */
-    public record LogEntry(long elapsedTicks, String key, List<LogArg> args) {
+    public record LogEntry(long elapsedTicks, String key, List<LogArg> args, LogCategory category) {
         public static final Codec<LogEntry> CODEC = RecordCodecBuilder.create(instance -> instance.group(
                 Codec.LONG.fieldOf("elapsed_ticks").forGetter(LogEntry::elapsedTicks),
                 Codec.STRING.fieldOf("key").forGetter(LogEntry::key),
-                LogArg.CODEC.listOf().optionalFieldOf("args", List.of()).forGetter(LogEntry::args)
+                LogArg.CODEC.listOf().optionalFieldOf("args", List.of()).forGetter(LogEntry::args),
+                LogCategory.CODEC.optionalFieldOf("category", LogCategory.NORMAL).forGetter(LogEntry::category)
         ).apply(instance, LogEntry::new));
 
         /** 按调用方（渲染时是客户端）自己的语言，把 key+参数解析成最终要显示的文字。 */

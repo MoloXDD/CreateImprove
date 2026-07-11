@@ -4,18 +4,21 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.molox.createimp.CreateImp;
 import com.molox.createimp.block.work_warehouse.WorkWarehouseBlockEntity;
 import com.molox.createimp.block.work_warehouse.WorkWarehouseTemplateSnapshot;
+import com.molox.createimp.network.RequestWorkWarehouseInterruptPacket;
 import com.simibubi.create.foundation.gui.AllIcons;
 import com.simibubi.create.foundation.gui.widget.IconButton;
 import net.createmod.catnip.animation.LerpedFloat;
 import net.createmod.catnip.gui.AbstractSimiScreen;
 import net.createmod.catnip.gui.ScreenOpener;
 import net.createmod.catnip.gui.element.ScreenElement;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -93,14 +96,34 @@ public class ProcessManagerDetailScreen extends AbstractSimiScreen {
     /** 一般文字 / 高亮文字（"_xxx_"标记）颜色。 */
     private static final int LOG_TEXT_COLOR = 0xC0C0C0;
     private static final int LOG_HIGHLIGHT_COLOR = 0xFFD700;
+    /** "请求中断"分类日志的一般文字颜色（红色），高亮部分用 LOG_CANCEL_HIGHLIGHT_COLOR。 */
+    private static final int LOG_CANCEL_COLOR = 0xFF5555;
+    /** "请求中断"分类日志里 "_高亮_" 部分专用的颜色（比 LOG_CANCEL_COLOR 更亮/更淡的红）。 */
+    private static final int LOG_CANCEL_HIGHLIGHT_COLOR = 0xFF9999;
     /** "[XX分XX秒]" 时间戳颜色（亮棕色）。 */
     private static final int LOG_TIMESTAMP_COLOR = 0xC68642;
+
+    /** 取消（中断请求）按钮：只在【当前进程】详情界面、且工作仓库处于
+     *  原料请求/生产阶段时才显示，位置和主界面"历史请求日志"按钮一致。
+     *  写法和置底按钮一样，贴图整张盖在原版按钮底色上面。 */
+    private static final ResourceLocation CANCEL1_TEXTURE =
+            ResourceLocation.fromNamespaceAndPath(CreateImp.MODID, "textures/gui/process_manager_progress_cancel1.png");
+    private static final ResourceLocation CANCEL2_TEXTURE =
+            ResourceLocation.fromNamespaceAndPath(CreateImp.MODID, "textures/gui/process_manager_progress_cancel2.png");
+    private static final ScreenElement CANCEL1_ICON = (graphics, x, y) ->
+            graphics.blit(CANCEL1_TEXTURE, x - 1, y - 1, 0, 0, 18, 18, 18, 18);
+    private static final ScreenElement CANCEL2_ICON = (graphics, x, y) ->
+            graphics.blit(CANCEL2_TEXTURE, x - 1, y - 1, 0, 0, 18, 18, 18, 18);
+    private static final int CANCEL_BUTTON_X_OFFSET = 7;
+    private static final int CANCEL_BUTTON_Y_OFFSET = 196;
+    private static final int CANCEL_BUTTON_SIZE = 18;
 
     // ============================================================
     // ↑↑↑ 以上是窗口内所有【非背景】组件的位置/颜色，均可自行修改 ↑↑↑
     // ============================================================
 
-    private record RenderedLine(List<ProcessLogTextUtil.Segment> segments, boolean firstOfEntry) {
+    private record RenderedLine(List<ProcessLogTextUtil.Segment> segments, boolean firstOfEntry,
+                                WorkWarehouseTemplateSnapshot.LogCategory category) {
     }
 
     private final BlockPos managerPos;
@@ -121,6 +144,10 @@ public class ProcessManagerDetailScreen extends AbstractSimiScreen {
 
     private IconButton confirmButton;
     private IconButton downButton;
+    /** 取消（中断请求）按钮，历史模式下始终为 null（不创建）。 */
+    private IconButton cancelButton;
+    /** 是否处于"已点击一次、等待二次确认"的状态（cancel2 + 激活外观）。 */
+    private boolean cancelArmed = false;
 
     /** 实时模式：日志会随着工作仓库继续工作而增长，每 tick 轮询；工作仓库回到空闲会自动退出。 */
     public ProcessManagerDetailScreen(BlockPos managerPos, BlockPos warehousePos, float returnScroll,
@@ -168,8 +195,68 @@ public class ProcessManagerDetailScreen extends AbstractSimiScreen {
         downButton.setToolTip(Component.translatable("createimp.gui.process_manager.scroll_to_bottom"));
         addRenderableWidget(downButton);
 
+        if (staticEntries == null) {
+            cancelButton = new IconButton(
+                    guiLeft + CANCEL_BUTTON_X_OFFSET,
+                    guiTop + CANCEL_BUTTON_Y_OFFSET,
+                    CANCEL_BUTTON_SIZE, CANCEL_BUTTON_SIZE,
+                    CANCEL1_ICON
+            );
+            cancelButton.withCallback(this::onCancelButtonClicked);
+            cancelButton.visible = isWarehouseInterruptible();
+            addRenderableWidget(cancelButton);
+        }
+
         refreshLog();
         scroll.startWithValue(getMaxScroll());
+        downButton.visible = !isAtBottom();
+    }
+
+    /**
+     * 只有【当前进程】详情界面（不是历史模式）、且工作仓库处于原料请求
+     * 或生产阶段时，取消按钮才显示；其余时候（比如已经在请求中断阶段）
+     * 直接不显示这个按钮。
+     */
+    private boolean isWarehouseInterruptible() {
+        if (staticEntries != null) {
+            return false;
+        }
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null) {
+            return false;
+        }
+        if (!(mc.level.getBlockEntity(warehousePos) instanceof WorkWarehouseBlockEntity warehouse)) {
+            return false;
+        }
+        WorkWarehouseBlockEntity.WorkStage stage = warehouse.getStage();
+        return stage == WorkWarehouseBlockEntity.WorkStage.REQUESTING_MATERIALS
+                || stage == WorkWarehouseBlockEntity.WorkStage.PRODUCTION;
+    }
+
+    /**
+     * 取消按钮的点击回调：第一次点击只是"武装"状态（换成 cancel2 贴图 +
+     * 激活外观），不做任何实际操作；已经是武装状态时再点一次才真正确认，
+     * 发包给服务端触发中断，同时立刻把按钮恢复成未武装的外观（不需要等
+     * 服务端响应——工作仓库很快会切到请求中断阶段，按钮下一个 tick 就会
+     * 因为 {@link #isWarehouseInterruptible()} 返回 false 而自动隐藏）。
+     */
+    private void onCancelButtonClicked() {
+        if (!cancelArmed) {
+            cancelArmed = true;
+            cancelButton.setIcon(CANCEL2_ICON);
+            cancelButton.green = true;
+            return;
+        }
+        PacketDistributor.sendToServer(new RequestWorkWarehouseInterruptPacket(warehousePos));
+        resetCancelState();
+    }
+
+    private void resetCancelState() {
+        cancelArmed = false;
+        if (cancelButton != null) {
+            cancelButton.setIcon(CANCEL1_ICON);
+            cancelButton.green = false;
+        }
     }
 
     /** 置底按钮的点击回调：立刻回到底部，并重新进入置底状态。 */
@@ -192,7 +279,23 @@ public class ProcessManagerDetailScreen extends AbstractSimiScreen {
         if (stickToBottom) {
             scroll.chase(getMaxScroll(), SCROLL_CHASE_SPEED, LerpedFloat.Chaser.EXP);
         }
+        if (downButton != null) {
+            downButton.visible = !isAtBottom();
+        }
+        if (cancelButton != null) {
+            boolean shouldShow = isWarehouseInterruptible();
+            cancelButton.visible = shouldShow;
+            if (!shouldShow && cancelArmed) {
+                resetCancelState();
+            }
+        }
         closeIfWarehouseIdle();
+    }
+
+    /** 已经滚到最底部（或者压根没有可滚动的内容）时不需要"置底"按钮。 */
+    private boolean isAtBottom() {
+        int max = getMaxScroll();
+        return max <= 0 || scroll.getChaseTarget() >= max;
     }
 
     /**
@@ -254,7 +357,7 @@ public class ProcessManagerDetailScreen extends AbstractSimiScreen {
             combined.addAll(ProcessLogTextUtil.parseHighlight(entry.resolveMessage()));
             List<List<ProcessLogTextUtil.Segment>> lines = ProcessLogTextUtil.wrap(font, combined, maxWidth);
             for (int lineIndex = 0; lineIndex < lines.size(); lineIndex++) {
-                renderedLines.add(new RenderedLine(lines.get(lineIndex), lineIndex == 0));
+                renderedLines.add(new RenderedLine(lines.get(lineIndex), lineIndex == 0, entry.category()));
             }
         }
         knownEntryCount = entries.size();
@@ -293,6 +396,20 @@ public class ProcessManagerDetailScreen extends AbstractSimiScreen {
         return true;
     }
 
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (cancelArmed && cancelButton != null && !isWithinCancelButton(mouseX, mouseY)) {
+            resetCancelState();
+        }
+        return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    private boolean isWithinCancelButton(double mouseX, double mouseY) {
+        return cancelButton != null && cancelButton.visible
+                && mouseX >= cancelButton.getX() && mouseX < cancelButton.getX() + CANCEL_BUTTON_SIZE
+                && mouseY >= cancelButton.getY() && mouseY < cancelButton.getY() + CANCEL_BUTTON_SIZE;
+    }
+
     private static String formatTimestamp(long elapsedTicks) {
         long totalSeconds = Math.max(0, elapsedTicks) / 20;
         long minutes = totalSeconds / 60;
@@ -327,12 +444,42 @@ public class ProcessManagerDetailScreen extends AbstractSimiScreen {
             if (i > 0) {
                 y += line.firstOfEntry() ? LOG_ENTRY_GAP : LOG_LINE_GAP;
             }
+            int normalColor = line.category() == WorkWarehouseTemplateSnapshot.LogCategory.CANCEL
+                    ? LOG_CANCEL_COLOR : LOG_TEXT_COLOR;
+            int highlightColor = line.category() == WorkWarehouseTemplateSnapshot.LogCategory.CANCEL
+                    ? LOG_CANCEL_HIGHLIGHT_COLOR : LOG_HIGHLIGHT_COLOR;
             ProcessLogTextUtil.draw(graphics, font, line.segments(), x, y,
-                    LOG_TEXT_COLOR, LOG_HIGHLIGHT_COLOR, LOG_TIMESTAMP_COLOR);
+                    normalColor, highlightColor, LOG_TIMESTAMP_COLOR);
             y += font.lineHeight;
         }
 
         pose.popPose();
         graphics.disableScissor();
+    }
+
+    /**
+     * 取消按钮的 tooltip 之前是在 {@link #renderWindow} 里画的，但那是在
+     * 按钮之类的部件渲染之前调用的，会导致 tooltip 被按钮盖住。改成重写
+     * 标准的 {@code render}，先调用 {@code super.render(...)}（背景+自定义
+     * 内容+全部部件都画完），再在最后画 tooltip，保证永远盖在最上层。
+     */
+    @Override
+    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
+        super.render(graphics, mouseX, mouseY, partialTicks);
+
+        if (isWithinCancelButton(mouseX, mouseY)) {
+            List<Component> tooltip;
+            if (cancelArmed) {
+                tooltip = List.of(
+                        Component.translatable("createimp.gui.process_manager.cancel_confirm_line1")
+                                .withStyle(ChatFormatting.RED),
+                        Component.translatable("createimp.gui.process_manager.cancel_confirm_line2"),
+                        Component.translatable("createimp.gui.process_manager.cancel_confirm_line3")
+                );
+            } else {
+                tooltip = List.of(Component.translatable("createimp.gui.process_manager.cancel_request"));
+            }
+            graphics.renderComponentTooltip(font, tooltip, mouseX, mouseY);
+        }
     }
 }
