@@ -64,7 +64,11 @@ public class TemplatePanelModel extends BakedModelWrapperWithData {
     }
 
     public void addPanel(List<BakedQuad> quads, BlockState state, TemplatePanelBlock.PanelSlot slot, RandomSource rand, ModelData data, RenderType renderType) {
-        List<BakedQuad> quadsToAdd = TEMPLATE_PANEL.get().getQuads(state, null, rand, data, RenderType.solid());
+        BakedModel templatePanelModel = TEMPLATE_PANEL.get();
+        if (templatePanelModel == null) {
+            return;
+        }
+        List<BakedQuad> quadsToAdd = templatePanelModel.getQuads(state, null, rand, data, RenderType.solid());
         float xRot = 57.295776f * TemplatePanelBlock.getXRot(state);
         float yRot = 57.295776f * TemplatePanelBlock.getYRot(state);
         for (BakedQuad bakedQuad : quadsToAdd) {

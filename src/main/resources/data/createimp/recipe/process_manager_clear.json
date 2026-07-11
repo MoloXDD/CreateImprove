@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    { "item": "createimp:process_manager" }
+  ],
+  "result": {
+    "count": 1,
+    "id": "createimp:process_manager"
+  }
+}
