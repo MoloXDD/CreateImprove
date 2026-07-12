@@ -67,6 +67,12 @@ public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity {
     public int packageProgressEntryIndex = 0;
     public int packageProgressEntryRemaining = -1;
 
+    // 记录"包裹已经把材料按pattern分配完毕，但当时合成器没有动力（getSpeed()==0），
+    // checkCompletedRecipe(true)因此被跳过、没能真正启动合成"这一待处理状态。
+    // 等待动力恢复（onSpeedChanged检测到0->非0）时补一次强制启动尝试，
+    // 避免必须手动通一次红石信号才能让已就绪的材料开始合成。
+    public boolean pendingForcedStart = false;
+
     private boolean tickedOnce = false;
 
 
@@ -107,6 +113,11 @@ public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity {
     @Override
     public void onSpeedChanged(float previousSpeed) {
         super.onSpeedChanged(previousSpeed);
+        if (previousSpeed == 0f && this.getSpeed() != 0f && this.pendingForcedStart
+                && this.level != null && !this.level.isClientSide()) {
+            this.pendingForcedStart = false;
+            this.checkCompletedRecipe(true);
+        }
     }
 
     public void blockChanged() {
@@ -147,6 +158,7 @@ public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity {
         compound.putInt("PkgProgressOrderId", this.packageProgressOrderId);
         compound.putInt("PkgProgressEntryIndex", this.packageProgressEntryIndex);
         compound.putInt("PkgProgressEntryRemaining", this.packageProgressEntryRemaining);
+        compound.putBoolean("PendingForcedStart", this.pendingForcedStart);
         super.write(compound, registries, clientPacket);
         if (clientPacket && this.reRender) {
             compound.putBoolean("Redraw", true);
@@ -173,6 +185,7 @@ public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity {
         this.packageProgressOrderId = compound.contains("PkgProgressOrderId") ? compound.getInt("PkgProgressOrderId") : -1;
         this.packageProgressEntryIndex = compound.getInt("PkgProgressEntryIndex");
         this.packageProgressEntryRemaining = compound.contains("PkgProgressEntryRemaining") ? compound.getInt("PkgProgressEntryRemaining") : -1;
+        this.pendingForcedStart = compound.getBoolean("PendingForcedStart");
         super.read(compound, registries, clientPacket);
         if (!clientPacket) return;
         if (compound.contains("Redraw"))
@@ -487,6 +500,7 @@ public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity {
     }
 
     protected void begin() {
+        this.pendingForcedStart = false;
         this.phase = Phase.ACCEPTING;
         this.groupedItems = new BatchRecipeGridHandler.GroupedItems(this.inventory.getItem(0).copy());
         this.inventory.setStackInSlot(0, ItemStack.EMPTY);
@@ -563,6 +577,10 @@ public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity {
                 if (blockEntity.phase == Phase.IDLE)
                     blockEntity.checkCompletedRecipe(false);
             });
+        }
+
+        public BatchMechanicalCrafterBlockEntity getBlockEntity() {
+            return this.blockEntity;
         }
 
         @Override

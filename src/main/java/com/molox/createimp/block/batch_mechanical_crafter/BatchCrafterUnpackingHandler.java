@@ -59,12 +59,17 @@ public enum BatchCrafterUnpackingHandler implements UnpackingHandler {
         PackageOrderWithCrafts.CraftingEntry entry = orderContext.orderedCrafts().get(0);
         List<BigItemStack> pattern = entry.pattern().stacks();
 
-        // 只要合成器链上任意一格已经有物品（不论该格是否被本配方用到），
-        // 就说明链上存在尚未开始组装、或来源不明的旧物品，此时绝不能再把
-        // 包裹的材料插入任何槽位，否则新旧物品会一起被计入同一次合成，
-        // 导致合成结果错乱。此时包裹原样留在打包机内，不做任何处理。
+        // 只要合成器链上任意一格的phase不是IDLE（哪怕它自己的槽位因为begin()已经
+        // 把物品搬进groupedItems、看起来是空的），就说明链上还在处理上一次的合成，
+        // 此时绝不能开始分配这次包裹的材料——否则会出现"链条被ejectWholeGrid()逐格
+        // 重置为IDLE期间，只有刚重置的那一个格子空闲、其余仍在WAITING/CRAFTING"的
+        // 半吊子状态：本该整条链一起收到材料，结果只有那一个格子插入成功，
+        // 紧接着的checkCompletedRecipe(true)又会把其余8个"其实没轮到处理、
+        // 只是槽位恰好也是空气"的格子一并强行begin()，导致合成结果完全错乱。
+        // 因此这里必须要求链上全部格子的phase都是IDLE才允许处理，包裹原样留在
+        // 打包机内等待，直到ejectWholeGrid()彻底跑完、整条链真正全部闲下来为止。
         for (BatchMechanicalCrafterBlockEntity.Inventory inv : inventories) {
-            if (!inv.getStackInSlot(0).isEmpty()) return;
+            if (inv.getBlockEntity().phase != BatchMechanicalCrafterBlockEntity.Phase.IDLE) return;
         }
         // 配方格数超出了当前合成器链能提供的槽位数，链路配置有问题，同样不处理。
         if (pattern.size() > inventories.size()) return;
@@ -149,7 +154,8 @@ public enum BatchCrafterUnpackingHandler implements UnpackingHandler {
 
             if (collected <= 0) continue;
 
-            ItemStack leftover = inventories.get(i).insertItem(0, combined, false);
+            BatchMechanicalCrafterBlockEntity.Inventory targetInv = inventories.get(i);
+            ItemStack leftover = targetInv.insertItem(0, combined, false);
             int inserted = collected - leftover.getCount();
             totalInserted += inserted;
 
@@ -161,7 +167,17 @@ public enum BatchCrafterUnpackingHandler implements UnpackingHandler {
         // 如果实际没有材料被放进去（合成器phase不是IDLE），包裹留着等待，不做后续处理
         if (totalInserted == 0) return;
 
-        crafter.checkCompletedRecipe(true);
+        if (crafter.getSpeed() == 0f) {
+            // checkCompletedRecipe(true)内部会因为getSpeed()==0直接返回、什么都不做，
+            // 且不会留下任何"材料已就绪、等动力恢复后再试一次"的记录——如果这里不主动
+            // 记录，之后即便动力恢复，也没有任何代码会重新尝试启动这次合成，只能靠玩家
+            // 手动通一次红石信号。这里记录pendingForcedStart，交给onSpeedChanged在
+            // 动力真正恢复的那一刻补一次checkCompletedRecipe(true)。
+            crafter.pendingForcedStart = true;
+            crafter.setChanged();
+        } else {
+            crafter.checkCompletedRecipe(true);
+        }
 
         // 把剩余物品写回包裹内容
         ItemStackHandler newContents = new ItemStackHandler(9);
