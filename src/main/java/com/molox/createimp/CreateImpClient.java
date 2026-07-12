@@ -10,6 +10,7 @@ import com.molox.createimp.block.template_panel.TemplatePanelModel;
 import com.molox.createimp.block.template_panel.TemplatePanelRenderer;
 import com.molox.createimp.client.NetworkManagerClientHandler;
 import com.molox.createimp.client.TemplateOrderTooltipHandler;
+import com.molox.createimp.ponder.CreateImpPonderPlugin;
 import com.molox.createimp.registry.ModBlockEntityTypes;
 import com.molox.createimp.registry.ModBlocks;
 import com.molox.createimp.registry.ModItems;
@@ -28,6 +29,7 @@ import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer;
 import me.shedaniel.autoconfig.AutoConfig;
 import net.createmod.catnip.lang.FontHelper;
 import net.createmod.catnip.platform.CatnipServices;
+import net.createmod.ponder.foundation.PonderIndex;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.EventPriority;
@@ -65,6 +67,8 @@ public class CreateImpClient {
 
     private static void onClientSetup(FMLClientSetupEvent event) {
         com.molox.createimp.block.template_panel.TemplatePanelModel.init();
+
+        PonderIndex.addPlugin(new CreateImpPonderPlugin());
 
         TooltipModifier.REGISTRY.register(
                 ModItems.ANDESITE_SCRAP_BUCKET.get().asItem(),
