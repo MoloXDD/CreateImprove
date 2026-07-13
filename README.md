@@ -60,6 +60,64 @@ Multiple Recipes: In cases where a single request contains multiple recipes (typ
 
 ![image](https://media.forgecdn.net/attachments/description/1580762/description_30e28858-e242-4b65-9c77-adcb12e06cbf.png)
 
+### **Template Panel**
+
+Added a new type of Factory Gauge used to define a Template Chain for template production.
+
+A valid Template Chain must have ordinary Factory Gauges as leaf nodes, and every Template Panel must have an address configured.
+
+Template Panels are configured in the same way as Factory Gauges, and support demand‑mode requests and Mechanical Crafting, but cannot initiate requests on their own and must be used together with a Work Warehouse.
+
+In a valid Template Chain, all items set on Template Panels can be used for template production.
+
+After configuring a Template Chain, you can see available template productions in the Stock Keeper menu, and request template production if there is an available Work Warehouse.
+
+![image](https://media.forgecdn.net/attachments/description/1580762/description_9a099f28-98af-431f-aaab-f760bb8df199.png)
+
+### **Work Warehouse**
+
+A block used for template crafting, with two placement modes: standalone or placed flush against a block. The Work Warehouse must be configured with an address for receiving materials. When placed flush against a storage block, its address should be set to that connected storage's address.
+
+There must be at least one valid Work Warehouse in the logistics network to perform template production. The number of Work Warehouses determines how many template productions can run simultaneously.
+
+A standalone Work Warehouse must be connected to a Packager (no Stock Link required) and will input/output materials and products through that Packager. A Work Warehouse placed flush against a storage block connected to the same logistics network will retrieve items directly from the connected storage and ship them via that storage's Packager, which is more convenient and efficient.
+
+After a template request is made, the Work Warehouse will obtain all materials needed to complete the request at once, either via package requests or directly from the connected storage.
+
+Then, it will sequentially send materials through the Packager attached to the Work Warehouse or the Packager of the connected storage to the address configured on the Template Panel for production.
+
+When the corresponding products are detected in the connected storage or logistics network, they will be transferred directly or requested into the Work Warehouse.
+
+This process repeats until the requested template item is fully produced. The Work Warehouse will then output both the main product and byproducts to the address set when the request was made.
+
+Additionally, if the address set for the request is the routing address of the connected storage (configurable, default is /back), the final product will be output to the connected storage instead of being sent via Packager.
+
+![image](https://media.forgecdn.net/attachments/description/1580762/description_cf0cd4bc-0889-4064-aa50-15f10d3890e9.png)
+
+### **Process Manager**
+
+A panel used to monitor template crafting progress. It shows all ongoing template productions, and you can click to enter the detail interface to view detailed logs.
+
+It also keeps up to 10 (configurable) history logs of completed or interrupted template requests, viewable in the history log interface.
+
+Additionally, you can interrupt an ongoing request from the log detail interface of that template production.
+
+After interruption, the Work Warehouse will send all materials currently stored in it to the address set for the request and refuse any further incoming materials.
+
+![image](https://media.forgecdn.net/attachments/description/1580762/description_06a11e23-1265-4722-9432-f23227326f16.png)
+
+### **Packager Outbound Address Filtering**
+
+In vanilla Create, when requesting items from a storage that is connected to multiple Packagers on the same network, one of those Packagers is chosen at random to ship the items.
+
+This mod adds a feature that allows players to place Signs on Packagers that have a Stock Link attached. When requesting items from that storage, the shipment will be sent through the Packager whose Sign matches the request address.
+
+Furthermore, similar to the package filter in vanilla Create, the text on the Sign supports Glob syntax for matching. For example, "?23" can match addresses like 123, 223, or 323.
+
+If no Packager with a matching address is found, it will attempt to output through a Packager that has no Sign. If there is no such Sign‑less Packager either, it will pick a Packager at random.
+
+![image](https://media.forgecdn.net/attachments/description/1580762/description_fd7d6de9-2105-4731-9bba-56aaf863c806.png)
+
 ### **Factory Panel Demand Request Mode**
 
 A new button has been added to the recipe mode of the Factory Panel to toggle Demand Request Mode on or off for that panel. This button is only visible when the panel is connected to other Factory Panels.
