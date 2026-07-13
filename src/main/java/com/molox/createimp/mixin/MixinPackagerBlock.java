@@ -2,30 +2,27 @@ package com.molox.createimp.mixin;
 
 import com.molox.createimp.block.work_warehouse.WorkWarehouseBlockEntity;
 import com.simibubi.create.content.logistics.packager.PackagerBlock;
-import net.minecraft.core.BlockPos;
-import net.minecraft.world.level.Level;
-import net.neoforged.neoforge.capabilities.BlockCapability;
+import net.minecraft.core.Direction;
+import net.minecraft.world.item.context.BlockPlaceContext;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Redirect;
+import org.spongepowered.asm.mixin.injection.ModifyVariable;
 
 @Mixin(value = PackagerBlock.class, remap = false)
 public abstract class MixinPackagerBlock {
 
-    @Unique
-    private static final Object createimp$WORK_WAREHOUSE_CAPABILITY_PLACEHOLDER = new Object();
-
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    @Redirect(method = "getStateForPlacement", at = @At(value = "INVOKE",
-            target = "Lnet/minecraft/world/level/Level;getCapability(Lnet/neoforged/neoforge/capabilities/BlockCapability;Lnet/minecraft/core/BlockPos;Ljava/lang/Object;)Ljava/lang/Object;"))
-    private Object createimp$redirectCapabilityForWorkWarehouse(Level level, BlockCapability capability, BlockPos pos, Object context) {
-        Object result = level.getCapability(capability, pos, context);
-        if (result != null) {
-            return result;
+    @ModifyVariable(method = "getStateForPlacement", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/world/item/context/BlockPlaceContext;getPlayer()Lnet/minecraft/world/entity/player/Player;"), ordinal = 0)
+    private Direction createimp$checkWorkWarehouseFacing(Direction preferredFacing, BlockPlaceContext context) {
+        if (preferredFacing != null) {
+            return preferredFacing;
         }
-        if (level.getBlockEntity(pos) instanceof WorkWarehouseBlockEntity) {
-            return createimp$WORK_WAREHOUSE_CAPABILITY_PLACEHOLDER;
+        for (Direction face : context.getNearestLookingDirections()) {
+            BlockEntity be = context.getLevel().getBlockEntity(context.getClickedPos().relative(face));
+            if (be instanceof WorkWarehouseBlockEntity) {
+                return face.getOpposite();
+            }
         }
         return null;
     }
