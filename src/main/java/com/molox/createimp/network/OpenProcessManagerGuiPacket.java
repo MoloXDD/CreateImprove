@@ -1,15 +1,11 @@
 package com.molox.createimp.network;
 
 import com.molox.createimp.CreateImp;
-import com.molox.createimp.screen.ProcessManagerScreen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
-import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 public record OpenProcessManagerGuiPacket(BlockPos pos) implements CustomPacketPayload {
 
@@ -25,10 +21,5 @@ public record OpenProcessManagerGuiPacket(BlockPos pos) implements CustomPacketP
     @Override
     public Type<? extends CustomPacketPayload> type() {
         return TYPE;
-    }
-
-    @OnlyIn(Dist.CLIENT)
-    public static void handle(OpenProcessManagerGuiPacket packet, IPayloadContext context) {
-        context.enqueueWork(() -> ProcessManagerScreen.open(packet));
     }
 }

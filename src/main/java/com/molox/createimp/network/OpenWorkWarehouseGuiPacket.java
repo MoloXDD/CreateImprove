@@ -1,15 +1,11 @@
 package com.molox.createimp.network;
 
 import com.molox.createimp.CreateImp;
-import com.molox.createimp.screen.WorkWarehouseScreen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
-import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 public record OpenWorkWarehouseGuiPacket(
         BlockPos pos,
@@ -33,10 +29,5 @@ public record OpenWorkWarehouseGuiPacket(
     @Override
     public Type<? extends CustomPacketPayload> type() {
         return TYPE;
-    }
-
-    @OnlyIn(Dist.CLIENT)
-    public static void handle(OpenWorkWarehouseGuiPacket packet, IPayloadContext context) {
-        context.enqueueWork(() -> WorkWarehouseScreen.open(packet));
     }
 }

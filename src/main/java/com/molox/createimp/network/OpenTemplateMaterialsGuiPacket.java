@@ -1,10 +1,7 @@
 package com.molox.createimp.network;
 
 import com.molox.createimp.CreateImp;
-import com.molox.createimp.screen.TemplateMaterialsScreen;
-import com.molox.createimp.util.StockKeeperRequestScreenInvoker;
 import com.simibubi.create.content.logistics.BigItemStack;
-import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.UUIDUtil;
 import net.minecraft.network.RegistryFriendlyByteBuf;
@@ -12,9 +9,6 @@ import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
-import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 import java.util.List;
 import java.util.UUID;
@@ -77,24 +71,5 @@ public record OpenTemplateMaterialsGuiPacket(CompletionState completionState,
     @Override
     public Type<? extends CustomPacketPayload> type() {
         return TYPE;
-    }
-
-    @OnlyIn(Dist.CLIENT)
-    public static void handle(OpenTemplateMaterialsGuiPacket packet, IPayloadContext context) {
-        context.enqueueWork(() -> {
-            if (packet.completionState().anyChainBroken()) {
-                if (Minecraft.getInstance().screen instanceof TemplateMaterialsScreen existing) {
-                    existing.handleChainBroken();
-                } else if (Minecraft.getInstance().screen instanceof StockKeeperRequestScreenInvoker invoker) {
-                    invoker.createimp$clearRequestBar();
-                }
-                return;
-            }
-            if (Minecraft.getInstance().screen instanceof TemplateMaterialsScreen existing) {
-                existing.applyResult(packet);
-            } else {
-                TemplateMaterialsScreen.open(packet);
-            }
-        });
     }
 }

@@ -1,5 +1,12 @@
 package com.molox.createimp;
 
+import com.molox.createimp.client.ClientPayloadHandlers;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.fml.loading.FMLLoader;
+import net.neoforged.neoforge.network.handling.IPayloadHandler;
+import java.util.function.Supplier;
+
 import com.molox.createimp.item.NetworkManagerItem;
 import com.molox.createimp.network.ApplyNetworkPacket;
 import com.molox.createimp.network.ClearNetworkSelectionPacket;
@@ -125,12 +132,12 @@ public class CreateImp {
         registrar.playToClient(
                 UpdateBrassScrapBucketAmountPacket.TYPE,
                 UpdateBrassScrapBucketAmountPacket.STREAM_CODEC,
-                UpdateBrassScrapBucketAmountPacket::handle
+                clientHandler(() -> ClientPayloadHandlers::handle)
         );
         registrar.playToClient(
                 OpenNetworkManagerGuiPacket.TYPE,
                 OpenNetworkManagerGuiPacket.STREAM_CODEC,
-                OpenNetworkManagerGuiPacket::handle
+                clientHandler(() -> ClientPayloadHandlers::handle)
         );
         registrar.playToServer(
                 SaveNetworkManagerDataPacket.TYPE,
@@ -165,7 +172,7 @@ public class CreateImp {
         registrar.playToClient(
                 OpenLabeledRedstoneLinkGuiPacket.TYPE,
                 OpenLabeledRedstoneLinkGuiPacket.STREAM_CODEC,
-                OpenLabeledRedstoneLinkGuiPacket::handle
+                clientHandler(() -> ClientPayloadHandlers::handle)
         );
         registrar.playToServer(
                 SaveLabeledRedstoneLinkConfigPacket.TYPE,
@@ -200,7 +207,7 @@ public class CreateImp {
         registrar.playToClient(
                 OpenWorkWarehouseGuiPacket.TYPE,
                 OpenWorkWarehouseGuiPacket.STREAM_CODEC,
-                OpenWorkWarehouseGuiPacket::handle
+                clientHandler(() -> ClientPayloadHandlers::handle)
         );
         registrar.playToServer(
                 SaveWorkWarehouseAddressPacket.TYPE,
@@ -210,12 +217,12 @@ public class CreateImp {
         registrar.playToClient(
                 WorkWarehouseActivateEffectPacket.TYPE,
                 WorkWarehouseActivateEffectPacket.STREAM_CODEC,
-                WorkWarehouseActivateEffectPacket::handle
+                clientHandler(() -> ClientPayloadHandlers::handle)
         );
         registrar.playToClient(
                 WorkWarehouseMaterialsReadyEffectPacket.TYPE,
                 WorkWarehouseMaterialsReadyEffectPacket.STREAM_CODEC,
-                WorkWarehouseMaterialsReadyEffectPacket::handle
+                clientHandler(() -> ClientPayloadHandlers::handle)
         );
         registrar.playToServer(
                 RequestTemplateMaterialsPacket.TYPE,
@@ -225,18 +232,33 @@ public class CreateImp {
         registrar.playToClient(
                 OpenTemplateMaterialsGuiPacket.TYPE,
                 OpenTemplateMaterialsGuiPacket.STREAM_CODEC,
-                OpenTemplateMaterialsGuiPacket::handle
+                clientHandler(() -> ClientPayloadHandlers::handle)
         );
         registrar.playToClient(
                 OpenProcessManagerGuiPacket.TYPE,
                 OpenProcessManagerGuiPacket.STREAM_CODEC,
-                OpenProcessManagerGuiPacket::handle
+                clientHandler(() -> ClientPayloadHandlers::handle)
         );
         registrar.playToServer(
                 RequestWorkWarehouseInterruptPacket.TYPE,
                 RequestWorkWarehouseInterruptPacket.STREAM_CODEC,
                 RequestWorkWarehouseInterruptPacket::handle
         );
+    }
+
+    /**
+     * 只有在真正运行于客户端时才会调用 supplier.get() 来创建客户端专属的
+     * IPayloadHandler（例如引用 ClientPayloadHandlers 的方法引用）。
+     * 在专用服务器上，supplier.get() 永远不会被执行到，client 专属类
+     * 因此也永远不会在服务端被加载/触发 invokedynamic 引导，从而避免
+     * RuntimeDistCleaner 报错。写法照抄自 Create 自己的 DistExecutor
+     * （com.simibubi.create.foundation.utility.DistExecutor#unsafeCallWhenOn）。
+     */
+    private static <T extends CustomPacketPayload> IPayloadHandler<T> clientHandler(Supplier<IPayloadHandler<T>> supplier) {
+        if (FMLLoader.getDist() == Dist.CLIENT) {
+            return supplier.get();
+        }
+        return (payload, context) -> {};
     }
 
     public static CreateImpConfig getConfig() {
