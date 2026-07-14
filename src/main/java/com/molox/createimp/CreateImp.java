@@ -125,12 +125,7 @@ public class CreateImp {
         registrar.playToClient(
                 UpdateBrassScrapBucketAmountPacket.TYPE,
                 UpdateBrassScrapBucketAmountPacket.STREAM_CODEC,
-                (packet, context) -> context.enqueueWork(() -> {
-                    var mc = net.minecraft.client.Minecraft.getInstance();
-                    if (mc.screen instanceof com.molox.createimp.screen.BrassScrapBucketScreen screen) {
-                        screen.updateCurrentAmounts(packet.currentAmount(), packet.currentStacks());
-                    }
-                })
+                UpdateBrassScrapBucketAmountPacket::handle
         );
         registrar.playToClient(
                 OpenNetworkManagerGuiPacket.TYPE,
@@ -236,8 +231,7 @@ public class CreateImp {
         registrar.playToClient(
                 OpenProcessManagerGuiPacket.TYPE,
                 OpenProcessManagerGuiPacket.STREAM_CODEC,
-                (packet, context) -> context.enqueueWork(
-                        () -> com.molox.createimp.screen.ProcessManagerScreen.open(packet))
+                OpenProcessManagerGuiPacket::handle
         );
         registrar.playToServer(
                 RequestWorkWarehouseInterruptPacket.TYPE,

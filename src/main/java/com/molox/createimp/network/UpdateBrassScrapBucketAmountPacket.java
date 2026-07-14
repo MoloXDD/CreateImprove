@@ -2,10 +2,12 @@ package com.molox.createimp.network;
 
 import com.molox.createimp.CreateImp;
 import io.netty.buffer.ByteBuf;
+import net.minecraft.client.Minecraft;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
+import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 public record UpdateBrassScrapBucketAmountPacket(
         int currentAmount,
@@ -25,5 +27,14 @@ public record UpdateBrassScrapBucketAmountPacket(
     @Override
     public Type<? extends CustomPacketPayload> type() {
         return TYPE;
+    }
+
+    public static void handle(UpdateBrassScrapBucketAmountPacket packet, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.screen instanceof com.molox.createimp.screen.BrassScrapBucketScreen screen) {
+                screen.updateCurrentAmounts(packet.currentAmount(), packet.currentStacks());
+            }
+        });
     }
 }
