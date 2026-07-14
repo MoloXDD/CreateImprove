@@ -130,8 +130,7 @@ public class CreateImp {
         registrar.playToClient(
                 OpenNetworkManagerGuiPacket.TYPE,
                 OpenNetworkManagerGuiPacket.STREAM_CODEC,
-                (packet, context) -> context.enqueueWork(
-                        () -> com.molox.createimp.screen.NetworkManagerScreen.open(packet))
+                OpenNetworkManagerGuiPacket::handle
         );
         registrar.playToServer(
                 SaveNetworkManagerDataPacket.TYPE,
