@@ -37,6 +37,7 @@ public class CreateImpConfig implements ConfigData {
     public static class ScrapBucket {
         public int itemsPerNugget = 64;
         public int mbPerNugget = 2000;
+        public boolean generateExperienceNuggets = true;
         public int itemTransferAmount = 64;
         public int itemTransferInterval = 10;
         public int fluidTransferAmount = 1024;

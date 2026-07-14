@@ -8,6 +8,7 @@
   "text.autoconfig.createimp.option.scrapBucket": "废料桶配置",
   "text.autoconfig.createimp.option.scrapBucket.itemsPerNugget": "生成经验颗粒的物品数",
   "text.autoconfig.createimp.option.scrapBucket.mbPerNugget": "生成经验颗粒的流体mB",
+  "text.autoconfig.createimp.option.scrapBucket.generateExperienceNuggets": "是否生成经验颗粒",
   "text.autoconfig.createimp.option.scrapBucket.blacklistedItems": "禁止销毁的物品ID列表",
   "text.autoconfig.createimp.option.scrapBucket.blacklistedFluids": "禁止销毁的流体ID列表",
   "createimp.gui.brass_scrap_bucket.disabled": "未启用",

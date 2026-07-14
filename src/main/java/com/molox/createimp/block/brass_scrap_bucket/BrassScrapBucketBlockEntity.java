@@ -376,6 +376,7 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
     }
 
     private void tryProduceNugget() {
+        if (!CreateImp.getConfig().scrapBucket.generateExperienceNuggets) return;
         if (nuggetCount < MAX_NUGGETS) {
             nuggetCount++;
             setChanged();

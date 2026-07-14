@@ -8,6 +8,7 @@
   "text.autoconfig.createimp.option.scrapBucket": "Scrap Bucket Config",
   "text.autoconfig.createimp.option.scrapBucket.itemsPerNugget": "Items per Experience Nugget",
   "text.autoconfig.createimp.option.scrapBucket.mbPerNugget": "mB per Experience Nugget",
+  "text.autoconfig.createimp.option.scrapBucket.generateExperienceNuggets": "Generate Experience Nuggets",
   "text.autoconfig.createimp.option.scrapBucket.blacklistedItems": "Blacklisted Item IDs",
   "text.autoconfig.createimp.option.scrapBucket.blacklistedFluids": "Blacklisted Fluid IDs",
   "createimp.gui.brass_scrap_bucket.disabled": "Disabled",

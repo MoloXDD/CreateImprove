@@ -70,7 +70,16 @@ public class PackageUnpackHelper {
             }
         }
 
-        AllSoundEvents.PACKAGE_POP.playOnServer(player.level(), player.blockPosition());
+        if (player.level().isClientSide()) {
+            // 创造模式下这个方法整体在客户端本地执行（见方法开头的判断），
+            // playOnServer 内部固定传 player=null，而 ClientLevel 只有在
+            // player 参数等于本地玩家实例时才会真正播放音效，传 null 永远
+            // 播放不出来。这里改用 playAt，其底层 Level.playLocalSound 在
+            // 服务端是空实现、在客户端才会真正本地播放，双端调用都安全。
+            AllSoundEvents.PACKAGE_POP.playAt(player.level(), player.blockPosition(), 1.0f, 1.0f, false);
+        } else {
+            AllSoundEvents.PACKAGE_POP.playOnServer(player.level(), player.blockPosition());
+        }
 
         return true;
     }
