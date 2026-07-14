@@ -11,6 +11,8 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 public record WorkWarehouseActivateEffectPacket(
@@ -31,6 +33,7 @@ public record WorkWarehouseActivateEffectPacket(
         return TYPE;
     }
 
+    @OnlyIn(Dist.CLIENT)
     public static void handle(WorkWarehouseActivateEffectPacket packet, IPayloadContext context) {
         context.enqueueWork(() -> {
             Level level = Minecraft.getInstance().level;

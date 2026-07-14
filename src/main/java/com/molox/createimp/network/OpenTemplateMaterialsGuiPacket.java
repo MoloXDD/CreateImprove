@@ -12,6 +12,8 @@ import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 import java.util.List;
@@ -77,6 +79,7 @@ public record OpenTemplateMaterialsGuiPacket(CompletionState completionState,
         return TYPE;
     }
 
+    @OnlyIn(Dist.CLIENT)
     public static void handle(OpenTemplateMaterialsGuiPacket packet, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (packet.completionState().anyChainBroken()) {

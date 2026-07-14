@@ -7,6 +7,8 @@ import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 public record OpenWorkWarehouseGuiPacket(
@@ -33,6 +35,7 @@ public record OpenWorkWarehouseGuiPacket(
         return TYPE;
     }
 
+    @OnlyIn(Dist.CLIENT)
     public static void handle(OpenWorkWarehouseGuiPacket packet, IPayloadContext context) {
         context.enqueueWork(() -> WorkWarehouseScreen.open(packet));
     }

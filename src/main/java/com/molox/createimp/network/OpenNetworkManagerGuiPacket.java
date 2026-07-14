@@ -9,6 +9,8 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.InteractionHand;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 import java.util.List;
@@ -33,6 +35,7 @@ public record OpenNetworkManagerGuiPacket(InteractionHand hand, List<NetworkLabe
         return TYPE;
     }
 
+    @OnlyIn(Dist.CLIENT)
     public static void handle(OpenNetworkManagerGuiPacket packet, IPayloadContext context) {
         context.enqueueWork(() -> NetworkManagerScreen.open(packet));
     }
