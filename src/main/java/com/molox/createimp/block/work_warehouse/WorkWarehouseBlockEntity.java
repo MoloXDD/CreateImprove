@@ -334,7 +334,7 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
                 continue;
             }
             addLog("createimp.log.node_production_complete",
-                    itemArg(node.filterItem(), node.expectedOutputTotal()));
+                    itemArg(node.filterItem(), node.requiredBatches() * node.recipeOutput()));
         }
     }
 
@@ -935,13 +935,22 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
      * 消费者，每个消费者各自登记各自需要的数量（消费者自己的批次数 × 连接
      * 消耗量），不是把生产者的总产出重复登记给每一个消费者。
      * <p>
-     * 但生产者这一批实际产出（{@link WorkWarehouseTemplateSnapshot.PanelSnapshot#expectedOutputTotal()}，
-     * 已经包含材料确认阶段现有库存确认的部分和自己按批次生产的部分）往往
-     * 会比"全部消费者需求之和"多——批次颗粒度取整必然产生这个差额。这部分
-     * 差额如果不登记任何需求列表条目，就不会被主动收进仓库、永远滞留在
-     * 仓库外部，所以这里额外登记一条归属为"副产物"（{@code OWNER_BYPRODUCT}）
-     * 的需求，把全部实际产出都收进仓库，多出来的部分最后由生产彻底完成后
-     * 的"打包全部剩余物品"那一步一并处理。
+     * 副产物基准注意：这里必须用 {@code requiredBatches() * recipeOutput()}
+     * ——也就是"这一批次自己实际会产出多少"，而不能用
+     * {@link WorkWarehouseTemplateSnapshot.PanelSnapshot#expectedOutputTotal()}。
+     * {@code expectedOutputTotal} 的定义是"现有库存确认的部分 + 自己按批次
+     * 生产的部分"，那部分"现有库存确认"的数量早在原料请求阶段就已经作为
+     * 独立的一次性初始需求条目运到过仓库一次，此刻这个节点即将真正寄出的
+     * 原料只会产出 {@code requiredBatches() * recipeOutput()} 这么多——用
+     * {@code expectedOutputTotal} 会把"已经处理过一次的现有库存"重复计入
+     * 这一批新产出里，凭空多算出一批本次生产根本不会真正产生的"副产物"，
+     * 导致仓库永远等不到这部分幽灵产出、需求列表卡死。
+     * <p>
+     * 生产者这一批实际产出往往会比"全部消费者需求之和"多——批次颗粒度
+     * 取整必然产生这个差额。这部分差额如果不登记任何需求列表条目，就不会
+     * 被主动收进仓库、永远滞留在仓库外部，所以这里额外登记一条归属为
+     * "副产物"（{@code OWNER_BYPRODUCT}）的需求，把全部实际产出都收进仓库，
+     * 多出来的部分最后由生产彻底完成后的"打包全部剩余物品"那一步一并处理。
      */
     private void registerOutputDemand(int producerIndex) {
         WorkWarehouseTemplateSnapshot.PanelSnapshot producer = templateSnapshot.get(producerIndex);
@@ -957,7 +966,8 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
                     producer.network(), producer.filterItem().copy(), qty, consumerIndex, producerIndex));
             allocated += qty;
         }
-        int surplus = producer.expectedOutputTotal() - allocated;
+        int actualBatchOutput = producer.requiredBatches() * producer.recipeOutput();
+        int surplus = actualBatchOutput - allocated;
         if (surplus > 0) {
             demandList.add(new WorkWarehouseTemplateSnapshot.DemandEntry(
                     producer.network(), producer.filterItem().copy(), surplus,
@@ -1388,7 +1398,7 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         if (!canDispatchNode(node)) {
             return false;
         }
-        WorkWarehouseTemplateSnapshot.LogArg productArg = itemArg(node.filterItem(), node.expectedOutputTotal());
+        WorkWarehouseTemplateSnapshot.LogArg productArg = itemArg(node.filterItem(), node.requiredBatches() * node.recipeOutput());
         addLog("createimp.log.node_start_production", productArg);
         dispatchNodeIngredients(node);
         addLog("createimp.log.expect_receive_product", productArg);
