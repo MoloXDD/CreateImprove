@@ -174,11 +174,13 @@ public class LabeledRedstoneLinkBlock extends WrenchableDirectionalBlock
         return power;
     }
 
-    @Override
-    public InteractionResult onWrenched(BlockState state, UseOnContext context) {
-        Level level = context.getLevel();
+    /**
+     * 切换发送/接收模式，扳手右键和空手蹲下右键共用同一份逻辑
+     * （对应原版 RedstoneLinkBlock.toggleMode，被 useWithoutItem 和
+     * onWrenched 两处共用的做法）。
+     */
+    public InteractionResult toggleReceiverMode(BlockState state, Level level, BlockPos pos) {
         if (level.isClientSide()) return InteractionResult.SUCCESS;
-        BlockPos pos = context.getClickedPos();
         boolean wasReceiver = state.getValue(RECEIVER);
         BlockState newState = state.setValue(RECEIVER, !wasReceiver).setValue(POWERED, false);
         level.setBlock(pos, newState, 3);
@@ -203,9 +205,21 @@ public class LabeledRedstoneLinkBlock extends WrenchableDirectionalBlock
     }
 
     @Override
+    public InteractionResult onWrenched(BlockState state, UseOnContext context) {
+        return toggleReceiverMode(state, context.getLevel(), context.getClickedPos());
+    }
+
+    @Override
     protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos,
                                                Player player, BlockHitResult hitResult) {
         if (AllItems.WRENCH.isIn(player.getMainHandItem())) return InteractionResult.PASS;
+
+        // 空手蹲下右键：和原版无线红石信号终端一致，切换发送/接收模式，
+        // 不打开频率设置菜单。
+        if (player.isShiftKeyDown()) {
+            return toggleReceiverMode(state, level, pos);
+        }
+
         if (level.isClientSide()) return InteractionResult.SUCCESS;
         if (!(level.getBlockEntity(pos) instanceof LabeledRedstoneLinkBlockEntity be))
             return InteractionResult.PASS;
