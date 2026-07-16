@@ -4,10 +4,12 @@ import com.llamalad7.mixinextras.injector.v2.WrapWithCondition;
 import com.llamalad7.mixinextras.sugar.Local;
 import com.molox.createimp.CreateImp;
 import com.molox.createimp.block.work_warehouse.WorkWarehouseNetworkHelper;
+import com.molox.createimp.client.ClientWorkWarehouseAvailabilityCache;
 import com.molox.createimp.client.TemplateOrderTooltipHandler;
 import com.molox.createimp.item.TemplateOrderTarget;
 import com.molox.createimp.item.TemplateOrderTokenHelper;
 import com.molox.createimp.network.RequestTemplateMaterialsPacket;
+import com.molox.createimp.network.RequestWorkWarehouseAvailabilityPacket;
 import com.molox.createimp.util.StockKeeperRequestScreenInvoker;
 import com.simibubi.create.content.logistics.BigItemStack;
 import com.simibubi.create.content.logistics.stockTicker.StockKeeperRequestScreen;
@@ -45,6 +47,16 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
 
     @Unique
     private static final int TEMPLATE_CATEGORY_ID = -2;
+
+    /**
+     * 向服务端查询工作仓库可用数量的轮询节奏，与材料窗口 {@code TemplateMaterialsScreen}
+     * 使用的 STOCK_POLL_TICKS 保持一致的量级。
+     */
+    @Unique
+    private static final int WORK_WAREHOUSE_POLL_TICKS = 15;
+
+    @Unique
+    private int createimp$workWarehousePollCooldown = 0;
 
     @Shadow
     public List<List<BigItemStack>> displayedItems;
@@ -93,6 +105,30 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
         this.recipesToOrder = new ArrayList<>();
     }
 
+    /**
+     * 请求栏含有模板时，按固定节奏向服务端查询一次这个频率下的可用工作仓库
+     * 数量，结果异步写入 {@link ClientWorkWarehouseAvailabilityCache}，供
+     * {@link #createimp$isTemplateSendBlocked()}、悬浮提示读取。不再像之前
+     * 那样在客户端本地直接调用 {@link WorkWarehouseNetworkHelper}——那个
+     * 注册表只在服务端进程里维护，独立服务端环境下客户端永远查不到数据。
+     */
+    @Override
+    public void createimp$pollWorkWarehouseAvailability() {
+        int templateCount = createimp$countTemplateEntries();
+        if (templateCount == 0) {
+            return;
+        }
+        if (this.blockEntity == null || this.blockEntity.behaviour == null
+                || this.blockEntity.behaviour.freqId == null) {
+            return;
+        }
+        if (createimp$workWarehousePollCooldown-- > 0) {
+            return;
+        }
+        createimp$workWarehousePollCooldown = WORK_WAREHOUSE_POLL_TICKS;
+        PacketDistributor.sendToServer(new RequestWorkWarehouseAvailabilityPacket(this.blockEntity.behaviour.freqId));
+    }
+
     @Shadow
     private native void revalidateOrders();
 
@@ -127,6 +163,13 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
         return count;
     }
 
+    /**
+     * 判断确认键是否应该被禁用：请求栏里的模板数量超过服务端最近一次回复的
+     * 可用工作仓库数量时禁用。还没收到过服务端回应时，
+     * {@link ClientWorkWarehouseAvailabilityCache#get} 返回 -1，
+     * 天然小于任意 templateCount（此时 templateCount 必然 >= 1），
+     * 因此会正确地默认按"禁用"处理，不需要额外的未知状态特判。
+     */
     @Unique
     private boolean createimp$isTemplateSendBlocked() {
         int templateCount = createimp$countTemplateEntries();
@@ -136,7 +179,8 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
         if (this.blockEntity == null || this.blockEntity.behaviour == null) {
             return true;
         }
-        return WorkWarehouseNetworkHelper.countAvailableWorkWarehouses(this.blockEntity.behaviour.freqId) < templateCount;
+        int available = ClientWorkWarehouseAvailabilityCache.get(this.blockEntity.behaviour.freqId);
+        return available < templateCount;
     }
 
     @Redirect(method = "renderBg", at = @At(value = "INVOKE",
@@ -183,12 +227,15 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
         }
         UUID freqId = (this.blockEntity != null && this.blockEntity.behaviour != null)
                 ? this.blockEntity.behaviour.freqId : null;
-        int availableCount = WorkWarehouseNetworkHelper.countAvailableWorkWarehouses(freqId);
+        int availableCount = ClientWorkWarehouseAvailabilityCache.get(freqId);
         List<Component> lines = new ArrayList<>();
         if (availableCount < templateCount) {
             lines.add(Component.translatable("createimp.gui.stock_keeper.not_enough_work_warehouse"));
         }
-        lines.add(Component.translatable("createimp.gui.stock_keeper.work_warehouse_available", availableCount));
+        // 还没收到服务端回应（-1）时，提示文案里不显示负数，展示为 0 更符合直觉，
+        // 不影响上面"是否禁用"这条判断本身（判断依然用的是原始的 -1）。
+        lines.add(Component.translatable("createimp.gui.stock_keeper.work_warehouse_available",
+                Math.max(0, availableCount)));
         graphics.renderComponentTooltip(net.minecraft.client.Minecraft.getInstance().font, lines, mouseX, mouseY);
     }
 

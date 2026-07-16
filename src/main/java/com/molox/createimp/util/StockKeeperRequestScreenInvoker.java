@@ -21,4 +21,13 @@ public interface StockKeeperRequestScreenInvoker {
      * 而不是像取消键那样保留请求栏。
      */
     void createimp$clearRequestBar();
+
+    /**
+     * 供 {@link com.molox.createimp.client.WorkWarehouseAvailabilityPollHandler}
+     * 每 tick 调用：如果当前请求栏含有模板，按内部节奏定期向服务端发起一次
+     * "这个频率下有多少可用工作仓库"的查询，查询结果异步更新到
+     * {@link com.molox.createimp.client.ClientWorkWarehouseAvailabilityCache}，
+     * 供确认键是否可点、悬浮提示读取。请求栏没有模板时什么都不做。
+     */
+    void createimp$pollWorkWarehouseAvailability();
 }

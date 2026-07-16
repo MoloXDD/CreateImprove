@@ -7,6 +7,7 @@ import com.molox.createimp.network.OpenTemplateMaterialsGuiPacket;
 import com.molox.createimp.network.OpenWorkWarehouseGuiPacket;
 import com.molox.createimp.network.UpdateBrassScrapBucketAmountPacket;
 import com.molox.createimp.network.WorkWarehouseActivateEffectPacket;
+import com.molox.createimp.network.WorkWarehouseAvailabilityPacket;
 import com.molox.createimp.network.WorkWarehouseMaterialsReadyEffectPacket;
 import com.molox.createimp.screen.BrassScrapBucketScreen;
 import com.molox.createimp.screen.LabeledRedstoneLinkScreen;
@@ -107,5 +108,10 @@ public final class ClientPayloadHandlers {
                 TemplateMaterialsScreen.open(packet);
             }
         });
+    }
+
+    public static void handle(WorkWarehouseAvailabilityPacket packet, IPayloadContext context) {
+        context.enqueueWork(() ->
+                ClientWorkWarehouseAvailabilityCache.update(packet.freqId(), packet.availableCount()));
     }
 }

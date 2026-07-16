@@ -1,7 +1,5 @@
 package com.molox.createimp.block.work_warehouse;
 
-import com.simibubi.create.content.logistics.packagerLink.LogisticallyLinkedBehaviour;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -13,10 +11,8 @@ public class WorkWarehouseNetworkHelper {
             return 0;
         }
         int count = 0;
-        for (LogisticallyLinkedBehaviour link : LogisticallyLinkedBehaviour.getAllPresent(freqId, false)) {
-            if (link.blockEntity instanceof WorkWarehouseBlockEntity warehouse
-                    && !warehouse.getAddress().isEmpty()
-                    && !warehouse.isWorking()) {
+        for (WorkWarehouseBlockEntity warehouse : WorkWarehouseBlockEntity.getAllPresent(freqId, false)) {
+            if (!warehouse.getAddress().isEmpty() && !warehouse.isWorking()) {
                 count++;
             }
         }
@@ -31,10 +27,8 @@ public class WorkWarehouseNetworkHelper {
         if (freqId == null) {
             return null;
         }
-        for (LogisticallyLinkedBehaviour link : LogisticallyLinkedBehaviour.getAllPresent(freqId, false)) {
-            if (link.blockEntity instanceof WorkWarehouseBlockEntity warehouse
-                    && !warehouse.getAddress().isEmpty()
-                    && !warehouse.isWorking()) {
+        for (WorkWarehouseBlockEntity warehouse : WorkWarehouseBlockEntity.getAllPresent(freqId, false)) {
+            if (!warehouse.getAddress().isEmpty() && !warehouse.isWorking()) {
                 return warehouse;
             }
         }
@@ -51,13 +45,11 @@ public class WorkWarehouseNetworkHelper {
         if (freqId == null || count <= 0) {
             return result;
         }
-        for (LogisticallyLinkedBehaviour link : LogisticallyLinkedBehaviour.getAllPresent(freqId, false)) {
+        for (WorkWarehouseBlockEntity warehouse : WorkWarehouseBlockEntity.getAllPresent(freqId, false)) {
             if (result.size() >= count) {
                 break;
             }
-            if (link.blockEntity instanceof WorkWarehouseBlockEntity warehouse
-                    && !warehouse.getAddress().isEmpty()
-                    && !warehouse.isWorking()) {
+            if (!warehouse.getAddress().isEmpty() && !warehouse.isWorking()) {
                 result.add(warehouse);
             }
         }
@@ -74,9 +66,8 @@ public class WorkWarehouseNetworkHelper {
         if (freqId == null) {
             return false;
         }
-        for (LogisticallyLinkedBehaviour link : LogisticallyLinkedBehaviour.getAllPresent(freqId, false)) {
-            if (link.blockEntity instanceof WorkWarehouseBlockEntity warehouse
-                    && warehouse.isWorking()) {
+        for (WorkWarehouseBlockEntity warehouse : WorkWarehouseBlockEntity.getAllPresent(freqId, false)) {
+            if (warehouse.isWorking()) {
                 return true;
             }
         }
@@ -85,17 +76,16 @@ public class WorkWarehouseNetworkHelper {
 
     /**
      * 找出给定物流网络内，所有当前处于工作状态的工作仓库。
-     * {@code clientSide} 传 true 时查询客户端自己的缓存（用于进程面板界面
-     * 展示当前所有进行中的工作仓库进程），传 false 时查询服务端缓存。
+     * {@code clientSide} 传 true 时查询客户端自己的注册表（用于进程面板界面
+     * 展示当前所有进行中的工作仓库进程），传 false 时查询服务端注册表。
      */
     public static List<WorkWarehouseBlockEntity> findWorkingWorkWarehouses(UUID freqId, boolean clientSide) {
         List<WorkWarehouseBlockEntity> result = new ArrayList<>();
         if (freqId == null) {
             return result;
         }
-        for (LogisticallyLinkedBehaviour link : LogisticallyLinkedBehaviour.getAllPresent(freqId, false, clientSide)) {
-            if (link.blockEntity instanceof WorkWarehouseBlockEntity warehouse
-                    && warehouse.isWorking()) {
+        for (WorkWarehouseBlockEntity warehouse : WorkWarehouseBlockEntity.getAllPresent(freqId, clientSide)) {
+            if (warehouse.isWorking()) {
                 result.add(warehouse);
             }
         }

@@ -10,6 +10,7 @@ import com.molox.createimp.block.template_panel.TemplatePanelModel;
 import com.molox.createimp.block.template_panel.TemplatePanelRenderer;
 import com.molox.createimp.client.NetworkManagerClientHandler;
 import com.molox.createimp.client.TemplateOrderTooltipHandler;
+import com.molox.createimp.client.WorkWarehouseAvailabilityPollHandler;
 import com.molox.createimp.ponder.CreateImpPonderPlugin;
 import com.molox.createimp.registry.ModBlockEntityTypes;
 import com.molox.createimp.registry.ModBlocks;
@@ -162,6 +163,7 @@ public class CreateImpClient {
     private static void onClientTick(ClientTickEvent.Pre event) {
         NetworkManagerClientHandler.tick();
         TemplatePanelConnectionHandler.clientTick();
+        WorkWarehouseAvailabilityPollHandler.tick();
     }
 
     private static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {

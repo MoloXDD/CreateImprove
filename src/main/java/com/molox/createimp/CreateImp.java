@@ -19,7 +19,9 @@ import com.molox.createimp.network.RequestWorkWarehouseInterruptPacket;
 import com.molox.createimp.network.OpenTemplateMaterialsGuiPacket;
 import com.molox.createimp.network.OpenWorkWarehouseGuiPacket;
 import com.molox.createimp.network.RequestTemplateMaterialsPacket;
+import com.molox.createimp.network.RequestWorkWarehouseAvailabilityPacket;
 import com.molox.createimp.network.WorkWarehouseActivateEffectPacket;
+import com.molox.createimp.network.WorkWarehouseAvailabilityPacket;
 import com.molox.createimp.network.WorkWarehouseMaterialsReadyEffectPacket;
 import com.molox.createimp.network.SaveBrassScrapBucketConfigPacket;
 import com.molox.createimp.network.SaveFactoryPanelDemandModePacket;
@@ -243,6 +245,16 @@ public class CreateImp {
                 RequestWorkWarehouseInterruptPacket.TYPE,
                 RequestWorkWarehouseInterruptPacket.STREAM_CODEC,
                 RequestWorkWarehouseInterruptPacket::handle
+        );
+        registrar.playToServer(
+                RequestWorkWarehouseAvailabilityPacket.TYPE,
+                RequestWorkWarehouseAvailabilityPacket.STREAM_CODEC,
+                RequestWorkWarehouseAvailabilityPacket::handle
+        );
+        registrar.playToClient(
+                WorkWarehouseAvailabilityPacket.TYPE,
+                WorkWarehouseAvailabilityPacket.STREAM_CODEC,
+                clientHandler(() -> ClientPayloadHandlers::handle)
         );
     }
 

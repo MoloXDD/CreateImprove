@@ -41,13 +41,16 @@ import net.neoforged.neoforge.items.ItemStackHandler;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveGoggleInformation {
 
@@ -67,6 +70,98 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
     }
 
     private static final Random RNG = new Random();
+
+    /**
+     * 按物流网络频率分组、记录"当前真实加载在世界里的工作仓库方块实体"的
+     * 注册表——服务端与客户端各自独立一份，沿用 {@link WorkWarehouseNetworkHelper}
+     * 原有对外接口（只接受 freqId，不接受 Level 参数）的约定，保持调用方无需改动。
+     * <p>
+     * 之前查找可用工作仓库依赖的是 Create 自己的
+     * {@code LogisticallyLinkedBehaviour.getAllPresent}——那是一份靠方块实体
+     * 每隔固定 tick 数"打卡"续命、20 秒过期的临时性缓存，专为打包机链接这类
+     * 短暂交互场景设计。一旦某次打卡因为任何原因被跳过或延迟超过 20 秒
+     * （不管什么原因导致的），仓库就会从这份缓存里静默消失，即使方块实体本身
+     * 完好无损地立在世界里。这里改为登记时机直接绑定方块实体真实的加载/卸载
+     * 生命周期（{@link #initialize()}/{@link #remove()}/{@link #onChunkUnloaded()}），
+     * 不存在"记录过期"这回事，只要方块实体还真实加载在世界里，就一定能被查到。
+     */
+    private static final Map<UUID, Set<WorkWarehouseBlockEntity>> ACTIVE_REGISTRY = new ConcurrentHashMap<>();
+    private static final Map<UUID, Set<WorkWarehouseBlockEntity>> ACTIVE_REGISTRY_CLIENT = new ConcurrentHashMap<>();
+
+    private static Map<UUID, Set<WorkWarehouseBlockEntity>> registryFor(boolean clientSide) {
+        return clientSide ? ACTIVE_REGISTRY_CLIENT : ACTIVE_REGISTRY;
+    }
+
+    /**
+     * 供 {@link WorkWarehouseNetworkHelper} 查询某个网络下所有当前真实加载的
+     * 工作仓库，替代原先的 {@code LogisticallyLinkedBehaviour.getAllPresent}。
+     */
+    public static Collection<WorkWarehouseBlockEntity> getAllPresent(UUID freqId, boolean clientSide) {
+        if (freqId == null) {
+            return List.of();
+        }
+        Set<WorkWarehouseBlockEntity> set = registryFor(clientSide).get(freqId);
+        if (set == null || set.isEmpty()) {
+            return List.of();
+        }
+        // 防御性过滤：正常情况下 remove()/onChunkUnloaded() 会及时清理，
+        // 这里再兜底剔除任何已经失效但未及时清理掉的实例。
+        List<WorkWarehouseBlockEntity> result = new ArrayList<>(set.size());
+        for (WorkWarehouseBlockEntity be : set) {
+            if (be.getLevel() != null && !be.isRemoved()) {
+                result.add(be);
+            }
+        }
+        return result;
+    }
+
+    private UUID registeredFreqId = null;
+
+    /**
+     * 把自己登记进（或者从旧频率移出、登记进新频率）注册表。
+     * 调用时机：{@link #initialize()} 时首次登记；{@link #tick()} 里每次
+     * 顺带核对一次，覆盖玩家用网络管理器重新调谐、频率发生变化的情况。
+     */
+    private void syncActiveRegistration() {
+        if (level == null) {
+            return;
+        }
+        UUID currentFreqId = (behaviour != null) ? behaviour.freqId : null;
+        if (Objects.equals(currentFreqId, registeredFreqId)) {
+            return;
+        }
+        boolean clientSide = level.isClientSide();
+        if (registeredFreqId != null) {
+            Set<WorkWarehouseBlockEntity> oldSet = registryFor(clientSide).get(registeredFreqId);
+            if (oldSet != null) {
+                oldSet.remove(this);
+                if (oldSet.isEmpty()) {
+                    registryFor(clientSide).remove(registeredFreqId);
+                }
+            }
+        }
+        if (currentFreqId != null) {
+            registryFor(clientSide)
+                    .computeIfAbsent(currentFreqId, key -> ConcurrentHashMap.newKeySet())
+                    .add(this);
+        }
+        registeredFreqId = currentFreqId;
+    }
+
+    private void unregisterFromActiveRegistry() {
+        if (level == null || registeredFreqId == null) {
+            return;
+        }
+        boolean clientSide = level.isClientSide();
+        Set<WorkWarehouseBlockEntity> set = registryFor(clientSide).get(registeredFreqId);
+        if (set != null) {
+            set.remove(this);
+            if (set.isEmpty()) {
+                registryFor(clientSide).remove(registeredFreqId);
+            }
+        }
+        registeredFreqId = null;
+    }
 
     public LogisticallyLinkedBehaviour behaviour;
     public InvManipulationBehaviour extractBehaviour;
@@ -364,6 +459,27 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         this.extractBehaviour = InvManipulationBehaviour.forExtraction(this,
                 CapManipulationBehaviourBase.InterfaceProvider.oppositeOfBlockFacing());
         behaviours.add(this.extractBehaviour);
+    }
+
+    @Override
+    public void initialize() {
+        super.initialize();
+        syncActiveRegistration();
+    }
+
+    @Override
+    public void remove() {
+        unregisterFromActiveRegistry();
+        super.remove();
+    }
+
+    @Override
+    public void onChunkUnloaded() {
+        super.onChunkUnloaded();
+        // 区块卸载期间这个方块实体不会再被 tick，也就不可能真正参与任何
+        // 生产调度——和"真的被移除"一样，先从注册表里移出；区块重新加载、
+        // tick() 恢复执行后，syncActiveRegistration() 会自动重新登记回去。
+        unregisterFromActiveRegistry();
     }
 
     public String getAddress() {
@@ -1820,6 +1936,7 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
     @Override
     public void tick() {
         super.tick();
+        syncActiveRegistration();
         if (level == null || level.isClientSide()) {
             return;
         }

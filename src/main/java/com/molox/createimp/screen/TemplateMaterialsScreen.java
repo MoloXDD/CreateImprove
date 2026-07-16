@@ -3,7 +3,8 @@ package com.molox.createimp.screen;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.molox.createimp.CreateImp;
-import com.molox.createimp.block.work_warehouse.WorkWarehouseNetworkHelper;
+import com.molox.createimp.client.ClientWorkWarehouseAvailabilityCache;
+import com.molox.createimp.network.RequestWorkWarehouseAvailabilityPacket;
 import com.molox.createimp.item.TemplateOrderTokenHelper;
 import com.molox.createimp.network.OpenTemplateMaterialsGuiPacket;
 import com.molox.createimp.network.RequestTemplateMaterialsPacket;
@@ -102,6 +103,11 @@ public class TemplateMaterialsScreen extends AbstractSimiScreen {
      */
     private static final int STOCK_POLL_TICKS = 15;
 
+    /**
+     * 向服务端查询工作仓库可用数量的轮询节奏，与上面的库存监控保持同一量级。
+     */
+    private static final int WORK_WAREHOUSE_POLL_TICKS = 15;
+
     private boolean canCompleteAll;
     private List<BigItemStack> missing;
     private List<BigItemStack> usedFromStock;
@@ -117,6 +123,7 @@ public class TemplateMaterialsScreen extends AbstractSimiScreen {
 
     private final List<TrackedItem> trackedItems = new ArrayList<>();
     private int stockPollCooldown;
+    private int workWarehousePollCooldown;
 
     public TemplateMaterialsScreen(OpenTemplateMaterialsGuiPacket packet, net.minecraft.client.gui.screens.Screen previousScreen) {
         super(Component.translatable("createimp.gui.template_materials.title"));
@@ -240,9 +247,32 @@ public class TemplateMaterialsScreen extends AbstractSimiScreen {
         super.tick();
         scroll.tickChaser();
         if (confirmButton != null) {
-            confirmButton.active = WorkWarehouseNetworkHelper.countAvailableWorkWarehouses(freqId) >= templateCount;
+            // 还没收到过服务端回应时，get() 返回 -1，天然小于 templateCount
+            // （此时 templateCount 必然 >= 1，否则 canCompleteAll 分支不会
+            // 创建这个按钮），因此会正确地默认按钮保持禁用，不需要额外的
+            // 未知状态特判。之前这里直接在客户端本地调用
+            // WorkWarehouseNetworkHelper.countAvailableWorkWarehouses，
+            // 但那个注册表只在服务端进程里维护，独立服务端环境下客户端
+            // 永远查不到数据，导致按钮永远无法点击。
+            confirmButton.active = ClientWorkWarehouseAvailabilityCache.get(freqId) >= templateCount;
         }
         pollStockChanges();
+        pollWorkWarehouseAvailability();
+    }
+
+    /**
+     * 按固定节奏向服务端查询一次当前频率下的可用工作仓库数量，结果异步写入
+     * {@link ClientWorkWarehouseAvailabilityCache}。
+     */
+    private void pollWorkWarehouseAvailability() {
+        if (freqId == null) {
+            return;
+        }
+        if (workWarehousePollCooldown-- > 0) {
+            return;
+        }
+        workWarehousePollCooldown = WORK_WAREHOUSE_POLL_TICKS;
+        PacketDistributor.sendToServer(new RequestWorkWarehouseAvailabilityPacket(freqId));
     }
 
     /**
@@ -500,12 +530,16 @@ public class TemplateMaterialsScreen extends AbstractSimiScreen {
         if (!confirmHovered) {
             return;
         }
-        int availableCount = WorkWarehouseNetworkHelper.countAvailableWorkWarehouses(freqId);
+        // 之前这里直接在客户端本地调用 WorkWarehouseNetworkHelper.countAvailableWorkWarehouses，
+        // 独立服务端环境下永远查不到数据，改为读取服务端定期回应更新的缓存。
+        int availableCount = ClientWorkWarehouseAvailabilityCache.get(freqId);
         List<Component> lines = new ArrayList<>();
         if (availableCount < templateCount) {
             lines.add(Component.translatable("createimp.gui.stock_keeper.not_enough_work_warehouse"));
         }
-        lines.add(Component.translatable("createimp.gui.stock_keeper.work_warehouse_available", availableCount));
+        // 还没收到服务端回应（-1）时，提示文案里不显示负数，展示为 0 更符合直觉。
+        lines.add(Component.translatable("createimp.gui.stock_keeper.work_warehouse_available",
+                Math.max(0, availableCount)));
         graphics.renderComponentTooltip(font, lines, mouseX, mouseY);
     }
 
