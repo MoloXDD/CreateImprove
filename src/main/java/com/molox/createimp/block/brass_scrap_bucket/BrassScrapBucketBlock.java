@@ -132,8 +132,8 @@ public class BrassScrapBucketBlock extends BaseEntityBlock implements IWrenchabl
         if (!(level.getBlockEntity(pos) instanceof BrassScrapBucketBlockEntity be)) return InteractionResult.PASS;
 
         if (player.isShiftKeyDown()) {
-            if (be.getNuggetCount() <= 0) return InteractionResult.PASS;
-            ItemStack nuggets = be.takeAllNuggets();
+            if (be.getProducedCount() <= 0) return InteractionResult.PASS;
+            ItemStack nuggets = be.takeAllProduced();
             if (!player.getInventory().add(nuggets)) {
                 player.drop(nuggets, false);
             }

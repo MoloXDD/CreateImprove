@@ -4,6 +4,7 @@ import com.molox.createimp.block.batch_mechanical_crafter.BatchMechanicalCrafter
 import com.molox.createimp.block.batch_repackager.BatchRepackagerRenderer;
 import com.molox.createimp.block.batch_repackager.BatchRepackagerVisual;
 import com.molox.createimp.block.brass_scrap_bucket.BrassScrapBucketRenderer;
+import com.molox.createimp.client.BrassScrapBucketTooltipModifier;
 import com.molox.createimp.block.labeled_redstone_link.LabeledRedstoneLinkRenderer;
 import com.molox.createimp.block.template_panel.TemplatePanelConnectionHandler;
 import com.molox.createimp.block.template_panel.TemplatePanelModel;
@@ -77,7 +78,7 @@ public class CreateImpClient {
         );
         TooltipModifier.REGISTRY.register(
                 ModItems.BRASS_SCRAP_BUCKET.get().asItem(),
-                new ItemDescription.Modifier(ModItems.BRASS_SCRAP_BUCKET.get().asItem(), FontHelper.Palette.STANDARD_CREATE)
+                new BrassScrapBucketTooltipModifier(FontHelper.Palette.STANDARD_CREATE)
         );
         TooltipModifier.REGISTRY.register(
                 ModItems.NETWORK_MANAGER.get().asItem(),
