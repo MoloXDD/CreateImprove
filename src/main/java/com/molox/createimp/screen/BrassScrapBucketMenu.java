@@ -135,6 +135,31 @@ public class BrassScrapBucketMenu extends GhostItemMenu<ItemStack> {
         syncFilterToBlockEntity(player);
     }
 
+    /**
+     * 供 JEI 拖拽（SubmitBrassScrapBucketFilterPacket）在服务端调用，
+     * 使拖拽设置的过滤物品真正同步到方块实体，而不只是停留在客户端菜单实例上。
+     * 逻辑对齐 clicked() 中"携带非过滤类物品、替换当前过滤图标"的分支：
+     * 若当前槽位是一个真实的 Filter 物品，先归还给玩家，再放入新的图标副本。
+     * JEI 一侧已经排除了拖拽 FilterItem 本身的情况，因此这里不需要处理
+     * "拖入的新物品本身是 Filter" 的分支。
+     */
+    public void submitGhostFilterItem(ItemStack stack, Player player) {
+        if (stack.isEmpty()) return;
+
+        ItemStack current = ghostInventory.getStackInSlot(0);
+        boolean currentIsFilter = !current.isEmpty() && current.getItem() instanceof FilterItem;
+        if (currentIsFilter) {
+            ItemStack toReturn = current.copy();
+            player.getInventory().placeItemBackInInventory(toReturn);
+        }
+
+        ItemStack copy = stack.copy();
+        copy.setCount(1);
+        ghostInventory.setStackInSlot(0, copy);
+
+        syncFilterToBlockEntity(player);
+    }
+
     private void syncFilterToBlockEntity(Player player) {
         if (player.level().isClientSide()) return;
         if (!(player.level().getBlockEntity(pos) instanceof BrassScrapBucketBlockEntity be)) return;

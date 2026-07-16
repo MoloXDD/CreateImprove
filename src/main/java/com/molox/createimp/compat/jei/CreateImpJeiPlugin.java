@@ -5,7 +5,11 @@ import com.molox.createimp.screen.NetworkManagerLabelEditMenu;
 import com.molox.createimp.screen.NetworkManagerLabelEditScreen;
 import com.molox.createimp.screen.NetworkManagerLabelEditorMenu;
 import com.molox.createimp.screen.NetworkManagerLabelEditorScreen;
+import com.molox.createimp.network.SubmitBrassScrapBucketFilterPacket;
+import com.molox.createimp.screen.TemplatePanelSetItemMenu;
+import com.molox.createimp.screen.TemplatePanelSetItemScreen;
 import com.simibubi.create.content.logistics.filter.FilterItem;
+import com.simibubi.create.foundation.gui.menu.GhostItemSubmitPacket;
 import mezz.jei.api.IModPlugin;
 import mezz.jei.api.JeiPlugin;
 import mezz.jei.api.constants.VanillaTypes;
@@ -15,6 +19,7 @@ import mezz.jei.api.registration.IGuiHandlerRegistration;
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -40,6 +45,10 @@ public class CreateImpJeiPlugin implements IModPlugin {
         registration.addGhostIngredientHandler(
                 BrassScrapBucketScreen.class,
                 new BrassScrapBucketGhostHandler()
+        );
+        registration.addGhostIngredientHandler(
+                TemplatePanelSetItemScreen.class,
+                new TemplatePanelSetItemGhostHandler()
         );
     }
 
@@ -151,6 +160,50 @@ public class CreateImpJeiPlugin implements IModPlugin {
                 public void accept(I value) {
                     if (value instanceof ItemStack stack && !stack.isEmpty()) {
                         screen.setFilterIcon(stack);
+                        ItemStack copy = stack.copy();
+                        copy.setCount(1);
+                        PacketDistributor.sendToServer(
+                                new SubmitBrassScrapBucketFilterPacket(screen.getMenu().pos, copy));
+                    }
+                }
+            });
+
+            return targets;
+        }
+
+        @Override
+        public void onComplete() {
+        }
+    }
+
+    private static class TemplatePanelSetItemGhostHandler
+            implements IGhostIngredientHandler<TemplatePanelSetItemScreen> {
+
+        @Override
+        public <I> List<IGhostIngredientHandler.Target<I>> getTargetsTyped(
+                TemplatePanelSetItemScreen screen,
+                ITypedIngredient<I> ingredient,
+                boolean doStart) {
+
+            List<IGhostIngredientHandler.Target<I>> targets = new ArrayList<>();
+            if (!ingredient.getType().equals(VanillaTypes.ITEM_STACK)) return targets;
+
+            int slotScreenX = screen.getGuiLeft() + TemplatePanelSetItemMenu.ITEM_SLOT_X;
+            int slotScreenY = screen.getGuiTop() + TemplatePanelSetItemMenu.ITEM_SLOT_Y;
+
+            targets.add(new IGhostIngredientHandler.Target<I>() {
+                @Override
+                public Rect2i getArea() {
+                    return new Rect2i(slotScreenX, slotScreenY, 16, 16);
+                }
+
+                @Override
+                public void accept(I value) {
+                    if (value instanceof ItemStack stack && !stack.isEmpty()) {
+                        ItemStack copy = stack.copy();
+                        copy.setCount(1);
+                        screen.getMenu().ghostInventory.setStackInSlot(0, copy);
+                        PacketDistributor.sendToServer(new GhostItemSubmitPacket(copy, 0));
                     }
                 }
             });

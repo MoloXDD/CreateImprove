@@ -24,6 +24,7 @@ import com.molox.createimp.network.WorkWarehouseActivateEffectPacket;
 import com.molox.createimp.network.WorkWarehouseAvailabilityPacket;
 import com.molox.createimp.network.WorkWarehouseMaterialsReadyEffectPacket;
 import com.molox.createimp.network.SaveBrassScrapBucketConfigPacket;
+import com.molox.createimp.network.SubmitBrassScrapBucketFilterPacket;
 import com.molox.createimp.network.SaveFactoryPanelDemandModePacket;
 import com.molox.createimp.network.SaveLabeledRedstoneLinkConfigPacket;
 import com.molox.createimp.network.SaveNetworkManagerDataPacket;
@@ -130,6 +131,11 @@ public class CreateImp {
                 SaveBrassScrapBucketConfigPacket.TYPE,
                 SaveBrassScrapBucketConfigPacket.STREAM_CODEC,
                 SaveBrassScrapBucketConfigPacket::handle
+        );
+        registrar.playToServer(
+                SubmitBrassScrapBucketFilterPacket.TYPE,
+                SubmitBrassScrapBucketFilterPacket.STREAM_CODEC,
+                SubmitBrassScrapBucketFilterPacket::handle
         );
         registrar.playToClient(
                 UpdateBrassScrapBucketAmountPacket.TYPE,

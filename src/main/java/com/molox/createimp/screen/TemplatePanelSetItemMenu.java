@@ -24,6 +24,9 @@ import net.neoforged.neoforge.items.SlotItemHandler;
 
 public class TemplatePanelSetItemMenu extends GhostItemMenu<TemplatePanelBehaviour> {
 
+    public static final int ITEM_SLOT_X = 74;
+    public static final int ITEM_SLOT_Y = 28;
+
     public TemplatePanelSetItemMenu(int id, Inventory inv, RegistryFriendlyByteBuf buf) {
         this(ModMenuTypes.TEMPLATE_PANEL_SET_ITEM.get(), id, inv, buf);
     }
@@ -61,10 +64,8 @@ public class TemplatePanelSetItemMenu extends GhostItemMenu<TemplatePanelBehavio
     protected void addSlots() {
         int playerX = 13;
         int playerY = 112;
-        int slotX = 74;
-        int slotY = 28;
         this.addPlayerSlots(playerX, playerY);
-        this.addSlot(new SlotItemHandler((IItemHandler) this.ghostInventory, 0, slotX, slotY));
+        this.addSlot(new SlotItemHandler((IItemHandler) this.ghostInventory, 0, ITEM_SLOT_X, ITEM_SLOT_Y));
     }
 
     @Override
