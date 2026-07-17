@@ -23,8 +23,8 @@ import com.molox.createimp.screen.NetworkManagerLabelEditorScreen;
 import com.molox.createimp.screen.TemplatePanelSetItemScreen;
 import com.simibubi.create.AllPartialModels;
 import com.simibubi.create.content.kinetics.base.SingleAxisRotatingVisual;
-import com.molox.createimp.block.batch_mechanical_crafter.BatchCrafterCTBehaviour;
-import com.simibubi.create.foundation.block.connected.CTModel;
+import com.molox.createimp.client.BatchCrafterCTQuadLibrary;
+import com.molox.createimp.client.BatchCrafterUnbakedGeometry;
 import com.simibubi.create.foundation.item.ItemDescription;
 import com.simibubi.create.foundation.item.TooltipModifier;
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer;
@@ -33,6 +33,7 @@ import net.createmod.catnip.lang.FontHelper;
 import net.createmod.catnip.platform.CatnipServices;
 import net.createmod.ponder.foundation.PonderIndex;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.client.resources.model.ModelResourceLocation;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
@@ -40,6 +41,7 @@ import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
+import net.neoforged.neoforge.client.event.ModelEvent;
 import net.neoforged.neoforge.client.event.RegisterGuiLayersEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.neoforged.neoforge.client.gui.VanillaGuiLayers;
@@ -60,6 +62,9 @@ public class CreateImpClient {
         modEventBus.addListener(CreateImpClient::onRegisterRenderers);
         modEventBus.addListener(CreateImpClient::onRegisterMenuScreens);
         modEventBus.addListener(CreateImpClient::onRegisterGuiLayers);
+        modEventBus.addListener(CreateImpClient::onRegisterAdditionalModels);
+        modEventBus.addListener(CreateImpClient::onModifyBakingResult);
+        modEventBus.addListener(CreateImpClient::onRegisterGeometryLoaders);
 
         NeoForge.EVENT_BUS.addListener(CreateImpClient::onClientTick);
         NeoForge.EVENT_BUS.addListener(EventPriority.HIGH, CreateImpClient::onRightClickBlock);
@@ -98,10 +103,6 @@ public class CreateImpClient {
         );
 
         CatnipServices.PLATFORM.executeOnClientOnly(() -> () -> {
-            ResourceLocation batchCrafterId = ResourceLocation.fromNamespaceAndPath(CreateImp.MODID, "batch_mechanical_crafter");
-            com.simibubi.create.CreateClient.MODEL_SWAPPER.getCustomBlockModels()
-                    .register(batchCrafterId, model -> new CTModel(model, new BatchCrafterCTBehaviour()));
-
             ResourceLocation templatePanelId = ResourceLocation.fromNamespaceAndPath(CreateImp.MODID, "template_panel");
             com.simibubi.create.CreateClient.MODEL_SWAPPER.getCustomBlockModels()
                     .register(templatePanelId, TemplatePanelModel::new);
@@ -117,6 +118,23 @@ public class CreateImpClient {
                     .skipVanillaRender(be -> false)
                     .apply();
         });
+    }
+
+    private static void onRegisterGeometryLoaders(ModelEvent.RegisterGeometryLoaders event) {
+        event.register(BatchCrafterUnbakedGeometry.Loader.ID, BatchCrafterUnbakedGeometry.Loader.INSTANCE);
+    }
+
+    private static void onRegisterAdditionalModels(ModelEvent.RegisterAdditional event) {
+        event.register(ModelResourceLocation.standalone(BatchCrafterCTQuadLibrary.LIBRARY_MODEL));
+    }
+
+    private static void onModifyBakingResult(ModelEvent.ModifyBakingResult event) {
+        var libraryModel = event.getModels().get(ModelResourceLocation.standalone(BatchCrafterCTQuadLibrary.LIBRARY_MODEL));
+        if (libraryModel == null) {
+            CreateImp.LOGGER.error("未能找到批量动力合成器连接纹理辅助模型(ct_library.json)，连接纹理替换将被跳过");
+            return;
+        }
+        BatchCrafterCTQuadLibrary.init(libraryModel);
     }
 
     private static void onRegisterMenuScreens(RegisterMenuScreensEvent event) {

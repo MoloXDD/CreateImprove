@@ -165,6 +165,8 @@ dependencies {
     localRuntime files("libs/extra_gauges-2.1.2.jar")
     localRuntime files("libs/deployer-0.1.2.jar")
 
+    localRuntime files("libs/toms_storage-1.21-2.3.2.jar")
+    localRuntime files("libs/modernfix-neoforge-5.27.15+mc1.21.1.jar")
 
 }
 

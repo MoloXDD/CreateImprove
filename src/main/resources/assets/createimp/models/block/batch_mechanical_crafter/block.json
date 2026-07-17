@@ -1,5 +1,6 @@
 {
   "credit": "Made with Blockbench",
+  "loader": "createimp:batch_crafter_ct",
   "parent": "block/block",
   "render_type": "cutout",
   "textures": {
