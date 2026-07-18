@@ -12,7 +12,9 @@ import com.molox.createimp.item.TemplateOrderTokenHelper;
 import com.molox.createimp.network.RequestTemplateMaterialsPacket;
 import com.molox.createimp.network.RequestWorkWarehouseAvailabilityPacket;
 import com.molox.createimp.util.StockKeeperRequestScreenInvoker;
+import com.simibubi.create.content.equipment.clipboard.ClipboardEntry;
 import com.simibubi.create.content.logistics.BigItemStack;
+import com.simibubi.create.content.logistics.packager.InventorySummary;
 import com.simibubi.create.content.logistics.stockTicker.StockKeeperRequestScreen;
 import com.simibubi.create.content.logistics.stockTicker.StockTickerBlockEntity;
 import com.simibubi.create.foundation.gui.AllGuiTextures;
@@ -91,6 +93,9 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
 
     @Shadow
     StockTickerBlockEntity blockEntity;
+
+    @Shadow
+    List<List<ClipboardEntry>> clipboardItem;
 
     @Shadow
     public native boolean isSchematicListMode();
@@ -436,5 +441,68 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
                                                     @Local(argsOnly = true) BigItemStack entry,
                                                     @Local(argsOnly = true, ordinal = 1) boolean isRenderingOrders) {
         return isRenderingOrders || !TemplateOrderTokenHelper.isToken(entry.stack);
+    }
+
+    /**
+     * 手持带材料清单的剪贴板右击仓管时，自动把清单填进请求栏：网络里能凑
+     * 够的部分照常填真实物品；凑不够的缺口部分，如果这个展示物在当前网络
+     * 里有对应的模板，就用模板补上缺口数量；同一个展示物同时有多个模板时
+     * 取遍历顺序里靠前的那一个；没有对应模板的缺口部分维持原版行为——直接
+     * 不请求那一部分。
+     * <p>
+     * 模板集中排在所有普通物品前面再一起填进请求栏，让它们有更大机会完整
+     * 显示在只显示前几项、其余用[+n]折叠的请求栏里。
+     * <p>
+     * 客户端已经从服务端同步过来的库存快照（{@code getLastClientsideStockSnapshotAsSummary}）
+     * 本身就已经混入了当前网络所有可下单模板的令牌条目（见
+     * {@link com.molox.createimp.item.TemplateOrderSummaryHelper#augment}），
+     * 这里直接复用这份数据找模板，不需要额外的网络请求。
+     */
+    @Inject(method = "requestSchematicList", at = @At("HEAD"), cancellable = true)
+    private void createimp$fillSchematicListWithTemplates(CallbackInfo ci) {
+        ci.cancel();
+        this.itemsToOrder.clear();
+        InventorySummary availableItems = this.blockEntity.getLastClientsideStockSnapshotAsSummary();
+        List<BigItemStack> tokenPool = availableItems.getStacks();
+
+        List<BigItemStack> templateEntries = new ArrayList<>();
+        List<BigItemStack> regularEntries = new ArrayList<>();
+        for (List<ClipboardEntry> page : this.clipboardItem) {
+            for (ClipboardEntry entry : page) {
+                ItemStack stack = entry.icon;
+                if (stack.isEmpty()) {
+                    continue;
+                }
+                int needed = entry.itemAmount;
+                int available = Math.min(needed, availableItems.getCountOf(stack));
+                if (available > 0) {
+                    regularEntries.add(new BigItemStack(stack, available));
+                }
+                int shortfall = needed - available;
+                if (shortfall <= 0) {
+                    continue;
+                }
+                BigItemStack token = createimp$findTemplateToken(tokenPool, stack);
+                if (token != null) {
+                    templateEntries.add(new BigItemStack(token.stack.copy(), shortfall));
+                }
+            }
+        }
+        this.itemsToOrder.addAll(templateEntries);
+        this.itemsToOrder.addAll(regularEntries);
+    }
+
+    @Unique
+    private static BigItemStack createimp$findTemplateToken(List<BigItemStack> pool, ItemStack targetDisplay) {
+        for (BigItemStack candidate : pool) {
+            if (!TemplateOrderTokenHelper.isToken(candidate.stack)) {
+                continue;
+            }
+            TemplateOrderTarget candidateTarget = TemplateOrderTokenHelper.getTarget(candidate.stack);
+            if (candidateTarget != null && ItemStack.isSameItemSameComponents(candidateTarget.display(), targetDisplay)) {
+                return candidate;
+            }
+        }
+        return null;
     }
 }
