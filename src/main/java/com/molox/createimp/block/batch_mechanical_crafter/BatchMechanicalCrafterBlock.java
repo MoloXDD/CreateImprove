@@ -107,6 +107,8 @@ public class BatchMechanicalCrafterBlock extends HorizontalKineticBlock
                         BatchCrafterHelper.getInput(worldIn, otherPos);
                 if (thisInput == null || otherInput == null)
                     continue;
+                if (thisInput.data.isEmpty() || otherInput.data.isEmpty())
+                    continue;
                 if (!pos.offset((Vec3i) thisInput.data.get(0))
                         .equals(otherPos.offset((Vec3i) otherInput.data.get(0))))
                     continue;

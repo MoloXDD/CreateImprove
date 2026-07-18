@@ -2,6 +2,8 @@ package com.molox.createimp.block.batch_mechanical_crafter;
 
 import com.molox.createimp.registry.ModBlockEntityTypes;
 import com.simibubi.create.AllSoundEvents;
+import com.simibubi.create.api.contraption.transformable.TransformableBlockEntity;
+import com.simibubi.create.content.contraptions.StructureTransform;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import com.simibubi.create.content.kinetics.belt.behaviour.DirectBeltInputBehaviour;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
@@ -46,7 +48,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
-public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity {
+public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity implements TransformableBlockEntity {
 
     public Inventory inventory;
     public BatchRecipeGridHandler.GroupedItems groupedItems = new BatchRecipeGridHandler.GroupedItems();
@@ -530,6 +532,18 @@ public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity {
         this.sendData();
         this.invCap = null;
         this.invalidateCapabilities();
+    }
+
+    /**
+     * 蓝图部署（手动部署或机械炮）应用旋转/镜像时，机械动力的 SchematicPrinter
+     * 会对放置出来的每一个方块实体调用这个方法（只要实现了 TransformableBlockEntity
+     * 接口就会被识别到），用来把方向相关的数据一起变换。这里存的 input.data
+     * 是"控制器相对我的世界坐标偏移量"，和原版机械合成器的 ConnectedInputHandler.ConnectedInput
+     * 处理方式完全一致（照抄原版 MechanicalCrafterBlockEntity#transform 的做法）。
+     */
+    @Override
+    public void transform(net.minecraft.world.level.block.entity.BlockEntity be, StructureTransform transform) {
+        this.input.data.replaceAll(transform::applyWithoutOffset);
     }
 
     public Inventory getInventory() {

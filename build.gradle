@@ -168,6 +168,10 @@ dependencies {
     //localRuntime files("libs/toms_storage-1.21-2.3.2.jar")
     //localRuntime files("libs/modernfix-neoforge-5.27.15+mc1.21.1.jar")
 
+    localRuntime files("libs/ftb-ultimine-neoforge-2101.1.15.jar")
+    localRuntime files("libs/ftb-library-neoforge-2101.1.33.jar")
+    localRuntime files("libs/architectury-13.0.8-neoforge.jar")
+
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.

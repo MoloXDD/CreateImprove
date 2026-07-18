@@ -47,12 +47,23 @@ public class BatchConnectedInputHandler {
         BatchMechanicalCrafterBlockEntity crafter2 = BatchCrafterHelper.getCrafter(world, pos2);
         if (crafter1 == null || crafter2 == null)
             return;
+        if (crafter1.input.data.isEmpty() || crafter2.input.data.isEmpty())
+            return;
 
         BlockPos controllerPos1 = crafter1.getBlockPos().offset((Vec3i) crafter1.input.data.get(0));
         BlockPos controllerPos2 = crafter2.getBlockPos().offset((Vec3i) crafter2.input.data.get(0));
 
         if (controllerPos1.equals(controllerPos2)) {
             BatchMechanicalCrafterBlockEntity controller = BatchCrafterHelper.getCrafter(world, controllerPos1);
+            if (controller == null) {
+                // 连接数据指向的位置已经不是一台合法的批量合成器了（比如蓝图部署
+                // 旋转导致偏移量算错、或者这个位置的方块已经被外部破坏）。这种情况
+                // 下没有办法安全地重建分组，直接放弃这次连接切换，让双方各自维持
+                // 现状，绝不能在这里抛异常——上游的连锁破坏类模组大多没有给每一次
+                // 破坏单独做异常隔离，这里一崩就会中断它们自己的批量操作、甚至让它们
+                // 自己内部还没来得及清理的状态卡死。
+                return;
+            }
             Set<BlockPos> positions = controller.input.data.stream()
                     .map(offset -> controllerPos1.offset(offset))
                     .collect(Collectors.toSet());
