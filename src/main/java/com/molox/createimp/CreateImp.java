@@ -80,6 +80,7 @@ public class CreateImp {
         ModDataComponents.DATA_COMPONENTS.register(modEventBus);
         ModMenuTypes.MENU_TYPES.register(modEventBus);
         modEventBus.addListener(ModCapabilities::register);
+        com.molox.createimp.block.batch_mechanical_crafter.BatchCrafterArmInteraction.register(modEventBus);
         modEventBus.addListener(CreateImp::registerPayloads);
         modEventBus.addListener(CreateImp::commonSetup);
 
