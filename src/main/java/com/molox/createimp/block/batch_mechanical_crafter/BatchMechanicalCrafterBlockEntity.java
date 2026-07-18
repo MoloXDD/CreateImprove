@@ -360,27 +360,38 @@ public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity implem
             return;
         }
         boolean changedPhase = this.phase != Phase.INSERTING;
+        boolean anyCountChanged = false;
         LinkedList<Pair<Integer, Integer>> inserted = new LinkedList<>();
         DirectBeltInputBehaviour behaviour = this.getTargetingBelt();
         for (Map.Entry<Pair<Integer, Integer>, ItemStack> entry : this.groupedItems.grid.entrySet()) {
             Pair<Integer, Integer> pair = entry.getKey();
             ItemStack stack = entry.getValue();
-            BlockFace face = this.getTargetFace(this.level, this.worldPosition, this.getBlockState());
-            ItemStack remainder = behaviour == null
-                    ? this.inserting.insert(stack.copy())
-                    : behaviour.handleInsertion(stack, face.getFace(), false);
-            if (!remainder.isEmpty()) {
-                stack.setCount(remainder.getCount());
+            if (stack.isEmpty()) {
+                inserted.add(pair);
                 continue;
             }
-            inserted.add(pair);
+            BlockFace face = this.getTargetFace(this.level, this.worldPosition, this.getBlockState());
+            int attemptCount = Math.min(stack.getCount(), Math.max(1, stack.getMaxStackSize()));
+            ItemStack attempt = stack.copyWithCount(attemptCount);
+            ItemStack remainder = behaviour == null
+                    ? this.inserting.insert(attempt)
+                    : behaviour.handleInsertion(attempt, face.getFace(), false);
+            int actuallyInserted = attemptCount - remainder.getCount();
+            if (actuallyInserted <= 0)
+                continue;
+            anyCountChanged = true;
+            int newCount = stack.getCount() - actuallyInserted;
+            if (newCount <= 0)
+                inserted.add(pair);
+            else
+                stack.setCount(newCount);
         }
         inserted.forEach(this.groupedItems.grid::remove);
         if (this.groupedItems.grid.isEmpty())
             this.ejectWholeGrid();
         else
             this.phase = Phase.INSERTING;
-        if (!inserted.isEmpty() || changedPhase)
+        if (!inserted.isEmpty() || changedPhase || anyCountChanged)
             this.sendData();
     }
 
