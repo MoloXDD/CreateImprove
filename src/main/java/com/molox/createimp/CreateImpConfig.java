@@ -34,6 +34,9 @@ public class CreateImpConfig implements ConfigData {
     @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
     public PackagerAddressFilterConfig packagerAddressFilterConfig = new PackagerAddressFilterConfig();
 
+    @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
+    public TemplateConfig templateConfig = new TemplateConfig();
+
     public static class ScrapBucket {
         public int itemsPerNugget = 64;
         public int mbPerNugget = 2000;
@@ -75,5 +78,25 @@ public class CreateImpConfig implements ConfigData {
 
     public static class PackagerAddressFilterConfig {
         public boolean enabled = true;
+    }
+
+    public static class TemplateConfig {
+        public TemplateDisplayStyle stockKeeperTemplateDisplayStyle = TemplateDisplayStyle.STYLE_1;
+
+        /**
+         * 影响仓管请求界面与红石请求器界面里，模板物品的贴图绘制方式：
+         * <p>
+         * STYLE_1（默认）：使用 stock_keeper_template_slot_bg.png /
+         * stock_keeper_template_request_slot_bg.png 作为物品背景，鼠标悬浮时
+         * 不跟随物品缩放。
+         * <p>
+         * STYLE_2：使用 stock_keeper_template_slot_bg2.png /
+         * stock_keeper_template_request_slot_bg2.png 作为物品前景（绘制在物品
+         * 图标之上），鼠标悬浮时跟随物品一起缩放。
+         */
+        public enum TemplateDisplayStyle {
+            STYLE_1,
+            STYLE_2
+        }
     }
 }

@@ -3,6 +3,7 @@ package com.molox.createimp.mixin;
 import com.llamalad7.mixinextras.injector.v2.WrapWithCondition;
 import com.llamalad7.mixinextras.sugar.Local;
 import com.molox.createimp.CreateImp;
+import com.molox.createimp.CreateImpConfig;
 import com.molox.createimp.block.work_warehouse.WorkWarehouseNetworkHelper;
 import com.molox.createimp.client.ClientWorkWarehouseAvailabilityCache;
 import com.molox.createimp.client.TemplateOrderTooltipHandler;
@@ -16,6 +17,7 @@ import com.simibubi.create.content.logistics.stockTicker.StockKeeperRequestScree
 import com.simibubi.create.content.logistics.stockTicker.StockTickerBlockEntity;
 import com.simibubi.create.foundation.gui.AllGuiTextures;
 import com.simibubi.create.foundation.utility.CreateLang;
+import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -44,6 +46,20 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
     @Unique
     private static final ResourceLocation TEMPLATE_REQUEST_SLOT_BG =
             ResourceLocation.fromNamespaceAndPath(CreateImp.MODID, "textures/gui/stock_keeper_template_request_slot_bg.png");
+
+    @Unique
+    private static final ResourceLocation TEMPLATE_SLOT_BG_2 =
+            ResourceLocation.fromNamespaceAndPath(CreateImp.MODID, "textures/gui/stock_keeper_template_slot_bg2.png");
+
+    @Unique
+    private static final ResourceLocation TEMPLATE_REQUEST_SLOT_BG_2 =
+            ResourceLocation.fromNamespaceAndPath(CreateImp.MODID, "textures/gui/stock_keeper_template_request_slot_bg2.png");
+
+    @Unique
+    private static boolean createimp$isStyle2() {
+        return CreateImp.getConfig().templateConfig.stockKeeperTemplateDisplayStyle
+                == CreateImpConfig.TemplateConfig.TemplateDisplayStyle.STYLE_2;
+    }
 
     @Unique
     private static final int TEMPLATE_CATEGORY_ID = -2;
@@ -370,7 +386,7 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
     @Inject(method = "renderItemEntry", at = @At("HEAD"))
     private void createimp$drawTemplateOrderBackground(GuiGraphics graphics, float scale, BigItemStack entry,
                                                        boolean isStackHovered, boolean isRenderingOrders, CallbackInfo ci) {
-        if (isRenderingOrders && TemplateOrderTokenHelper.isToken(entry.stack)) {
+        if (isRenderingOrders && !createimp$isStyle2() && TemplateOrderTokenHelper.isToken(entry.stack)) {
             graphics.blit(TEMPLATE_REQUEST_SLOT_BG, 0, 0, 0, 0, 18, 18, 18, 18);
         }
     }
@@ -379,11 +395,39 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
             target = "Lcom/simibubi/create/foundation/gui/AllGuiTextures;render(Lnet/minecraft/client/gui/GuiGraphics;II)V"))
     private void createimp$redirectSlotBackground(AllGuiTextures instance, GuiGraphics graphics, int x, int y,
                                                   @Local(argsOnly = true) BigItemStack entry) {
-        if (TemplateOrderTokenHelper.isToken(entry.stack)) {
+        if (!createimp$isStyle2() && TemplateOrderTokenHelper.isToken(entry.stack)) {
             graphics.blit(TEMPLATE_SLOT_BG, x, y, 0, 0, 18, 18, 18, 18);
         } else {
             instance.render(graphics, x, y);
         }
+    }
+
+    /**
+     * 样式2：模板贴图改为绘制在物品图标之上的"前景"，并且要跟随物品一起
+     * 缩放（悬浮时放大 7.5%）。这里不去挂接 GuiGameElement 内部的渲染调用
+     * （那是 catnip 库的类，没有源码在手，不能猜它的方法签名），而是在
+     * renderItemEntry 结束后，自己独立重建一遍原版用来绘制物品图标的那套
+     * pushPose/translate/scale 变换（数值直接照抄原版反编译出来的写法），
+     * 在同样的变换下画一张 18x18 的贴图，效果上会和物品图标完全同步缩放。
+     */
+    @Inject(method = "renderItemEntry", at = @At("TAIL"))
+    private void createimp$drawTemplateForeground(GuiGraphics graphics, float scale, BigItemStack entry,
+                                                  boolean isStackHovered, boolean isRenderingOrders, CallbackInfo ci) {
+        if (!createimp$isStyle2() || !TemplateOrderTokenHelper.isToken(entry.stack)) {
+            return;
+        }
+        ResourceLocation texture = isRenderingOrders ? TEMPLATE_REQUEST_SLOT_BG_2 : TEMPLATE_SLOT_BG_2;
+        float scaleFromHover = isStackHovered ? 1.075f : 1.0f;
+        PoseStack pose = graphics.pose();
+        pose.pushPose();
+        pose.translate(1.0, 1.0, 0.0);
+        pose.translate(9.0, 9.0, 0.0);
+        pose.scale(scale, scale, scale);
+        pose.scale(scaleFromHover, scaleFromHover, scaleFromHover);
+        pose.translate(-9.0, -9.0, 0.0);
+        pose.translate(0.0, 0.0, 200.0);
+        graphics.blit(texture, -1, -1, 0, 0, 18, 18, 18, 18);
+        pose.popPose();
     }
 
     @WrapWithCondition(method = "renderItemEntry", at = @At(value = "INVOKE",
