@@ -162,11 +162,11 @@ dependencies {
     localRuntime files("libs/jecharacters-1.21-neoforge-4.5.23.jar")
     localRuntime files("libs/IMBlocker-5.5.2-neoforge+1.20.6-1.21.8.jar")
     localRuntime files("libs/CreateCyberGoggles-1.21.1-7.6.5-NeoForge.jar")
-    localRuntime files("libs/extra_gauges-2.1.2.jar")
-    localRuntime files("libs/deployer-0.1.2.jar")
+    //localRuntime files("libs/extra_gauges-2.1.2.jar")
+    //localRuntime files("libs/deployer-0.1.2.jar")
 
-    localRuntime files("libs/toms_storage-1.21-2.3.2.jar")
-    localRuntime files("libs/modernfix-neoforge-5.27.15+mc1.21.1.jar")
+    //localRuntime files("libs/toms_storage-1.21-2.3.2.jar")
+    //localRuntime files("libs/modernfix-neoforge-5.27.15+mc1.21.1.jar")
 
 }
 

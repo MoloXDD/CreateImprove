@@ -1,9 +1,12 @@
 package com.molox.createimp.client;
 
+import com.molox.createimp.CreateImp;
 import com.molox.createimp.item.TemplateOrderTarget;
 import com.molox.createimp.item.TemplateOrderTokenHelper;
 import com.simibubi.create.AllTags;
+import com.simibubi.create.content.logistics.stockTicker.StockKeeperRequestScreen;
 import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.world.entity.player.Player;
@@ -29,6 +32,8 @@ public class TemplateOrderTooltipHandler {
 
         Player player = event.getEntity();
         boolean cannotRequest = player != null && isEncodeRequesterItem(player.getMainHandItem());
+        boolean mergeMode = CreateImp.getConfig().templateConfig.mergeTemplateWithStock
+                && Minecraft.getInstance().screen instanceof StockKeeperRequestScreen;
 
         int duplicateCount = 0;
         for (ItemStack display : currentTemplateDisplays) {
@@ -38,13 +43,15 @@ public class TemplateOrderTooltipHandler {
         }
         boolean showRecipeLine = duplicateCount > 1;
 
-        if (!showRecipeLine && !cannotRequest) {
+        if (!showRecipeLine && !cannotRequest && !mergeMode) {
             return;
         }
 
         List<Component> tooltip = event.getToolTip();
         if (!tooltip.isEmpty()) {
-            Component nameLine = tooltip.get(0);
+            Component nameLine = mergeMode
+                    ? target.display().getHoverName().copy().withStyle(ChatFormatting.ITALIC)
+                    : tooltip.get(0);
             tooltip.clear();
             tooltip.add(nameLine);
         }
@@ -62,6 +69,11 @@ public class TemplateOrderTooltipHandler {
             }
             line = line.append(Component.translatable("createimp.item.template_order_token.tooltip_suffix"));
             tooltip.add(line.withStyle(ChatFormatting.GRAY));
+        }
+
+        if (mergeMode) {
+            tooltip.add(Component.translatable("createimp.item.template_order_token.tooltip_merge_hint")
+                    .withStyle(ChatFormatting.WHITE));
         }
     }
 

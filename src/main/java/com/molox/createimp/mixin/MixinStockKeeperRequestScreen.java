@@ -19,8 +19,10 @@ import com.simibubi.create.content.logistics.stockTicker.StockKeeperRequestScree
 import com.simibubi.create.content.logistics.stockTicker.StockTickerBlockEntity;
 import com.simibubi.create.foundation.gui.AllGuiTextures;
 import com.simibubi.create.foundation.utility.CreateLang;
+import net.createmod.catnip.data.Couple;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
@@ -32,13 +34,14 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-@Mixin(value = StockKeeperRequestScreen.class, remap = false)
+@Mixin(value = StockKeeperRequestScreen.class, priority = 500, remap = false)
 public abstract class MixinStockKeeperRequestScreen implements StockKeeperRequestScreenInvoker {
 
     @Unique
@@ -117,6 +120,15 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
 
     @Shadow
     public List<com.simibubi.create.content.logistics.stockTicker.CraftableBigItemStack> recipesToOrder;
+
+    @Shadow
+    private native Couple<Integer> getHoveredSlot(int x, int y);
+
+    @Shadow
+    Couple<Integer> noneHovered;
+
+    @Shadow
+    private native void drawItemCount(GuiGraphics graphics, int count, int customCount);
 
     @Override
     public void createimp$invokeSendIt() {
@@ -300,12 +312,23 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
         graphics.renderComponentTooltip(net.minecraft.client.Minecraft.getInstance().font, lines, mouseX, mouseY);
     }
 
+    @Unique
+    private static boolean createimp$isMergeMode() {
+        return CreateImp.getConfig().templateConfig.mergeTemplateWithStock;
+    }
+
     @Inject(method = "refreshSearchResults", at = @At("RETURN"))
     private void createimp$pinTemplateCategory(boolean scrollBackUp, CallbackInfo ci) {
         if (this.currentItemSource == null || this.isSchematicListMode()) {
             return;
         }
         if (this.displayedItems == null || this.displayedItems.isEmpty()) {
+            return;
+        }
+
+        if (createimp$isMergeMode()) {
+            createimp$mergeTemplatesIntoCategories();
+            createimp$recomputeCategoryLayout();
             return;
         }
 
@@ -370,7 +393,11 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
 
         this.categories = newCategories;
         this.displayedItems = newDisplayedItems;
+        createimp$recomputeCategoryLayout();
+    }
 
+    @Unique
+    private void createimp$recomputeCategoryLayout() {
         int categoryY = 0;
         for (int i = 0; i < this.categories.size(); ++i) {
             StockKeeperCategoryEntryAccessor accessor =
@@ -386,6 +413,62 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
             }
             categoryY += (int) Math.ceil(bucket.size() / 9.0) * 20;
         }
+    }
+
+    /**
+     * 合并模式：不再把模板抽成单独分类，而是每个分类桶内部原地把模板条目
+     * 挪到最前面；如果一个展示物已经有对应模板，它自己原本的普通物品条目
+     * 就不再单独出现——用模板条目本身当作这个展示物的"合并槽位"，角标数字
+     * 另外用当前真实库存现算（见 {@link #createimp$drawMergedTemplateStockBadge}），
+     * 不使用这里的桶结构。分类桶本身的数量、顺序、每个分类归属的物品完全
+     * 不变，跟随仓储发报机原有的分类结果。
+     */
+    @Unique
+    private void createimp$mergeTemplatesIntoCategories() {
+        List<ItemStack> templateDisplays = new ArrayList<>();
+        List<List<BigItemStack>> merged = new ArrayList<>();
+        for (List<BigItemStack> bucket : this.displayedItems) {
+            List<BigItemStack> tokens = new ArrayList<>();
+            List<BigItemStack> regulars = new ArrayList<>();
+            for (BigItemStack entry : bucket) {
+                if (TemplateOrderTokenHelper.isToken(entry.stack)) {
+                    tokens.add(entry);
+                    TemplateOrderTarget target = TemplateOrderTokenHelper.getTarget(entry.stack);
+                    if (target != null) {
+                        templateDisplays.add(target.display());
+                    }
+                } else {
+                    regulars.add(entry);
+                }
+            }
+            if (tokens.isEmpty()) {
+                merged.add(bucket);
+                continue;
+            }
+            List<BigItemStack> filteredRegulars = new ArrayList<>();
+            for (BigItemStack regular : regulars) {
+                if (!createimp$hasMatchingTemplate(tokens, regular.stack)) {
+                    filteredRegulars.add(regular);
+                }
+            }
+            List<BigItemStack> newBucket = new ArrayList<>(tokens.size() + filteredRegulars.size());
+            newBucket.addAll(tokens);
+            newBucket.addAll(filteredRegulars);
+            merged.add(newBucket);
+        }
+        TemplateOrderTooltipHandler.updateCurrentTemplateDisplays(templateDisplays);
+        this.displayedItems = merged;
+    }
+
+    @Unique
+    private static boolean createimp$hasMatchingTemplate(List<BigItemStack> tokens, ItemStack displayStack) {
+        for (BigItemStack token : tokens) {
+            TemplateOrderTarget target = TemplateOrderTokenHelper.getTarget(token.stack);
+            if (target != null && ItemStack.isSameItemSameComponents(target.display(), displayStack)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Inject(method = "renderItemEntry", at = @At("HEAD"))
@@ -504,5 +587,194 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
             }
         }
         return null;
+    }
+
+    /**
+     * 合并模式下，上方物品来源列表里模板条目的右下角数字不用原版那套（那套
+     * 用的是令牌自己携带的、没有实际意义的数量），而是现算"这个展示物当前
+     * 的真实库存减去请求栏里已经占用的真实物品数量"。原版自己的 drawItemCount
+     * 调用只在 customCount>1 时才会触发，库存为 0 或 1 时不会触发，所以这里
+     * 完全独立于原版那次调用，直接自己再画一次；哪怕库存是 0 也会画出"0"，
+     * 不会因为原版的触发条件而被跳过。
+     */
+    @Inject(method = "renderItemEntry", at = @At("TAIL"))
+    private void createimp$drawMergedTemplateStockBadge(GuiGraphics graphics, float scale, BigItemStack entry,
+                                                        boolean isStackHovered, boolean isRenderingOrders, CallbackInfo ci) {
+        if (isRenderingOrders || !createimp$isMergeMode() || !TemplateOrderTokenHelper.isToken(entry.stack)) {
+            return;
+        }
+        TemplateOrderTarget target = TemplateOrderTokenHelper.getTarget(entry.stack);
+        if (target == null) {
+            return;
+        }
+        int liveStock = this.blockEntity.getLastClientsideStockSnapshotAsSummary().getCountOf(target.display());
+        BigItemStack realOrder = this.getOrderForItem(target.display());
+        int already = realOrder != null ? realOrder.count : 0;
+        int liveCustom = Math.max(0, liveStock - already);
+        PoseStack pose = graphics.pose();
+        pose.pushPose();
+        pose.translate(0.0, 0.0, 250.0);
+        this.drawItemCount(graphics, liveStock, liveCustom);
+        pose.popPose();
+    }
+
+    /**
+     * 合并模式下点击上方物品来源列表里的模板条目：
+     * <p>
+     * 左键：剩余库存（当前真实库存减去请求栏里这个物品已占用的数量）大于 0
+     * 时，往真实物品那一条请求上加，单次最多加到刚好用完剩余库存为止，绝不
+     * 会因为这一次操作就超发模板（哪怕是 shift 一次性加一组也一样，最多只
+     * 加到库存上限）；剩余库存为 0 时，才转为往这一条具体点到的模板自己的
+     * 请求上加。
+     * <p>
+     * 中键：不管有没有库存，永远只加这一条具体点到的模板本身，支持 shift/ctrl
+     * 一次加一组/加10个，和左键新增数量的判定方式一致。
+     * <p>
+     * 右键：优先减这一条具体点到的模板自己的请求，模板请求已经清空了才改成
+     * 减真实物品那条请求。
+     */
+    /**
+     * Create Cyber Goggles 这个模组也在 mouseClicked 的 HEAD 位置注入了一个
+     * "按住某个按键点击弹出数量输入框"的功能，且不会检查点到的是不是模板。
+     * Mixin 没有单个注入点级别的 priority 属性，实际能控制先后顺序的是
+     * 整个 Mixin 类的 priority（见本文件顶部 {@code @Mixin(..., priority = 500)}，
+     * 比默认值 1000 小，会更早被应用），这样只要是合并模式下点到模板、我们
+     * 要自己处理的这次点击，就会抢在它之前把事件截停，它就没有机会再弹出
+     * 数量框；不满足条件的点击完全不受影响，正常轮到它或原版处理。
+     */
+    @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
+    private void createimp$handleMergedTemplateClick(double mouseX, double mouseY, int button,
+                                                     CallbackInfoReturnable<Boolean> cir) {
+        if (!createimp$isMergeMode() || (button != 0 && button != 1 && button != 2)) {
+            return;
+        }
+        Couple<Integer> hovered = this.getHoveredSlot((int) mouseX, (int) mouseY);
+        if (hovered == this.noneHovered) {
+            return;
+        }
+        int categoryIndex = hovered.getFirst();
+        int itemIndex = hovered.getSecond();
+        if (categoryIndex < 0 || categoryIndex >= this.displayedItems.size()) {
+            return;
+        }
+        List<BigItemStack> bucket = this.displayedItems.get(categoryIndex);
+        if (itemIndex < 0 || itemIndex >= bucket.size()) {
+            return;
+        }
+        BigItemStack clicked = bucket.get(itemIndex);
+        if (!TemplateOrderTokenHelper.isToken(clicked.stack)) {
+            return;
+        }
+        TemplateOrderTarget target = TemplateOrderTokenHelper.getTarget(clicked.stack);
+        if (target == null) {
+            return;
+        }
+
+        cir.setReturnValue(true);
+        int transfer = Screen.hasShiftDown() ? clicked.stack.getMaxStackSize()
+                : (Screen.hasControlDown() ? 10 : 1);
+
+        if (button == 2) {
+            createimp$adjustOrder(clicked.stack, transfer);
+            return;
+        }
+        if (button == 1) {
+            BigItemStack templateOrder = this.getOrderForItem(clicked.stack);
+            if (templateOrder != null && templateOrder.count > 0) {
+                createimp$adjustOrder(clicked.stack, -transfer);
+            } else {
+                createimp$adjustOrder(target.display(), -transfer);
+            }
+            return;
+        }
+        int remaining = createimp$remainingStock(target);
+        if (remaining > 0) {
+            createimp$adjustOrder(target.display(), Math.min(transfer, remaining));
+        } else {
+            createimp$adjustOrder(clicked.stack, transfer);
+        }
+    }
+
+    /**
+     * 滚轮同理：向上滚等价于左键（剩余库存优先加真实物品，没有剩余库存才加
+     * 模板），向下滚等价于右键（优先减模板，模板请求清空了再减真实物品）；
+     * shift/ctrl 同样分别对应一组/10个，和点击保持一致。
+     */
+    @Inject(method = "mouseScrolled", at = @At("HEAD"), cancellable = true)
+    private void createimp$handleMergedTemplateScroll(double mouseX, double mouseY, double scrollX, double scrollY,
+                                                      CallbackInfoReturnable<Boolean> cir) {
+        if (!createimp$isMergeMode()) {
+            return;
+        }
+        Couple<Integer> hovered = this.getHoveredSlot((int) mouseX, (int) mouseY);
+        if (hovered == this.noneHovered) {
+            return;
+        }
+        int categoryIndex = hovered.getFirst();
+        int itemIndex = hovered.getSecond();
+        if (categoryIndex < 0 || categoryIndex >= this.displayedItems.size()) {
+            return;
+        }
+        List<BigItemStack> bucket = this.displayedItems.get(categoryIndex);
+        if (itemIndex < 0 || itemIndex >= bucket.size()) {
+            return;
+        }
+        BigItemStack hoveredEntry = bucket.get(itemIndex);
+        if (!TemplateOrderTokenHelper.isToken(hoveredEntry.stack)) {
+            return;
+        }
+        TemplateOrderTarget target = TemplateOrderTokenHelper.getTarget(hoveredEntry.stack);
+        if (target == null) {
+            return;
+        }
+
+        cir.setReturnValue(true);
+        int transfer = Screen.hasShiftDown() ? hoveredEntry.stack.getMaxStackSize()
+                : (Screen.hasControlDown() ? 10 : 1);
+
+        if (scrollY < 0) {
+            BigItemStack templateOrder = this.getOrderForItem(hoveredEntry.stack);
+            if (templateOrder != null && templateOrder.count > 0) {
+                createimp$adjustOrder(hoveredEntry.stack, -transfer);
+            } else {
+                createimp$adjustOrder(target.display(), -transfer);
+            }
+            return;
+        }
+        if (scrollY > 0) {
+            int remaining = createimp$remainingStock(target);
+            if (remaining > 0) {
+                createimp$adjustOrder(target.display(), Math.min(transfer, remaining));
+            } else {
+                createimp$adjustOrder(hoveredEntry.stack, transfer);
+            }
+        }
+    }
+
+    @Unique
+    private int createimp$remainingStock(TemplateOrderTarget target) {
+        int liveStock = this.blockEntity.getLastClientsideStockSnapshotAsSummary().getCountOf(target.display());
+        BigItemStack realOrder = this.getOrderForItem(target.display());
+        int already = realOrder != null ? realOrder.count : 0;
+        return liveStock - already;
+    }
+
+    @Unique
+    private void createimp$adjustOrder(ItemStack referenceStack, int delta) {
+        if (delta == 0) {
+            return;
+        }
+        BigItemStack existing = this.getOrderForItem(referenceStack);
+        if (existing == null) {
+            if (delta <= 0 || this.itemsToOrder.size() >= 9) {
+                return;
+            }
+            existing = new BigItemStack(referenceStack.copyWithCount(1), 0);
+            this.itemsToOrder.add(existing);
+        }
+        existing.count += delta;
+        if (existing.count <= 0) {
+            this.itemsToOrder.remove(existing);
+        }
     }
 }

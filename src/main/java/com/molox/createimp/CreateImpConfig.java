@@ -82,6 +82,7 @@ public class CreateImpConfig implements ConfigData {
 
     public static class TemplateConfig {
         public TemplateDisplayStyle stockKeeperTemplateDisplayStyle = TemplateDisplayStyle.STYLE_1;
+        public boolean mergeTemplateWithStock = false;
 
         /**
          * 影响仓管请求界面与红石请求器界面里，模板物品的贴图绘制方式：
