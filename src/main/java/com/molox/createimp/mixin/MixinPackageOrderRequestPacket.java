@@ -5,6 +5,7 @@ import com.molox.createimp.block.work_warehouse.WorkWarehouseBlockEntity;
 import com.molox.createimp.block.work_warehouse.WorkWarehouseNetworkHelper;
 import com.molox.createimp.item.TemplateOrderTarget;
 import com.molox.createimp.item.TemplateOrderTokenHelper;
+import com.simibubi.create.AllBlocks;
 import com.simibubi.create.AllSoundEvents;
 import com.simibubi.create.content.logistics.BigItemStack;
 import com.simibubi.create.content.logistics.redstoneRequester.RedstoneRequesterBlock;
@@ -38,6 +39,13 @@ public abstract class MixinPackageOrderRequestPacket {
     @Inject(method = "applySettings", at = @At("HEAD"), cancellable = true)
     private void createimp$handleTemplateOrderForRequester(ServerPlayer player, StockTickerBlockEntity be, CallbackInfo ci) {
         if (!this.encodeRequester) {
+            return;
+        }
+        if (AllBlocks.REDSTONE_REQUESTER.isIn(player.getMainHandItem())) {
+            // 主手是红石请求器本身时，模板不在"编程"这一刻剔除，原样跟随整单
+            // 一起写进物品，改到红石请求器实际接收脉冲触发时才处理（见
+            // MixinRedstoneRequesterBlockEntity），这里完全不介入，让下面的
+            // 原版 applySettings 逻辑正常执行、原样调用 programRequester。
             return;
         }
 

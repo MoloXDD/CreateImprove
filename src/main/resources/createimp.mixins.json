@@ -18,7 +18,9 @@
     "MixinLogisticalStockRequestPacket",
     "MixinStockKeeperRequestScreen",
     "StockKeeperCategoryEntryAccessor",
-    "MixinStockTickerInteractionHandler"
+    "MixinStockTickerInteractionHandler",
+    "MixinRedstoneRequesterBlockEntity",
+    "MixinRedstoneRequesterScreen"
   ],
   "client": [],
   "injectors": {

@@ -86,6 +86,9 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
     private boolean encodeRequester;
 
     @Shadow
+    ItemStack itemToProgram;
+
+    @Shadow
     private native BigItemStack getOrderForItem(ItemStack stack);
 
     @Shadow
@@ -114,6 +117,9 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
      */
     @Override
     public void createimp$pollWorkWarehouseAvailability() {
+        if (createimp$isConfiguringRedstoneRequester()) {
+            return;
+        }
         int templateCount = createimp$countTemplateEntries();
         if (templateCount == 0) {
             return;
@@ -132,11 +138,35 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
     @Shadow
     private native void revalidateOrders();
 
+    /**
+     * 只有主手是桌布类物品（{@code AllTags.AllItemTags.TABLE_CLOTHS}）时才
+     * 禁止把模板点入请求栏；主手是红石请求器本身时放开，模板会原样随整单
+     * 一起编程进红石请求器，交给它接收脉冲时再判断（见
+     * {@link MixinRedstoneRequesterBlockEntity}）。
+     */
+    @Unique
+    private boolean createimp$blocksTemplateOrder() {
+        if (!this.encodeRequester) {
+            return false;
+        }
+        return com.simibubi.create.AllTags.AllItemTags.TABLE_CLOTHS.matches(this.itemToProgram);
+    }
+
+    /**
+     * 正在把请求栏"配置"进红石请求器本身（不是桌布，也不是直接发送）。
+     * 这种情况下不检查可用工作仓库数量，随意让玩家配置，真正的检查放到
+     * 红石请求器自己接收脉冲触发时（见 MixinRedstoneRequesterBlockEntity）。
+     */
+    @Unique
+    private boolean createimp$isConfiguringRedstoneRequester() {
+        return this.encodeRequester && com.simibubi.create.AllBlocks.REDSTONE_REQUESTER.isIn(this.itemToProgram);
+    }
+
     @Redirect(method = "mouseClicked", at = @At(value = "INVOKE",
             target = "Lcom/simibubi/create/content/logistics/stockTicker/StockKeeperRequestScreen;getOrderForItem(Lnet/minecraft/world/item/ItemStack;)Lcom/simibubi/create/content/logistics/BigItemStack;"))
     private BigItemStack createimp$blockTemplateOrderClick(StockKeeperRequestScreen instance, ItemStack stack) {
         BigItemStack existing = this.getOrderForItem(stack);
-        if (existing == null && this.encodeRequester && TemplateOrderTokenHelper.isToken(stack)) {
+        if (existing == null && createimp$blocksTemplateOrder() && TemplateOrderTokenHelper.isToken(stack)) {
             return new BigItemStack(stack, 0);
         }
         return existing;
@@ -146,7 +176,7 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
             target = "Lcom/simibubi/create/content/logistics/stockTicker/StockKeeperRequestScreen;getOrderForItem(Lnet/minecraft/world/item/ItemStack;)Lcom/simibubi/create/content/logistics/BigItemStack;"))
     private BigItemStack createimp$blockTemplateOrderScroll(StockKeeperRequestScreen instance, ItemStack stack) {
         BigItemStack existing = this.getOrderForItem(stack);
-        if (existing == null && this.encodeRequester && TemplateOrderTokenHelper.isToken(stack)) {
+        if (existing == null && createimp$blocksTemplateOrder() && TemplateOrderTokenHelper.isToken(stack)) {
             return new BigItemStack(stack, 0);
         }
         return existing;
@@ -172,6 +202,9 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
      */
     @Unique
     private boolean createimp$isTemplateSendBlocked() {
+        if (createimp$isConfiguringRedstoneRequester()) {
+            return false;
+        }
         int templateCount = createimp$countTemplateEntries();
         if (templateCount == 0) {
             return false;
@@ -204,7 +237,11 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
     @Redirect(method = "mouseClicked", at = @At(value = "INVOKE",
             target = "Lcom/simibubi/create/content/logistics/stockTicker/StockKeeperRequestScreen;sendIt()V"))
     private void createimp$redirectSendIt(StockKeeperRequestScreen instance) {
-        if (createimp$countTemplateEntries() == 0) {
+        if (createimp$isConfiguringRedstoneRequester() || createimp$countTemplateEntries() == 0) {
+            // 配置红石请求器时，不管请求栏里有没有模板，都直接走原有的
+            // "编程"发送逻辑，模板原样跟着一起写进物品，不弹材料检查窗口——
+            // 那个窗口检查的是当下的网络库存，对红石请求器要在未来某次脉冲
+            // 触发时才会用到的材料没有意义。
             this.sendIt();
             return;
         }
@@ -219,6 +256,9 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
     @Inject(method = "renderForeground", at = @At("TAIL"))
     private void createimp$drawWorkWarehouseTooltip(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks, CallbackInfo ci) {
         if (!this.isConfirmHovered(mouseX, mouseY)) {
+            return;
+        }
+        if (createimp$isConfiguringRedstoneRequester()) {
             return;
         }
         int templateCount = createimp$countTemplateEntries();

@@ -2,7 +2,6 @@ package com.molox.createimp.client;
 
 import com.molox.createimp.item.TemplateOrderTarget;
 import com.molox.createimp.item.TemplateOrderTokenHelper;
-import com.simibubi.create.AllBlocks;
 import com.simibubi.create.AllTags;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
@@ -67,6 +66,8 @@ public class TemplateOrderTooltipHandler {
     }
 
     private static boolean isEncodeRequesterItem(ItemStack stack) {
-        return AllTags.AllItemTags.TABLE_CLOTHS.matches(stack) || AllBlocks.REDSTONE_REQUESTER.isIn(stack);
+        // 红石请求器现在允许携带模板，只有桌布类物品仍然不支持模板，
+        // 才需要提示"当前无法请求模板"。
+        return AllTags.AllItemTags.TABLE_CLOTHS.matches(stack);
     }
 }
