@@ -1,6 +1,7 @@
 package com.molox.createimp.block.labeled_redstone_link;
 
 import com.simibubi.create.content.equipment.clipboard.ClipboardCloneable;
+import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelSupportBehaviour;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -25,6 +26,8 @@ public class LabeledRedstoneLinkBlockEntity extends SmartBlockEntity
     private int receivedSignal = 0;
     private boolean receivedSignalChanged = false;
 
+    public FactoryPanelSupportBehaviour panelSupport;
+
     public LabeledRedstoneLinkBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState state) {
         super(type, pos, state);
     }
@@ -32,6 +35,17 @@ public class LabeledRedstoneLinkBlockEntity extends SmartBlockEntity
     @Override
     public void addBehaviours(List behaviours) {
         // 不使用 LinkBehaviour，ClipboardCloneable 由实体本身实现
+        this.panelSupport = new FactoryPanelSupportBehaviour(this,
+                this::isReceiver,
+                () -> this.receivedSignal > 0,
+                this::notifyTransmitSignal);
+        behaviours.add(this.panelSupport);
+    }
+
+    private void notifyTransmitSignal() {
+        BlockState state = getBlockState();
+        if (state.getBlock() instanceof LabeledRedstoneLinkBlock block)
+            block.updateTransmittedSignal(state, level, worldPosition);
     }
 
     // ========== 频率 ==========
@@ -139,6 +153,7 @@ public class LabeledRedstoneLinkBlockEntity extends SmartBlockEntity
         level.blockUpdated(attachedPos, level.getBlockState(attachedPos).getBlock());
 
         receivedSignalChanged = false;
+        if (panelSupport != null) panelSupport.notifyPanels();
     }
 
     // ========== 网络注册 ==========
@@ -160,6 +175,7 @@ public class LabeledRedstoneLinkBlockEntity extends SmartBlockEntity
                 handler.removeFromNetwork(this);
                 handler.updateAll(frequencyText);
             }
+            updateSelfAndAttached(getBlockState());
         }
         super.remove();
     }

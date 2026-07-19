@@ -140,7 +140,16 @@ public class LabeledRedstoneLinkBlock extends WrenchableDirectionalBlock
         if (level.isClientSide()) return;
         if (state.getValue(RECEIVER)) return;
 
-        final int power = getPower(level, state, pos);
+        int power = getPower(level, state, pos);
+
+        int powerFromPanels = 0;
+        if (level.getBlockEntity(pos) instanceof LabeledRedstoneLinkBlockEntity be
+                && be.panelSupport != null) {
+            Boolean tri = be.panelSupport.shouldBePoweredTristate();
+            if (tri == null) return;
+            powerFromPanels = Boolean.TRUE.equals(tri) ? 15 : 0;
+        }
+        power = Math.max(power, powerFromPanels);
 
         boolean currentlyPowered = state.getValue(POWERED);
         boolean shouldBePowered = power > 0;
@@ -148,7 +157,8 @@ public class LabeledRedstoneLinkBlock extends WrenchableDirectionalBlock
             level.setBlock(pos, state.cycle(POWERED), 2);
         }
 
-        withBlockEntityDo(level, pos, be -> be.transmit(power));
+        int transmit = power;
+        withBlockEntityDo(level, pos, be -> be.transmit(transmit));
     }
 
     /**

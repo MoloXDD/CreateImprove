@@ -172,6 +172,11 @@ dependencies {
     localRuntime files("libs/ftb-library-neoforge-2101.1.33.jar")
     localRuntime files("libs/architectury-13.0.8-neoforge.jar")
 
+
+
+    //-----------------------------兼容模组-----------------------------------
+    //localRuntime files("libs/fluidlogistics-1.2.0.jar")//流体包裹兼容
+
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.
