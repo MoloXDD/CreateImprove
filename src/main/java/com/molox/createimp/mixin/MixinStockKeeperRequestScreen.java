@@ -513,7 +513,7 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
         pose.scale(scale, scale, scale);
         pose.scale(scaleFromHover, scaleFromHover, scaleFromHover);
         pose.translate(-9.0, -9.0, 0.0);
-        pose.translate(0.0, 0.0, 200.0);
+        pose.translate(0.0, 0.0, 150.0);
         graphics.blit(texture, -1, -1, 0, 0, 18, 18, 18, 18);
         pose.popPose();
     }
