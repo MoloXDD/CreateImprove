@@ -161,21 +161,21 @@ dependencies {
     localRuntime files("libs/CopyID-neoforge-1.21.1-1.0.1.jar")
     localRuntime files("libs/jecharacters-1.21-neoforge-4.5.23.jar")
     localRuntime files("libs/IMBlocker-5.5.2-neoforge+1.20.6-1.21.8.jar")
-    localRuntime files("libs/CreateCyberGoggles-1.21.1-7.6.5-NeoForge.jar")
+    //localRuntime files("libs/CreateCyberGoggles-1.21.1-7.6.5-NeoForge.jar")
     //localRuntime files("libs/extra_gauges-2.1.2.jar")
     //localRuntime files("libs/deployer-0.1.2.jar")
 
     //localRuntime files("libs/toms_storage-1.21-2.3.2.jar")
     //localRuntime files("libs/modernfix-neoforge-5.27.15+mc1.21.1.jar")
 
-    localRuntime files("libs/ftb-ultimine-neoforge-2101.1.15.jar")
-    localRuntime files("libs/ftb-library-neoforge-2101.1.33.jar")
-    localRuntime files("libs/architectury-13.0.8-neoforge.jar")
+    //localRuntime files("libs/ftb-ultimine-neoforge-2101.1.15.jar")
+    //localRuntime files("libs/ftb-library-neoforge-2101.1.33.jar")
+    //localRuntime files("libs/architectury-13.0.8-neoforge.jar")
 
 
 
     //-----------------------------兼容模组-----------------------------------
-    //localRuntime files("libs/fluidlogistics-1.2.0.jar")//流体包裹兼容
+    localRuntime files("libs/fluidlogistics-1.2.0.jar")//流体包裹兼容
 
 }
 

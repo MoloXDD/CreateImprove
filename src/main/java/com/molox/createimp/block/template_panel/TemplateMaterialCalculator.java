@@ -8,8 +8,10 @@ import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelBehaviour;
 import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelBlock;
 import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelBlockEntity;
 import com.simibubi.create.content.logistics.packagerLink.LogisticsManager;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenCustomHashMap;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemStackLinkedSet;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
@@ -494,14 +496,23 @@ public final class TemplateMaterialCalculator {
 
             List<WorkWarehouseTemplateSnapshot.IngredientEntry> ingredientEntries = new ArrayList<>();
             if (data != null) {
+                Map<TemplatePanelPosition, Integer> connectionAmounts = data.craftingArrangement.isEmpty()
+                        ? null
+                        : distributeCraftingConnectionAmounts(level, data.ownConnections, data.craftingArrangement);
                 for (TemplatePanelConnection conn : data.ownConnections) {
                     Integer childIndex = indexOf.get(conn.from);
                     if (childIndex == null) {
                         continue;
                     }
+                    int amount = connectionAmounts != null
+                            ? connectionAmounts.getOrDefault(conn.from, 0)
+                            : conn.amount;
+                    if (amount <= 0) {
+                        continue;
+                    }
                     ItemStack childFilter = snapshotOut.get(childIndex).filterItem();
                     ingredientEntries.add(new WorkWarehouseTemplateSnapshot.IngredientEntry(
-                            childFilter.copy(), conn.amount, childIndex));
+                            childFilter.copy(), amount, childIndex));
                 }
             }
 
@@ -546,10 +557,65 @@ public final class TemplateMaterialCalculator {
         NodeData data = resolveNode(level, pos);
         discovered.put(pos, data);
         if (data != null && data.template) {
-            for (TemplatePanelConnection conn : data.ownConnections) {
-                discoverUpstream(level, conn.from, pos, conn.amount, discovered, consumersOf);
+            if (data.craftingArrangement.isEmpty()) {
+                for (TemplatePanelConnection conn : data.ownConnections) {
+                    discoverUpstream(level, conn.from, pos, conn.amount, discovered, consumersOf);
+                }
+            } else {
+                for (Map.Entry<TemplatePanelPosition, Integer> e : distributeCraftingConnectionAmounts(
+                        level, data.ownConnections, data.craftingArrangement).entrySet()) {
+                    if (e.getValue() > 0) {
+                        discoverUpstream(level, e.getKey(), pos, e.getValue(), discovered, consumersOf);
+                    }
+                }
             }
         }
+    }
+
+    /**
+     * 动力合成模式下，原版对 3x3 配方格子里同一种物品的每一个连接格，都会把
+     * "整个配方格子里这种物品一共占了几格"原样填成这个连接的数量——如果恰好
+     * 有多个不同的上游仪表监测的是同一种物品，原版给出的这个数字会在每一个
+     * 连接上重复出现（而不是各自的真实份额），直接拿来对每个上游各自登记一遍
+     * 需求会导致总需求被放大到原来的好几倍。
+     * <p>
+     * 这里按上游仪表当前监测的物品种类重新分组：同一组内按连接在
+     * {@code targetedBy} 里出现的先后顺序，把配方格数尽量平均分配，排在
+     * 前面的连接优先多分到一格（比如 5 格分给 2 个来源就是 3+2）；如果同一
+     * 种物品连接的上游数量比配方格数还多，排在后面、分不到格子的连接直接
+     * 分配为 0（视为废弃，不再参与这种物品的任何需求计算）。
+     */
+    private static Map<TemplatePanelPosition, Integer> distributeCraftingConnectionAmounts(
+            Level level, List<TemplatePanelConnection> connections, List<ItemStack> craftingArrangement) {
+        Map<TemplatePanelPosition, Integer> result = new LinkedHashMap<>();
+        Map<ItemStack, List<TemplatePanelPosition>> groups =
+                new Object2ObjectOpenCustomHashMap<>(ItemStackLinkedSet.TYPE_AND_TAG);
+        for (TemplatePanelConnection conn : connections) {
+            NodeData sourceData = resolveNode(level, conn.from);
+            if (sourceData == null || sourceData.filter.isEmpty()) {
+                // 上游暂时无法解析（比如所在区块未加载），没法判断它跟哪些
+                // 连接同属一组，保底沿用原始数量，不参与分组平分。
+                result.put(conn.from, conn.amount);
+                continue;
+            }
+            groups.computeIfAbsent(sourceData.filter, $ -> new ArrayList<>()).add(conn.from);
+        }
+        for (Map.Entry<ItemStack, List<TemplatePanelPosition>> group : groups.entrySet()) {
+            int n = 0;
+            for (ItemStack cell : craftingArrangement) {
+                if (!cell.isEmpty() && ItemStack.isSameItemSameComponents(cell, group.getKey())) {
+                    n++;
+                }
+            }
+            List<TemplatePanelPosition> members = group.getValue();
+            int groupSize = members.size();
+            int base = n / groupSize;
+            int remainder = n % groupSize;
+            for (int i = 0; i < groupSize; i++) {
+                result.put(members.get(i), base + (i < remainder ? 1 : 0));
+            }
+        }
+        return result;
     }
 
     private static NodeData resolveNode(Level level, TemplatePanelPosition pos) {

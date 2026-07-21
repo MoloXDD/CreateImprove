@@ -1,5 +1,6 @@
 package com.molox.createimp.mixin;
 
+import com.molox.createimp.CreateImp;
 import com.molox.createimp.util.IFactoryPanelBehaviourDemandMode;
 
 import com.google.common.collect.HashMultimap;
@@ -152,12 +153,16 @@ public abstract class MixinFactoryPanelBehaviour implements IFactoryPanelBehavio
         int promised = getPromised();
         int gap = demand - inStorage - promised;
 
+        CreateImp.LOGGER.info("[DemandDebug] filterItem={} maxStackSize={} upTo={} demand={} inStorage={} promised={} gap={} recipeOutput={}",
+                filterItem, filterItem.getMaxStackSize(), createimp$isUpTo(), demand, inStorage, promised, gap, recipeOutput);
+
         if (gap <= 0) {
             ci.cancel();
             return;
         }
 
         int batchesNeeded = (gap + recipeOutput - 1) / recipeOutput;
+        CreateImp.LOGGER.info("[DemandDebug] batchesNeeded={}", batchesNeeded);
 
         // 第一轮遍历：先收集每种原料的"单批总需求"(不乘batchesNeeded)，
         // 即同一物品来自多个connection时，各connection.amount的总和。
@@ -185,6 +190,8 @@ public abstract class MixinFactoryPanelBehaviour implements IFactoryPanelBehavio
             // 这里先只累加"单批所需总量"，不乘batchesNeeded，
             // 留到下面按实际库存反推可执行批次时再统一相乘。
             isc.totalAmount += connection.amount;
+            CreateImp.LOGGER.info("[DemandDebug] connection.from={} connection.amount={} item={} itemClass={} components={} isc.totalAmount(after)={}",
+                    connection.from, connection.amount, item, item.getItem().getClass().getName(), item.getComponents(), isc.totalAmount);
         }
 
         // 第二轮：按各物品的实际网络库存，反推"这种物品最多能撑几个完整批次"，
@@ -205,8 +212,11 @@ public abstract class MixinFactoryPanelBehaviour implements IFactoryPanelBehavio
                 int available = summary.getCountOf(isc.item);
                 int batchesThisItemCanSupport = available / perBatchNeed;
                 actualBatches = Math.min(actualBatches, batchesThisItemCanSupport);
+                CreateImp.LOGGER.info("[DemandDebug] net={} item={} perBatchNeed={} available={} batchesThisItemCanSupport={} actualBatches(after)={}",
+                        net, isc.item, perBatchNeed, available, batchesThisItemCanSupport, actualBatches);
             }
         }
+        CreateImp.LOGGER.info("[DemandDebug] final actualBatches={}", actualBatches);
 
         if (actualBatches <= 0) {
             // 一个完整批次都凑不出，本次彻底放弃，不发出任何请求，
@@ -230,7 +240,10 @@ public abstract class MixinFactoryPanelBehaviour implements IFactoryPanelBehavio
             for (FactoryPanelBehaviour.ItemStackConnections isc : entry.getValue().values()) {
                 long actualTotal = (long) isc.totalAmount * actualBatches;
                 int clamped = (int) Math.min(actualTotal, Integer.MAX_VALUE);
-                toRequest.put(net, new BigItemStack(isc.item, clamped));
+                BigItemStack requestEntry = new BigItemStack(isc.item, clamped);
+                toRequest.put(net, requestEntry);
+                CreateImp.LOGGER.info("[DemandDebug] built request net={} isc.totalAmount={} actualBatches={} actualTotal={} clamped={} requestEntry.count={}",
+                        net, isc.totalAmount, actualBatches, actualTotal, clamped, requestEntry.count);
                 for (FactoryPanelConnection conn : isc) {
                     sendEffect(conn.from, true);
                 }
@@ -254,11 +267,22 @@ public abstract class MixinFactoryPanelBehaviour implements IFactoryPanelBehavio
 
         ArrayList<Multimap<PackagerBlockEntity, PackagingRequest>> requests = new ArrayList<>();
         for (Map.Entry<UUID, Collection<BigItemStack>> entry : toRequest.asMap().entrySet()) {
+            for (BigItemStack bis : entry.getValue()) {
+                CreateImp.LOGGER.info("[DemandDebug] order stack item={} count={}", bis.stack, bis.count);
+            }
             PackageOrderWithCrafts order = new PackageOrderWithCrafts(
                     new PackageOrder(new ArrayList<>(entry.getValue())),
                     craftContext.orderedCrafts());
-            requests.add(LogisticsManager.findPackagersForRequest(
-                    entry.getKey(), order, null, recipeAddress));
+            Multimap<PackagerBlockEntity, PackagingRequest> found = LogisticsManager.findPackagersForRequest(
+                    entry.getKey(), order, null, recipeAddress);
+            for (Map.Entry<PackagerBlockEntity, PackagingRequest> foundEntry : found.entries()) {
+                CreateImp.LOGGER.info("[DemandDebug] found packager={} request.item={} request.count={}",
+                        foundEntry.getKey().getBlockPos(), foundEntry.getValue().item(), foundEntry.getValue().getCount());
+            }
+            if (found.isEmpty()) {
+                CreateImp.LOGGER.info("[DemandDebug] findPackagersForRequest returned EMPTY for net={}", entry.getKey());
+            }
+            requests.add(found);
         }
 
         for (var multimap : requests) {

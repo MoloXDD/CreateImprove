@@ -214,6 +214,23 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
     private boolean finalDemandRegistered = false;
 
     /**
+     * 每个节点在材料确认阶段就已经被现有库存直接确认、原料请求阶段已经运抵
+     * 仓库、但截至目前还没被任何需求条目认领过的"现成产出"数量，键是节点在
+     * {@link #templateSnapshot} 里的下标。
+     * <p>
+     * 这份账本在 {@link #beginProductionStage()} 生产刚开始那一刻，用一份
+     * 仓库存储的共享临时快照统一结算一次性算出——必须共享同一份快照而不是
+     * 每个节点各自单独核对仓库存储，否则模板链里如果有多个不同节点（不管
+     * 是模板仪表还是普通仪表叶子节点）恰好监测的是同一种物品，会各自把
+     * 仓库里同一批物理库存重复当成"我的现成产出"分别认领，凭空多算出根本
+     * 不存在的库存。算好之后固定不变，节点无论什么时候真正变为 COMPLETED，
+     * 都直接查这份账本（见 {@link #registerOutputDemand}），不再临时去查
+     * 仓库存储，从根源上避免"先完成的节点抢跑，后完成的节点查到的库存已经
+     * 被别人拿走"这类时序问题。只在服务端持久化。
+     */
+    private final Map<Integer, Integer> preExistingCredit = new LinkedHashMap<>();
+
+    /**
      * 整次生产是否已经彻底完成（根节点自身产出物已经全部回到仓库内部存储）。
      * 目前只实现到"产物停留在仓库内"，不涉及后续发货，因此这个字段单纯作为
      * 一个可供护目镜信息读取的完成标记。会同步给客户端。
@@ -941,6 +958,7 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         this.inTransitList = new ArrayList<>();
         this.finalDemandRegistered = false;
         this.productionComplete = false;
+        this.preExistingCredit.clear();
         setChanged();
     }
 
@@ -1009,8 +1027,31 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
      * 由它们自己登记"我的产出物一共有多少"这份需求给下游——这里统一补上，
      * 补上之后下游节点（如果因此凑齐了全部上游）自然会在
      * {@link #reconcileDemandList()} 里被识别为可以进入生产。
+     * <p>
+     * 生产开始前，先统一结算一次 {@link #preExistingCredit} 账本，详见该
+     * 字段的说明——必须在这里、用同一份共享临时快照一次性算完整份账本，
+     * 不能等到每个节点各自真正完成时才现查仓库存储。
      */
     private void beginProductionStage() {
+        WorkWarehouseItemStackHandler creditScratch = storage.copy();
+        preExistingCredit.clear();
+        for (int i = 0; i < templateSnapshot.size(); i++) {
+            if (i == rootIndex()) {
+                continue;
+            }
+            WorkWarehouseTemplateSnapshot.PanelSnapshot node = templateSnapshot.get(i);
+            int actualBatchOutput = node.requiredBatches() * node.recipeOutput();
+            int preExisting = Math.max(0, node.expectedOutputTotal() - actualBatchOutput);
+            if (preExisting <= 0) {
+                continue;
+            }
+            int available = countMatching(creditScratch, node.filterItem());
+            int claim = Math.min(preExisting, available);
+            if (claim > 0) {
+                extractExact(creditScratch, node.filterItem(), claim);
+                preExistingCredit.put(i, claim);
+            }
+        }
         for (int i = 0; i < templateSnapshot.size(); i++) {
             if (i == rootIndex()) {
                 continue;
@@ -1071,19 +1112,33 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
     private void registerOutputDemand(int producerIndex) {
         WorkWarehouseTemplateSnapshot.PanelSnapshot producer = templateSnapshot.get(producerIndex);
         List<int[]> consumers = findConsumersOf(producerIndex);
+        int actualBatchOutput = producer.requiredBatches() * producer.recipeOutput();
+
+        // 这个节点材料确认阶段就已经现成、原料请求阶段已运抵仓库、目前还没
+        // 被任何需求条目认领过的数量，已经在 beginProductionStage() 那一刻
+        // 用共享临时快照统一结算进 preExistingCredit 账本，这里直接取用、
+        // 不再临时查仓库存储（避免多个节点监测同一种物品时重复认领同一批
+        // 物理库存）。
+        int preExisting = preExistingCredit.getOrDefault(producerIndex, 0);
+
         int allocated = 0;
+        int creditedFromExisting = 0;
         for (int[] c : consumers) {
             int consumerIndex = c[0];
             int qty = c[1];
             if (qty <= 0) {
                 continue;
             }
-            demandList.add(new WorkWarehouseTemplateSnapshot.DemandEntry(
-                    producer.network(), producer.filterItem().copy(), qty, consumerIndex, producerIndex));
             allocated += qty;
+            int creditNow = Math.min(qty, preExisting - creditedFromExisting);
+            creditedFromExisting += creditNow;
+            int remainingQty = qty - creditNow;
+            if (remainingQty > 0) {
+                demandList.add(new WorkWarehouseTemplateSnapshot.DemandEntry(
+                        producer.network(), producer.filterItem().copy(), remainingQty, consumerIndex, producerIndex));
+            }
         }
-        int actualBatchOutput = producer.requiredBatches() * producer.recipeOutput();
-        int surplus = actualBatchOutput - allocated;
+        int surplus = actualBatchOutput - (allocated - creditedFromExisting);
         if (surplus > 0) {
             demandList.add(new WorkWarehouseTemplateSnapshot.DemandEntry(
                     producer.network(), producer.filterItem().copy(), surplus,
@@ -1409,6 +1464,7 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         requestedAmount = 0;
         activationGameTime = 0;
         producerCompletionAnnounced.clear();
+        preExistingCredit.clear();
         logEntries.clear();
         latestLogKey = "";
         latestLogArgs = new ArrayList<>();
@@ -2022,6 +2078,12 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
             for (int i : tag.getIntArray("ProducerCompletionAnnounced")) {
                 producerCompletionAnnounced.add(i);
             }
+            preExistingCredit.clear();
+            int[] creditKeys = tag.getIntArray("PreExistingCreditKeys");
+            int[] creditValues = tag.getIntArray("PreExistingCreditValues");
+            for (int i = 0; i < creditKeys.length && i < creditValues.length; i++) {
+                preExistingCredit.put(creditKeys[i], creditValues[i]);
+            }
         }
     }
 
@@ -2070,6 +2132,13 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
             tag.putBoolean("FinalDemandRegistered", finalDemandRegistered);
             tag.putIntArray("ProducerCompletionAnnounced",
                     producerCompletionAnnounced.stream().mapToInt(Integer::intValue).toArray());
+            int[] creditKeys = preExistingCredit.keySet().stream().mapToInt(Integer::intValue).toArray();
+            int[] creditValues = new int[creditKeys.length];
+            for (int i = 0; i < creditKeys.length; i++) {
+                creditValues[i] = preExistingCredit.get(creditKeys[i]);
+            }
+            tag.putIntArray("PreExistingCreditKeys", creditKeys);
+            tag.putIntArray("PreExistingCreditValues", creditValues);
         }
     }
 }
