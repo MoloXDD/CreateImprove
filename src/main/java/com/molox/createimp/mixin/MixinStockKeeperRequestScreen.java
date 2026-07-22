@@ -215,6 +215,36 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
         return existing;
     }
 
+    /**
+     * 根因：{@code maxCraftable()} 在给"某个配方现在最多能凑出几份"计算候选
+     * 材料时，是拿仓储发报机发回来的库存汇总（{@code InventorySummary}）逐条
+     * 用 {@code Ingredient.test(stack)} 去匹配——而这份汇总被
+     * {@link MixinLogisticalStockRequestPacket} 用
+     * {@link com.molox.createimp.item.TemplateOrderSummaryHelper#augment} 额外
+     * 掺入了每个当前存在的模板对应的"模板令牌"条目（数量固定填了一个没有实际
+     * 意义的巨大占位值，见该方法注释）。这个令牌本身就是"目标物品原样复制一份、
+     * 只是另外挂了一个标记数据组件"，{@code Ingredient.test} 只认物品种类，
+     * 不管这个额外的数据组件，于是只要配方需要的材料恰好对应着某个现存模板，
+     * 令牌就会被当成"库存里还有一大堆这种材料"混进候选列表——不管是 JEI 配方
+     * 界面的"+"号（{@code StockKeeperTransferHandler} 最终也是调用
+     * {@code requestCraftable}→{@code maxCraftable}），还是仓管自己配方图标
+     * 上的"+"号，走的都是这同一个方法，因此都会命中这个问题，并不是 JEI 那边
+     * 单独出的错。
+     * <p>
+     * 修复：只在这一个匹配点上，令牌本身直接判定为不匹配，不影响
+     * {@code Ingredient.test} 其他任何调用方；这样"现存材料"的匹配范围就
+     * 恢复成只看真实库存条目，模板令牌不会再被当成材料来源，也就不会被错误地
+     * 当作"这个配方缺的材料"填进请求栏。
+     */
+    @Redirect(method = "maxCraftable", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/world/item/crafting/Ingredient;test(Lnet/minecraft/world/item/ItemStack;)Z"))
+    private boolean createimp$excludeTemplateTokenFromCraftableMatch(net.minecraft.world.item.crafting.Ingredient instance, ItemStack stack) {
+        if (TemplateOrderTokenHelper.isToken(stack)) {
+            return false;
+        }
+        return instance.test(stack);
+    }
+
     @Unique
     private int createimp$countTemplateEntries() {
         int count = 0;

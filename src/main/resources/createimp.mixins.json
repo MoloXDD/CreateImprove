@@ -17,6 +17,7 @@
     "MixinLogisticsManager",
     "MixinLogisticalStockRequestPacket",
     "MixinStockKeeperRequestScreen",
+    "MixinStockKeeperTransferHandler",
     "StockKeeperCategoryEntryAccessor",
     "MixinStockTickerInteractionHandler",
     "MixinRedstoneRequesterBlockEntity",
