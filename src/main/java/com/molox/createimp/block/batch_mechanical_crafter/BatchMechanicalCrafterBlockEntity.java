@@ -371,7 +371,14 @@ public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity implem
                 continue;
             }
             BlockFace face = this.getTargetFace(this.level, this.worldPosition, this.getBlockState());
-            int attemptCount = Math.min(stack.getCount(), Math.max(1, stack.getMaxStackSize()));
+            // behaviour == null 时走的是普通IItemHandler容器（this.inserting.insert），
+            // 其底层ItemHandlerHelper.insertItemStacked会按目标容器"每个槽位各自的堆叠上限"
+            // 分槽插入，一次性传入超过64的数量是安全的，能一tick内尽可能吃满容器；
+            // behaviour != null 时目标是传送带/漏斗/混合仓/物品分液漏斗等（DirectBeltInputBehaviour），
+            // 这些暂存格没有强制堆叠上限保护，必须继续封顶到一组，否则会重现崩溃。
+            int attemptCount = behaviour == null
+                    ? stack.getCount()
+                    : Math.min(stack.getCount(), Math.max(1, stack.getMaxStackSize()));
             ItemStack attempt = stack.copyWithCount(attemptCount);
             ItemStack remainder = behaviour == null
                     ? this.inserting.insert(attempt)
