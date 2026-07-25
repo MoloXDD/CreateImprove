@@ -7,6 +7,7 @@ import net.minecraft.core.Vec3i;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
@@ -144,6 +145,49 @@ public class BatchConnectedInputHandler {
         callback.accept(crafter.input);
         crafter.setChanged();
         crafter.connectivityChanged();
+    }
+
+    /**
+     * 把一组物品尽可能均分插入连接链里当前为空的槽位：每个空槽位先分到
+     * {@code 物品总数 / 空槽位数}（整除）个，除不尽的余数按现有排序规则
+     * （facing计算出的"从上到下、从左到右"）从前往后每个槽位多分1个。
+     * 非空的槽位这次跳过，不参与均分也不占分母。
+     * <p>
+     * 只有手持物品右键和动力臂放入这两个入口会调用这个方法；{@link ConnectedInput#getItemHandler}
+     * 暴露给传送带、漏斗等物流元件的仍是原有的顺序填充实现，行为不变。
+     *
+     * @return 没能分配出去的剩余部分（全部分完则为空气堆）
+     */
+    public static ItemStack insertEvenly(Level world, BlockPos pos, ItemStack stack, boolean simulate) {
+        if (stack.isEmpty())
+            return ItemStack.EMPTY;
+        BatchMechanicalCrafterBlockEntity crafter = BatchCrafterHelper.getCrafter(world, pos);
+        if (crafter == null)
+            return stack;
+
+        List<BatchMechanicalCrafterBlockEntity.Inventory> emptySlots = crafter.input
+                .getInventories(world, pos).stream()
+                .filter(inv -> inv.getItem(0).isEmpty())
+                .collect(Collectors.toList());
+        if (emptySlots.isEmpty())
+            return stack;
+
+        int total = stack.getCount();
+        int slotCount = emptySlots.size();
+        int base = total / slotCount;
+        int remainder = total % slotCount;
+
+        int remaining = total;
+        for (int i = 0; i < slotCount && remaining > 0; i++) {
+            int share = base + (i < remainder ? 1 : 0);
+            if (share <= 0)
+                continue;
+            ItemStack toInsert = stack.copyWithCount(Math.min(share, remaining));
+            ItemStack leftover = emptySlots.get(i).insertItem(0, toInsert, simulate);
+            remaining -= toInsert.getCount() - leftover.getCount();
+        }
+
+        return remaining > 0 ? stack.copyWithCount(remaining) : ItemStack.EMPTY;
     }
 
     public static class ConnectedInput {

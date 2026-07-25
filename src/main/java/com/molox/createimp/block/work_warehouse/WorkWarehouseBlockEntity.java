@@ -2146,7 +2146,11 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         if (candidates.size() <= 1) {
             return candidates.get(RNG.nextInt(candidates.size()));
         }
-        if (!CreateImp.getConfig().packagerAddressFilterConfig.enabled) {
+        // address为null代表调用方本来就没有"目标地址"这个概念（比如周期性回收
+        // 打包机身上的流体缓存、或者最终产物按特殊地址直接返回连接库存背后的
+        // 打包机），这种情况下按地址过滤没有意义，直接跳过匹配，退回随机挑选，
+        // 和玩家在配置里关闭地址过滤功能时走的是同一条分支。
+        if (address == null || !CreateImp.getConfig().packagerAddressFilterConfig.enabled) {
             return candidates.get(RNG.nextInt(candidates.size()));
         }
 

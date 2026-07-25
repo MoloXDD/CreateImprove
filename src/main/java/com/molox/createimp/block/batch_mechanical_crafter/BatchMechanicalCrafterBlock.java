@@ -34,9 +34,6 @@ import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.EnumProperty;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.capabilities.Capabilities;
-import net.neoforged.neoforge.items.IItemHandler;
-import net.neoforged.neoforge.items.ItemHandlerHelper;
 
 public class BatchMechanicalCrafterBlock extends HorizontalKineticBlock
         implements IBE<BatchMechanicalCrafterBlockEntity>, ICogWheel {
@@ -173,11 +170,7 @@ public class BatchMechanicalCrafterBlock extends HorizontalKineticBlock
                     if (!player.isCreative()) stack.shrink(1);
                     return ItemInteractionResult.SUCCESS;
                 }
-                IItemHandler capability = level.getCapability(
-                        Capabilities.ItemHandler.BLOCK, crafter.getBlockPos(), null);
-                if (capability == null)
-                    return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
-                ItemStack remainder = ItemHandlerHelper.insertItem(capability, stack.copy(), false);
+                ItemStack remainder = BatchConnectedInputHandler.insertEvenly(level, pos, stack.copy(), false);
                 if (remainder.getCount() != stack.getCount())
                     player.setItemInHand(hand, remainder);
                 return ItemInteractionResult.SUCCESS;

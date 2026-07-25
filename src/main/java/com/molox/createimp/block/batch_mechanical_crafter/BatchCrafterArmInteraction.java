@@ -20,11 +20,15 @@ import net.neoforged.neoforge.registries.RegisterEvent;
 /**
  * 让批量动力合成器也能被机械动力的动力臂识别为存放/取出物品的目标，完全
  * 对标原版动力臂对普通机械合成器（{@code AllArmInteractionPointTypes.CrafterType}/
- * {@code CrafterPoint}）的实现方式，不额外做功能。
+ * {@code CrafterPoint}）的实现方式。
  * <p>
- * 存入端：直接复用动力臂基类通用的、按 {@code IItemHandler} 槽位走的插入逻辑，
- * 不用另外处理——我们输入槽本身的单槽上限就是 64（原版单台合成器是 1），
- * 动力臂能塞多少完全由槽位本身的剩余容量决定，不需要额外放宽。
+ * 存入端：调用 {@link BatchConnectedInputHandler#insertEvenly} 把手中物品
+ * 尽可能均分插入连接链里当前为空的槽位，除不尽的余数从左上角的合成器开始
+ * 往后依次多分1个——和手持物品右键槽位的分配规则完全一致。这是因为原版
+ * 动力臂对接原版动力合成器时"看起来均分给每一台"，其实只是原版单槽容量
+ * 恰好为1、配合顺序填充的副作用，并不存在真正的均分算法；我们的槽位容量
+ * 是一整组，所以需要显式实现均分，而不能像原版那样依赖顺序填充自然凑出
+ * 均分效果。
  * <p>
  * 取出端：和原版一样，只针对"还没开始合成、原料原样躺在输入槽里"这一种
  * 情况——一旦触发合成，{@code begin()} 会立刻把输入槽清空（原料转存进内部
@@ -82,6 +86,11 @@ public class BatchCrafterArmInteraction {
             if (oldState != this.cachedState) {
                 this.cachedAngles = null;
             }
+        }
+
+        @Override
+        public ItemStack insert(ArmBlockEntity armBlockEntity, ItemStack stack, boolean simulate) {
+            return BatchConnectedInputHandler.insertEvenly(this.level, this.pos, stack, simulate);
         }
 
         @Override
