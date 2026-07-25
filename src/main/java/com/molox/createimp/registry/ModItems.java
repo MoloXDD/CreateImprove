@@ -50,4 +50,8 @@ public class ModItems {
             ITEMS.register("process_manager",
                     () -> new com.molox.createimp.block.process_manager.ProcessManagerBlockItem(
                             ModBlocks.PROCESS_MANAGER.get(), new Item.Properties()));
+
+    public static final DeferredItem<com.molox.createimp.item.TemplateFluidTokenItem> TEMPLATE_FLUID_TOKEN =
+            ITEMS.register("template_fluid_token",
+                    () -> new com.molox.createimp.item.TemplateFluidTokenItem(new Item.Properties().stacksTo(64)));
 }

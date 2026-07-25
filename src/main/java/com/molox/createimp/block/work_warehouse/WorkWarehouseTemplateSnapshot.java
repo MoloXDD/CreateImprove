@@ -285,11 +285,24 @@ public final class WorkWarehouseTemplateSnapshot {
                     if (!sb.isEmpty()) {
                         sb.append(" ");
                     }
-                    sb.append(ic.item().getHoverName().getString()).append("×").append(ic.count());
+                    sb.append(ic.item().getHoverName().getString()).append("×").append(formatCount(ic));
                 }
                 return sb.toString();
             }
             return text;
+        }
+
+        /**
+         * 数量部分的文本：流体展示物（流包已安装且这个物品是它的虚拟流体
+         * 过滤物）改用流体自己的 mB/B/KB 格式，跟仓管、材料检查界面用的是
+         * 同一套格式化方法；其余普通物品保持原样显示整数个数。
+         */
+        private static String formatCount(ItemCount ic) {
+            if (com.molox.createimp.compat.fluidlogistics.FluidLogisticsCompat.isLoaded()
+                    && com.molox.createimp.compat.fluidlogistics.TemplateFluidDisplayHelper.isVirtualFluidDisplay(ic.item())) {
+                return com.molox.createimp.compat.fluidlogistics.TemplateFluidDisplayHelper.formatStorageAmount(ic.count());
+            }
+            return String.valueOf(ic.count());
         }
 
         /** 一种物品 + 数量，用于拼成日志里"物品名×数量"这一段。 */

@@ -4,6 +4,8 @@ import com.molox.createimp.block.template_panel.TemplatePanelBehaviour;
 import com.molox.createimp.block.template_panel.TemplatePanelConnection;
 import com.molox.createimp.block.template_panel.TemplatePanelConnectionHandler;
 import com.molox.createimp.block.template_panel.TemplatePanelPosition;
+import com.molox.createimp.compat.fluidlogistics.FluidLogisticsCompat;
+import com.molox.createimp.compat.fluidlogistics.TemplateFluidDisplayHelper;
 import com.molox.createimp.network.TemplatePanelConfigurationPacket;
 import com.molox.createimp.registry.ModItems;
 import com.simibubi.create.AllRecipeTypes;
@@ -266,10 +268,11 @@ public class TemplatePanelScreen extends AbstractSimiScreen {
         int outputX = x + 160;
         int outputY = y + 48;
         graphics.renderItem(this.outputConfig.stack, outputX, outputY);
-        graphics.renderItemDecorations(this.font, this.behaviour.getFilter(), outputX, outputY, "" + this.outputConfig.count);
+        graphics.renderItemDecorations(this.font, this.behaviour.getFilter(), outputX, outputY,
+                createimp$formatAmount(this.outputConfig.stack, this.outputConfig.count));
         if (mouseX >= outputX - 1 && mouseX < outputX - 1 + 18 && mouseY >= outputY - 1 && mouseY < outputY - 1 + 18) {
             MutableComponent c1 = CreateLang.translate("gui.factory_panel.expected_output",
-                    CreateLang.itemName(this.outputConfig.stack).add(CreateLang.text(" x" + this.outputConfig.count)).string()).component();
+                    CreateLang.itemName(this.outputConfig.stack).add(CreateLang.text(" x" + createimp$formatAmount(this.outputConfig.stack, this.outputConfig.count))).string()).component();
             MutableComponent c2 = CreateLang.translate("gui.factory_panel.expected_output_tip").style(ChatFormatting.GRAY).component();
             MutableComponent c3 = CreateLang.translate("gui.factory_panel.expected_output_tip_1").style(ChatFormatting.GRAY).component();
             graphics.renderComponentTooltip(this.font, List.of(c1, c2, c3), mouseX, mouseY);
@@ -293,7 +296,8 @@ public class TemplatePanelScreen extends AbstractSimiScreen {
         int inputY = this.guiTop + 28 + slot / 3 * 20;
         graphics.renderItem(itemStack.stack, inputX, inputY);
         if (!this.craftingActive && !itemStack.stack.isEmpty()) {
-            graphics.renderItemDecorations(this.font, itemStack.stack, inputX, inputY, "" + itemStack.count);
+            graphics.renderItemDecorations(this.font, itemStack.stack, inputX, inputY,
+                    createimp$formatAmount(itemStack.stack, itemStack.count));
         }
         if (mouseX < inputX - 2 || mouseX >= inputX - 2 + 20 || mouseY < inputY - 2 || mouseY >= inputY - 2 + 20) {
             return;
@@ -314,7 +318,7 @@ public class TemplatePanelScreen extends AbstractSimiScreen {
             return;
         }
         graphics.renderComponentTooltip(this.font, List.of(
-                CreateLang.translate("gui.factory_panel.sending_item", CreateLang.itemName(itemStack.stack).add(CreateLang.text(" x" + itemStack.count)).string()).component(),
+                CreateLang.translate("gui.factory_panel.sending_item", CreateLang.itemName(itemStack.stack).add(CreateLang.text(" x" + createimp$formatAmount(itemStack.stack, itemStack.count))).string()).component(),
                 CreateLang.translate("gui.factory_panel.scroll_to_change_amount").style(ChatFormatting.DARK_GRAY).style(ChatFormatting.ITALIC).component(),
                 CreateLang.translate("gui.factory_panel.left_click_disconnect").style(ChatFormatting.DARK_GRAY).style(ChatFormatting.ITALIC).component()
         ), mouseX, mouseY);
@@ -362,6 +366,22 @@ public class TemplatePanelScreen extends AbstractSimiScreen {
                 net.minecraft.sounds.SoundEvents.UI_BUTTON_CLICK.value(), 1.0f, 0.25f));
     }
 
+    /**
+     * 判断一个连接/产出的过滤物是不是流体包裹的虚拟流体过滤物，只有这样才
+     * 需要把数量按流体单位（mB/B/KB）展示和调整，其余情况（普通物品）行为
+     * 完全不变。
+     */
+    private static boolean createimp$isFluidStack(ItemStack stack) {
+        return FluidLogisticsCompat.isLoaded() && TemplateFluidDisplayHelper.isVirtualFluidDisplay(stack);
+    }
+
+    private static String createimp$formatAmount(ItemStack stack, int count) {
+        if (createimp$isFluidStack(stack)) {
+            return TemplateFluidDisplayHelper.formatStorageAmount(count);
+        }
+        return "" + count;
+    }
+
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         int x = this.guiLeft;
@@ -380,14 +400,24 @@ public class TemplatePanelScreen extends AbstractSimiScreen {
                 if (itemStack.stack.isEmpty()) {
                     return true;
                 }
-                itemStack.count = Mth.clamp((int) (itemStack.count + Math.signum(scrollY) * (hasShiftDown() ? 10 : 1)), 1, 64);
+                if (createimp$isFluidStack(itemStack.stack)) {
+                    itemStack.count = TemplateFluidDisplayHelper.adjustFluidAmount(itemStack.count,
+                            scrollY > 0, hasShiftDown(), hasControlDown(), 1, TemplateFluidDisplayHelper.maxFluidAmount());
+                } else {
+                    itemStack.count = Mth.clamp((int) (itemStack.count + Math.signum(scrollY) * (hasShiftDown() ? 10 : 1)), 1, 64);
+                }
                 return true;
             }
         }
         int outputX = x + 160;
         int outputY = y + 48;
         if (mouseX >= outputX && mouseX < outputX + 16 && mouseY >= outputY && mouseY < outputY + 16) {
-            this.outputConfig.count = Mth.clamp((int) (this.outputConfig.count + Math.signum(scrollY) * (hasShiftDown() ? 10 : 1)), 1, 64);
+            if (createimp$isFluidStack(this.outputConfig.stack)) {
+                this.outputConfig.count = TemplateFluidDisplayHelper.adjustFluidAmount(this.outputConfig.count,
+                        scrollY > 0, hasShiftDown(), hasControlDown(), 1, TemplateFluidDisplayHelper.maxFluidAmount());
+            } else {
+                this.outputConfig.count = Mth.clamp((int) (this.outputConfig.count + Math.signum(scrollY) * (hasShiftDown() ? 10 : 1)), 1, 64);
+            }
             return true;
         }
         return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);

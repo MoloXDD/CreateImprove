@@ -46,4 +46,25 @@ public class ModDataComponents {
                             .networkSynchronized(TemplateOrderTarget.STREAM_CODEC)
                             .build()
             );
+
+    /**
+     * 只挂在 {@link com.molox.createimp.item.TemplateFluidTokenItem} 上，记录这个
+     * 模板令牌代表的是哪一种流体，供客户端渲染、名字显示使用。
+     * <p>
+     * 【重要】这里的值类型不能直接用 {@code net.neoforged.neoforge.fluids.FluidStack}
+     * 本身——已经通过实机崩溃日志确认过，NeoForge 要求任何数据组件的值类型
+     * 必须自己实现 {@code equals}/{@code hashCode}（且不可变），
+     * {@code FluidStack} 不满足这一点，直接用会在 {@code stack.set(...)} 时
+     * 抛出 {@code IllegalArgumentException}。这里改用
+     * {@link com.molox.createimp.item.TemplateFluidContent}，一个手写了
+     * {@code equals}/{@code hashCode} 的包装类型（照抄流体包裹自己
+     * {@code FluidTankContent} 的做法）。
+     */
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<com.molox.createimp.item.TemplateFluidContent>> TEMPLATE_FLUID_CONTENT =
+            DATA_COMPONENTS.register("template_fluid_content", () ->
+                    DataComponentType.<com.molox.createimp.item.TemplateFluidContent>builder()
+                            .persistent(com.molox.createimp.item.TemplateFluidContent.CODEC)
+                            .networkSynchronized(com.molox.createimp.item.TemplateFluidContent.STREAM_CODEC)
+                            .build()
+            );
 }

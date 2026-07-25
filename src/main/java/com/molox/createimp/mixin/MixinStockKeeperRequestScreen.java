@@ -1,9 +1,13 @@
 package com.molox.createimp.mixin;
 
 import com.llamalad7.mixinextras.injector.v2.WrapWithCondition;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.sugar.Local;
 import com.molox.createimp.CreateImp;
 import com.molox.createimp.CreateImpConfig;
+import com.molox.createimp.compat.fluidlogistics.FluidLogisticsCompat;
+import com.molox.createimp.compat.fluidlogistics.TemplateFluidDisplayHelper;
 import com.molox.createimp.block.work_warehouse.WorkWarehouseNetworkHelper;
 import com.molox.createimp.client.ClientWorkWarehouseAvailabilityCache;
 import com.molox.createimp.client.TemplateOrderTooltipHandler;
@@ -20,7 +24,9 @@ import com.simibubi.create.content.logistics.stockTicker.StockTickerBlockEntity;
 import com.simibubi.create.foundation.gui.AllGuiTextures;
 import com.simibubi.create.foundation.utility.CreateLang;
 import net.createmod.catnip.data.Couple;
+import net.minecraft.ChatFormatting;
 import com.mojang.blaze3d.vertex.PoseStack;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -548,12 +554,101 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
         pose.popPose();
     }
 
+    @Unique
+    private static final int FLUID_TEMPLATE_BORDER_MARGIN = 3;
+
+    /**
+     * 判断这一条展示条目是不是"监测流体的模板令牌"：必须先是模板令牌，
+     * 且流体包裹已安装（未安装时模板不可能监测到流体过滤物，这里的判断
+     * 只是双重保险），且令牌对应的展示物本身是流体包裹的虚拟流体过滤物。
+     */
+    @Unique
+    private static boolean createimp$isFluidTemplateEntry(ItemStack stack) {
+        if (!TemplateOrderTokenHelper.isToken(stack)) {
+            return false;
+        }
+        if (!FluidLogisticsCompat.isLoaded()) {
+            return false;
+        }
+        TemplateOrderTarget target = TemplateOrderTokenHelper.getTarget(stack);
+        return target != null && TemplateFluidDisplayHelper.isVirtualFluidDisplay(target.display());
+    }
+
+    /**
+     * 样式1（背景样式）下，流体包裹的虚拟流体压缩罐物品自己的图标渲染会
+     * 铺满整个 16x16 图标区域，把下面刚画好的模板背景贴图整个遮住，看起来
+     * 完全看不出这是一个模板。这里不去碰流体图标本身的绘制（那是 Catnip
+     * 库 {@code GuiGameElement} 内部实现，没有源码不能猜其内部签名），而是
+     * 在图标画完之后，用和图标完全相同的一套 pushPose/translate/scale 变换
+     * （数值照抄样式2那段已经验证过的写法），把模板背景贴图四条 3 像素宽的
+     * 边框窄条重新覆盖画一遍——每条窄条取的都是背景贴图自己对应位置的原始
+     * 像素，画上去之后视觉效果等同于"图标四周被裁掉了一圈、露出下面的背景"，
+     * 不需要用到 enableScissor 也不需要了解 GuiGameElement 的任何内部实现。
+     */
+    @Inject(method = "renderItemEntry", at = @At("TAIL"))
+    private void createimp$drawFluidTemplateBorderStyle1(GuiGraphics graphics, float scale, BigItemStack entry,
+                                                         boolean isStackHovered, boolean isRenderingOrders, CallbackInfo ci) {
+        if (createimp$isStyle2() || !createimp$isFluidTemplateEntry(entry.stack)) {
+            return;
+        }
+        ResourceLocation texture = isRenderingOrders ? TEMPLATE_REQUEST_SLOT_BG : TEMPLATE_SLOT_BG;
+        float scaleFromHover = isStackHovered ? 1.075f : 1.0f;
+        int mTop = FLUID_TEMPLATE_BORDER_MARGIN - 1;
+        int mLeft = FLUID_TEMPLATE_BORDER_MARGIN - 1;
+        int mRight = FLUID_TEMPLATE_BORDER_MARGIN - 1;
+        int mBottom = FLUID_TEMPLATE_BORDER_MARGIN - 1;
+        PoseStack pose = graphics.pose();
+        pose.pushPose();
+        pose.translate(1.0, 1.0, 0.0);
+        pose.translate(9.0, 9.0, 0.0);
+        pose.scale(scale, scale, scale);
+        pose.scale(scaleFromHover, scaleFromHover, scaleFromHover);
+        pose.translate(-9.0, -9.0, 0.0);
+        pose.translate(0.0, 0.0, 150.0);
+        // 上边
+        graphics.blit(texture, -1, -1, 0, 0, 18, mTop, 18, 18);
+        // 下边
+        graphics.blit(texture, -1, 17 - mBottom, 0, 18 - mBottom, 18, mBottom, 18, 18);
+        // 左边（不含上下边已覆盖的角）
+        graphics.blit(texture, -1, -1 + mTop, 0, mTop, mLeft, 18 - mTop - mBottom, 18, 18);
+        // 右边（不含上下边已覆盖的角）
+        graphics.blit(texture, 17 - mRight, -1 + mTop, 18 - mRight, mTop, mRight, 18 - mTop - mBottom, 18, 18);
+        pose.popPose();
+    }
+
     @WrapWithCondition(method = "renderItemEntry", at = @At(value = "INVOKE",
             target = "Lcom/simibubi/create/content/logistics/stockTicker/StockKeeperRequestScreen;drawItemCount(Lnet/minecraft/client/gui/GuiGraphics;II)V"))
     private boolean createimp$hideTemplateItemCount(StockKeeperRequestScreen self, GuiGraphics graphics, int count, int customCount,
                                                     @Local(argsOnly = true) BigItemStack entry,
                                                     @Local(argsOnly = true, ordinal = 1) boolean isRenderingOrders) {
-        return isRenderingOrders || !TemplateOrderTokenHelper.isToken(entry.stack);
+        if (!TemplateOrderTokenHelper.isToken(entry.stack)) {
+            return true;
+        }
+        if (isRenderingOrders) {
+            // 请求栏里普通物品模板保留原版数字角标（表示请求了几份模板）；
+            // 流体模板改成流体格式，由下面 createimp$drawFluidOrderBadge 接手画。
+            return !createimp$isFluidTemplateEntry(entry.stack);
+        }
+        return false;
+    }
+
+    /**
+     * 请求栏里的流体模板角标：Create 原版 {@code renderItemEntry} 在请求栏
+     * 场景下 {@code customCount} 就是原始的 {@code entry.count}（跳过了主
+     * 列表那段"减去已请求数量"的调整），所以这里直接用 {@code entry.count}
+     * 本身即可，不需要另外拿 {@code customCount} 局部变量。
+     */
+    @Inject(method = "renderItemEntry", at = @At("TAIL"))
+    private void createimp$drawFluidOrderBadge(GuiGraphics graphics, float scale, BigItemStack entry,
+                                               boolean isStackHovered, boolean isRenderingOrders, CallbackInfo ci) {
+        if (!isRenderingOrders || !createimp$isFluidTemplateEntry(entry.stack) || entry.count <= 1) {
+            return;
+        }
+        PoseStack pose = graphics.pose();
+        pose.pushPose();
+        pose.translate(0.0, 0.0, 200.0);
+        TemplateFluidDisplayHelper.renderFluidAmountBadge(graphics, entry.count);
+        pose.popPose();
     }
 
     /**
@@ -644,7 +739,13 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
         PoseStack pose = graphics.pose();
         pose.pushPose();
         pose.translate(0.0, 0.0, 250.0);
-        this.drawItemCount(graphics, liveStock, liveCustom);
+        if (FluidLogisticsCompat.isLoaded() && TemplateFluidDisplayHelper.isVirtualFluidDisplay(target.display())) {
+            if (liveCustom > 0) {
+                TemplateFluidDisplayHelper.renderFluidAmountBadge(graphics, liveCustom);
+            }
+        } else {
+            this.drawItemCount(graphics, liveStock, liveCustom);
+        }
         pose.popPose();
     }
 
@@ -672,6 +773,16 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
      * 要自己处理的这次点击，就会抢在它之前把事件截停，它就没有机会再弹出
      * 数量框；不满足条件的点击完全不受影响，正常轮到它或原版处理。
      */
+    @Unique
+    private static int createimp$templateTransferStep(ItemStack stack, boolean orderBar) {
+        if (createimp$isFluidTemplateEntry(stack)) {
+            return orderBar
+                    ? TemplateFluidDisplayHelper.orderBarFluidStep(Screen.hasShiftDown(), Screen.hasControlDown())
+                    : TemplateFluidDisplayHelper.stockKeeperFluidStep(Screen.hasShiftDown(), Screen.hasControlDown());
+        }
+        return Screen.hasShiftDown() ? stack.getMaxStackSize() : (Screen.hasControlDown() ? 10 : 1);
+    }
+
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
     private void createimp$handleMergedTemplateClick(double mouseX, double mouseY, int button,
                                                      CallbackInfoReturnable<Boolean> cir) {
@@ -701,8 +812,7 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
         }
 
         cir.setReturnValue(true);
-        int transfer = Screen.hasShiftDown() ? clicked.stack.getMaxStackSize()
-                : (Screen.hasControlDown() ? 10 : 1);
+        int transfer = createimp$templateTransferStep(clicked.stack, false);
 
         if (button == 2) {
             createimp$adjustOrder(clicked.stack, transfer);
@@ -759,8 +869,7 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
         }
 
         cir.setReturnValue(true);
-        int transfer = Screen.hasShiftDown() ? hoveredEntry.stack.getMaxStackSize()
-                : (Screen.hasControlDown() ? 10 : 1);
+        int transfer = createimp$templateTransferStep(hoveredEntry.stack, false);
 
         if (scrollY < 0) {
             BigItemStack templateOrder = this.getOrderForItem(hoveredEntry.stack);
@@ -789,6 +898,136 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
         return liveStock - already;
     }
 
+    /**
+     * 分离模式下，流体模板走的是 Create 原版自己的点击/滚轮下单逻辑（不再
+     * 被流包接管），但原版的单次步进是按"物品个数"设计的（无修饰键=1，
+     * Ctrl=10，Shift=物品堆叠上限），对流体模板来说单位是 mB，"+1"等于每次
+     * 只加 1mB，几乎不可用。这里专门接管流体模板的点击/滚轮，步进按
+     * {@code orderClicked}（是否点在请求栏本身）分别使用流包对应的两套
+     * 步进规则，其余逻辑照抄原版 {@code mouseClicked}/{@code mouseScrolled}
+     * 对应分支，行为完全一致，只是步进数值不同。
+     * <p>
+     * 【为什么请求栏部分不排除合并模式】上面两个方法（
+     * {@code createimp$handleMergedTemplateClick}/{@code Scroll}）只处理了
+     * 合并模式下"库存列表"里的模板条目，从来没处理过请求栏本身——这里按
+     * {@code orderClicked} 单独判断：点的是库存列表且当前是合并模式，交给
+     * 上面两个方法处理，这里跳过；点的是请求栏本身，不管合并/分离模式，
+     * 都统一在这里处理。
+     */
+    @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
+    private void createimp$handleFluidTemplateOrderClick(double mouseX, double mouseY, int button,
+                                                         CallbackInfoReturnable<Boolean> cir) {
+        if (button != 0 && button != 1) {
+            return;
+        }
+        Couple<Integer> hovered = this.getHoveredSlot((int) mouseX, (int) mouseY);
+        if (hovered == this.noneHovered) {
+            return;
+        }
+        int categoryIndex = hovered.getFirst();
+        int itemIndex = hovered.getSecond();
+        boolean orderClicked = categoryIndex == -1;
+        if (!orderClicked && createimp$isMergeMode()) {
+            return;
+        }
+        BigItemStack entry;
+        if (orderClicked) {
+            if (itemIndex < 0 || itemIndex >= this.itemsToOrder.size()) {
+                return;
+            }
+            entry = this.itemsToOrder.get(itemIndex);
+        } else if (categoryIndex == -2) {
+            return;
+        } else {
+            if (categoryIndex < 0 || categoryIndex >= this.displayedItems.size()) {
+                return;
+            }
+            List<BigItemStack> bucket = this.displayedItems.get(categoryIndex);
+            if (itemIndex < 0 || itemIndex >= bucket.size()) {
+                return;
+            }
+            entry = bucket.get(itemIndex);
+        }
+        if (!createimp$isFluidTemplateEntry(entry.stack)) {
+            return;
+        }
+        cir.setReturnValue(true);
+        int transfer = createimp$templateTransferStep(entry.stack, orderClicked);
+        BigItemStack existingOrder = orderClicked ? entry : this.getOrderForItem(entry.stack);
+        if (existingOrder == null) {
+            if (button == 1 || this.itemsToOrder.size() >= 9) {
+                return;
+            }
+            existingOrder = new BigItemStack(entry.stack.copyWithCount(1), 0);
+            this.itemsToOrder.add(existingOrder);
+        }
+        int current = existingOrder.count;
+        if (button == 1 || orderClicked) {
+            existingOrder.count = current - transfer;
+            if (existingOrder.count <= 0) {
+                this.itemsToOrder.remove(existingOrder);
+            }
+            return;
+        }
+        existingOrder.count = current + Math.min(transfer, entry.count - current);
+    }
+
+    @Inject(method = "mouseScrolled", at = @At("HEAD"), cancellable = true)
+    private void createimp$handleFluidTemplateOrderScroll(double mouseX, double mouseY, double scrollX, double scrollY,
+                                                          CallbackInfoReturnable<Boolean> cir) {
+        Couple<Integer> hovered = this.getHoveredSlot((int) mouseX, (int) mouseY);
+        if (hovered == this.noneHovered) {
+            return;
+        }
+        int categoryIndex = hovered.getFirst();
+        int itemIndex = hovered.getSecond();
+        boolean orderClicked = categoryIndex == -1;
+        if (!orderClicked && createimp$isMergeMode()) {
+            return;
+        }
+        BigItemStack entry;
+        if (orderClicked) {
+            if (itemIndex < 0 || itemIndex >= this.itemsToOrder.size()) {
+                return;
+            }
+            entry = this.itemsToOrder.get(itemIndex);
+        } else if (categoryIndex == -2) {
+            return;
+        } else {
+            if (categoryIndex < 0 || categoryIndex >= this.displayedItems.size()) {
+                return;
+            }
+            List<BigItemStack> bucket = this.displayedItems.get(categoryIndex);
+            if (itemIndex < 0 || itemIndex >= bucket.size()) {
+                return;
+            }
+            entry = bucket.get(itemIndex);
+        }
+        if (!createimp$isFluidTemplateEntry(entry.stack)) {
+            return;
+        }
+        cir.setReturnValue(true);
+        boolean remove = scrollY < 0;
+        int transfer = createimp$templateTransferStep(entry.stack, orderClicked);
+        BigItemStack existingOrder = orderClicked ? entry : this.getOrderForItem(entry.stack);
+        if (existingOrder == null) {
+            if (this.itemsToOrder.size() >= 9 || remove) {
+                return;
+            }
+            existingOrder = new BigItemStack(entry.stack.copyWithCount(1), 0);
+            this.itemsToOrder.add(existingOrder);
+        }
+        int current = existingOrder.count;
+        if (remove) {
+            existingOrder.count = current - transfer;
+            if (existingOrder.count <= 0) {
+                this.itemsToOrder.remove(existingOrder);
+            }
+            return;
+        }
+        existingOrder.count = current + Math.min(transfer, entry.count - current);
+    }
+
     @Unique
     private void createimp$adjustOrder(ItemStack referenceStack, int delta) {
         if (delta == 0) {
@@ -806,5 +1045,48 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
         if (existing.count <= 0) {
             this.itemsToOrder.remove(existing);
         }
+    }
+
+    /**
+     * 请求栏悬浮流体模板时，补一行"实际详细请求量"，跟流包给真实流体库存
+     * 悬浮请求栏时加的那一行是同一个效果（只是数字含义换成模板令牌的
+     * 请求量），用的也是流包同一个精确格式化方法。
+     * <p>
+     * 【为什么用 WrapOperation 而不是 Redirect】流包自己对这同一处
+     * {@code GuiGraphics.renderTooltip} 调用已经打了一个 {@code @Redirect}
+     * （用来给它自己的真实流体库存补详细请求量提示），一个调用点只能有一个
+     * 普通 {@code @Redirect}，两边都写会冲突。MixinExtras 的
+     * {@code @WrapOperation} 是专门设计成可以跟别的模组（包括普通
+     * {@code @Redirect}）叠在同一个调用点上而不冲突的机制，流包自己另一处
+     * 也在用 MixinExtras 的 {@code @WrapOperation}（见 {@code LogisticsManagerMixin}），
+     * 说明这套机制在这个模组加载环境里是正常工作的。这里只处理"物品是我们
+     * 自己的流体模板令牌"这一种情况，不满足条件时原样调用
+     * {@code operation.call(...)}，交给原本该处理这个调用的一方（流包的
+     * Redirect 或者原版本身）处理，不影响任何其他情况。
+     */
+    @WrapOperation(method = "renderForeground", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/client/gui/GuiGraphics;renderTooltip(Lnet/minecraft/client/gui/Font;Lnet/minecraft/world/item/ItemStack;II)V"))
+    private void createimp$fluidTemplateOrderTooltip(GuiGraphics graphics, Font font, ItemStack stack, int mouseX, int mouseY,
+                                                     Operation<Void> operation) {
+        if (!createimp$isFluidTemplateEntry(stack)) {
+            operation.call(graphics, font, stack, mouseX, mouseY);
+            return;
+        }
+        Couple<Integer> hovered = this.getHoveredSlot(mouseX, mouseY);
+        if (hovered == this.noneHovered || hovered.getFirst() != -1) {
+            operation.call(graphics, font, stack, mouseX, mouseY);
+            return;
+        }
+        int itemIndex = hovered.getSecond();
+        if (itemIndex < 0 || itemIndex >= this.itemsToOrder.size()) {
+            operation.call(graphics, font, stack, mouseX, mouseY);
+            return;
+        }
+        BigItemStack orderEntry = this.itemsToOrder.get(itemIndex);
+        List<Component> lines = new ArrayList<>();
+        lines.add(stack.getHoverName());
+        lines.add(CreateLang.text("x" + TemplateFluidDisplayHelper.formatPreciseAmount(orderEntry.count))
+                .style(ChatFormatting.DARK_GRAY).component());
+        graphics.renderComponentTooltip(font, lines, mouseX, mouseY);
     }
 }

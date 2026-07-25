@@ -657,6 +657,11 @@ public class TemplatePanelBehaviour extends FilteringBehaviour implements MenuPr
         }
         int levelInStorage = this.getLevelInStorage();
         boolean inf = levelInStorage >= 1000000000;
+        if (com.molox.createimp.compat.fluidlogistics.FluidLogisticsCompat.isLoaded()
+                && com.molox.createimp.compat.fluidlogistics.TemplateFluidDisplayHelper.isVirtualFluidDisplay(this.getFilter())) {
+            String formatted = inf ? "\u221e" : com.molox.createimp.compat.fluidlogistics.TemplateFluidDisplayHelper.formatStorageAmount(levelInStorage);
+            return CreateLang.text("  " + formatted).color(15855592).component();
+        }
         int inStorage = levelInStorage / (this.upTo ? 1 : this.getFilter().getMaxStackSize());
         String stacks = this.upTo ? "" : "\u25a4";
         return CreateLang.text(inf ? "  \u221e" : inStorage + stacks).color(15855592).component();

@@ -2,6 +2,10 @@ package com.molox.createimp.block.work_warehouse;
 
 import com.molox.createimp.CreateImp;
 import com.molox.createimp.block.template_panel.TemplateMaterialCalculator;
+import com.molox.createimp.compat.fluidlogistics.FluidLogisticsCompat;
+import com.molox.createimp.compat.fluidlogistics.TemplateFluidDisplayHelper;
+import com.molox.createimp.util.IPackagerFluidCache;
+import net.neoforged.neoforge.fluids.FluidStack;
 import com.molox.createimp.util.PackagerSignAddressHelper;
 import com.molox.createimp.network.WorkWarehouseActivateEffectPacket;
 import com.molox.createimp.network.WorkWarehouseMaterialsReadyEffectPacket;
@@ -115,6 +119,32 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         return result;
     }
 
+    /**
+     * 跨所有网络频率、遍历当前所有真实加载的工作仓库——供打包机 Mixin 反查
+     * "这个连接储存背后到底归属哪些工作仓库"时使用。之所以不按网络过滤，
+     * 是因为在打包机这一侧（{@code unwrapBox} 触发的那一刻）并不必然能提前
+     * 知道该按哪个网络频率去缩小范围；而"是不是同一份库存"这个判断本身
+     * （见 {@code PackagerBlockEntity#isTargetingSameInventory}）跟网络频率
+     * 无关，只看物理容器身份，所以直接把所有当前在工作、且判定标准要求
+     * "只按连接储存筛选、允许被多个工作仓库共用"的候选一次性给全，交由
+     * 调用方自己按需求列表逐个匹配。
+     */
+    public static Collection<WorkWarehouseBlockEntity> getAllActiveAcrossAllNetworks(boolean clientSide) {
+        Map<UUID, Set<WorkWarehouseBlockEntity>> registry = registryFor(clientSide);
+        if (registry.isEmpty()) {
+            return List.of();
+        }
+        List<WorkWarehouseBlockEntity> result = new ArrayList<>();
+        for (Set<WorkWarehouseBlockEntity> set : registry.values()) {
+            for (WorkWarehouseBlockEntity be : set) {
+                if (be.getLevel() != null && !be.isRemoved()) {
+                    result.add(be);
+                }
+            }
+        }
+        return result;
+    }
+
     private UUID registeredFreqId = null;
 
     /**
@@ -166,6 +196,7 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
     public LogisticallyLinkedBehaviour behaviour;
     public InvManipulationBehaviour extractBehaviour;
     public final WorkWarehouseItemStackHandler storage = new WorkWarehouseItemStackHandler(this);
+    public final WorkWarehouseFluidStorage fluidStorage = new WorkWarehouseFluidStorage(this);
     private String address = "";
     private String targetAddress = "";
     private WorkStage stage = WorkStage.IDLE;
@@ -369,6 +400,28 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         return WorkWarehouseTemplateSnapshot.LogArg.items(counts);
     }
 
+    /**
+     * 把一组真实 {@link FluidStack} 转成日志系统能理解的展示物列表——每种
+     * 流体转成一份虚拟流体展示物（只用来取名字/图标），真实数量单独通过
+     * {@link ItemStack#copyWithCount} 承载，{@link WorkWarehouseTemplateSnapshot.LogArg#resolve()}
+     * 检测到是流体展示物时会自动改用流体单位格式化这个数量，不需要另外
+     * 维护一套流体专属的日志参数类型。
+     */
+    private static List<ItemStack> fluidsToLogItems(List<FluidStack> fluids) {
+        List<ItemStack> result = new ArrayList<>();
+        if (!FluidLogisticsCompat.isLoaded()) {
+            return result;
+        }
+        for (FluidStack fluid : fluids) {
+            if (fluid == null || fluid.isEmpty()) {
+                continue;
+            }
+            ItemStack virtual = TemplateFluidDisplayHelper.createVirtualFluidGhostStack(fluid);
+            result.add(virtual.copyWithCount(fluid.getAmount()));
+        }
+        return result;
+    }
+
     private static WorkWarehouseTemplateSnapshot.LogArg demandEntriesArg(
             List<WorkWarehouseTemplateSnapshot.DemandEntry> entries) {
         List<ItemStack> items = new ArrayList<>();
@@ -560,8 +613,8 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         addLog("createimp.log.enter_requesting_materials");
         addLog("createimp.log.waiting_materials", demandEntriesArg(demandList));
         monitorConnectedInventory();
-        requestRemainingDemandFromNetwork();
         reconcileDemandList();
+        requestRemainingDemandFromNetwork();
     }
 
     // ------------------------------------------------------------------
@@ -821,18 +874,52 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
      * 导致账面需求远快于实际到货速度被清零——这正是之前出现"全部产品到达
      * 前订单就结束"这个 bug 的根源，务必不要再在别处调用这个方法。
      */
+    private long lastSettleGameTime = -1L;
+
+    /**
+     * 这份需求列表结算，同一个游戏 tick 内只会真正执行一次——{@code
+     * settleFromOwnStorage} 每次都是拿 {@code storage}/{@code fluidStorage}
+     * 现在这一刻的真实内容去核对需求列表，本身不会改变真实存储（真正的
+     * 物理扣减发生在消费节点自己发货的时候），如果同一个 tick 内因为
+     * {@code pendingReconcile} 即时触发和每16 tick一次的周期性触发恰好都
+     * 命中、而这中间存储又没有发生任何变化，就会把同一批"看起来可用"的
+     * 存量重复认领两次，错误地把需求条目清得比实际到账的还多——这正是
+     * 之前那次"最终多输出了10B岩浆"的根因（当时是同一次调用内部反复
+     * 递归导致，这里额外加一层同 tick 去重，把"不同调用点凑巧撞在同一
+     * tick"这个更小概率的同类风险也一并堵上）。
+     */
     private void settleFromOwnStorage() {
         if (demandList.isEmpty()) {
             return;
         }
+        if (level != null) {
+            long now = level.getGameTime();
+            if (now == lastSettleGameTime) {
+                return;
+            }
+            lastSettleGameTime = now;
+        }
         WorkWarehouseItemStackHandler scratch = storage.copy();
+        WorkWarehouseFluidStorage fluidScratch = fluidStorage.copy();
         List<WorkWarehouseTemplateSnapshot.DemandEntry> updated = new ArrayList<>();
         boolean changed = false;
         for (WorkWarehouseTemplateSnapshot.DemandEntry entry : demandList) {
-            int available = countMatching(scratch, entry.item());
-            int claim = Math.min(entry.amount(), available);
+            int claim;
+            if (isFluidIngredient(entry.item())) {
+                FluidStack sample = TemplateFluidDisplayHelper.getFluid(entry.item());
+                int available = fluidScratch.getAmount(sample);
+                claim = Math.min(entry.amount(), available);
+                if (claim > 0) {
+                    fluidScratch.extractFluid(sample, claim);
+                }
+            } else {
+                int available = countMatching(scratch, entry.item());
+                claim = Math.min(entry.amount(), available);
+                if (claim > 0) {
+                    extractExact(scratch, entry.item(), claim);
+                }
+            }
             if (claim > 0) {
-                extractExact(scratch, entry.item(), claim);
                 changed = true;
                 int remaining = entry.amount() - claim;
                 if (remaining > 0) {
@@ -846,7 +933,140 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         if (changed) {
             demandList = updated;
             setChanged();
-            reconcileDemandList();
+        }
+    }
+
+    /**
+     * 判断一份需求/原料条目代表的是不是流体包裹的虚拟流体过滤物——只有
+     * 装了流体包裹时才可能为真；未装的情况下这个判断恒为 false，所有流体
+     * 相关分支自然不会被触发，行为退化成纯物品，与普通仪表一致。
+     */
+    private static boolean isFluidIngredient(ItemStack item) {
+        return FluidLogisticsCompat.isLoaded() && TemplateFluidDisplayHelper.isVirtualFluidDisplay(item);
+    }
+
+    /** 工作仓库"连接储存"的真实坐标；非连接模式或者没有连接库存行为时返回 null。 */
+    public BlockPos getConnectedInventoryPos() {
+        if (extractBehaviour == null || !extractBehaviour.hasInventory()) {
+            return null;
+        }
+        try {
+            return extractBehaviour.getTarget().getConnectedPos();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * 工作仓库"连接储存"的 {@code IdentifiedInventory}——机械动力自己判断
+     * "是不是同一份库存"的标准身份标识，天然正确处理跨方块的多方块容器
+     * （比如保险库）。非连接模式或者没有连接库存行为时返回 null。
+     */
+    public com.simibubi.create.content.logistics.packager.IdentifiedInventory getConnectedIdentifiedInventory() {
+        if (extractBehaviour == null || !extractBehaviour.hasInventory()) {
+            return null;
+        }
+        return extractBehaviour.getIdentifiedInventory();
+    }
+
+    /**
+     * 只读检查：这份流体、这个数量，是否在需求列表里还有对应的剩余额度——
+     * 供打包机 Mixin 在接收流体包裹时（包括 {@code simulate=true} 的模拟检查）
+     * 判断要不要接收，本身不做任何扣减。
+     */
+    public boolean matchesFluidDemand(FluidStack fluid, int amount) {
+        if (fluid == null || fluid.isEmpty() || amount <= 0 || demandList.isEmpty()) {
+            return false;
+        }
+        int remaining = amount;
+        for (WorkWarehouseTemplateSnapshot.DemandEntry entry : demandList) {
+            if (remaining <= 0) {
+                break;
+            }
+            if (!isFluidIngredient(entry.item())
+                    || !TemplateFluidDisplayHelper.isSameFluidType(entry.item(), fluid)) {
+                continue;
+            }
+            remaining -= Math.min(remaining, entry.amount());
+        }
+        return remaining <= 0;
+    }
+
+    /**
+     * 真正扣减需求列表里这份流体的额度——只应该在打包机 Mixin 确认
+     * {@code simulate=false}（真正执行、不是模拟检查）时调用一次。跟
+     * {@link #consumeFromDemandList} 同样的原因，这里只标记
+     * {@code pendingReconcile}，不同步触发 {@link #reconcileDemandList()}，
+     * 避免在打包机 {@code unwrapBox} 的调用栈内部重入。
+     */
+    public void consumeFluidFromDemandList(FluidStack fluid, int amount) {
+        if (fluid == null || fluid.isEmpty() || amount <= 0 || demandList.isEmpty()) {
+            return;
+        }
+        List<WorkWarehouseTemplateSnapshot.DemandEntry> working = new ArrayList<>(demandList);
+        int toConsume = amount;
+        for (int i = 0; i < working.size() && toConsume > 0; i++) {
+            WorkWarehouseTemplateSnapshot.DemandEntry entry = working.get(i);
+            if (entry == null || !isFluidIngredient(entry.item())
+                    || !TemplateFluidDisplayHelper.isSameFluidType(entry.item(), fluid)) {
+                continue;
+            }
+            int consumed = Math.min(entry.amount(), toConsume);
+            toConsume -= consumed;
+            int remaining = entry.amount() - consumed;
+            working.set(i, remaining > 0
+                    ? new WorkWarehouseTemplateSnapshot.DemandEntry(entry.network(), entry.item(), remaining,
+                    entry.ownerNode(), entry.sourceProducerIndex())
+                    : null);
+        }
+        working.removeIf(java.util.Objects::isNull);
+        demandList = working;
+        setChanged();
+        addLog("createimp.log.received_from_packager", materialOrProductLabelArg(),
+                itemArg(TemplateFluidDisplayHelper.createVirtualFluidGhostStack(fluid), amount));
+        pendingReconcile = true;
+    }
+
+    /**
+     * 周期性把"自己贴合的打包机"和"连接储存背后的打包机"身上累计的流体
+     * 缓存转移进自己的流体存储——跟 {@link #monitorConnectedInventory()}
+     * 同样的"先到先得、没有预留机制"的哲学：缓存里的流体在打包机接收那一刻
+     * 就已经针对这个仓库的需求扣减过账面额度了，这里只是把物理位置真正
+     * 转移过来，不再重复做匹配判断。
+     */
+    private void monitorPackagerFluidCaches() {
+        if (!FluidLogisticsCompat.isLoaded() || level == null || level.isClientSide()) {
+            return;
+        }
+        List<PackagerBlockEntity> adjacent = findAdjacentPackagers();
+        List<PackagerBlockEntity> candidates = new ArrayList<>(adjacent);
+        PackagerBlockEntity connected = extractBehaviour != null && extractBehaviour.hasInventory()
+                ? findPackagerServingConnectedInventory(behaviour != null ? behaviour.freqId : null, null)
+                : null;
+        if (connected != null && !candidates.contains(connected)) {
+            candidates.add(connected);
+        }
+        for (PackagerBlockEntity packager : candidates) {
+            if (!(packager instanceof IPackagerFluidCache cache)) {
+                continue;
+            }
+            if (cache.createimp$isCachedFluidEmpty()) {
+                continue;
+            }
+            List<FluidStack> nonEmpty = cache.createimp$nonEmptyCachedFluids();
+            for (FluidStack tank : nonEmpty) {
+                FluidStack taken = cache.createimp$extractCachedFluid(tank, tank.getAmount());
+                if (!taken.isEmpty()) {
+                    int overflow = fluidStorage.addFluid(taken);
+                    if (overflow > 0) {
+                        // 极端情况下（100 个槽位全部占满且都不是同种流体）放不下，
+                        // 原样放回缓存，等待下次重试，不凭空丢失。
+                        FluidStack back = taken.copy();
+                        back.setAmount(overflow);
+                        cache.createimp$addCachedFluid(back);
+                    }
+                }
+            }
         }
     }
 
@@ -1034,6 +1254,7 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
      */
     private void beginProductionStage() {
         WorkWarehouseItemStackHandler creditScratch = storage.copy();
+        WorkWarehouseFluidStorage fluidCreditScratch = fluidStorage.copy();
         preExistingCredit.clear();
         for (int i = 0; i < templateSnapshot.size(); i++) {
             if (i == rootIndex()) {
@@ -1045,10 +1266,22 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
             if (preExisting <= 0) {
                 continue;
             }
-            int available = countMatching(creditScratch, node.filterItem());
-            int claim = Math.min(preExisting, available);
+            int claim;
+            if (isFluidIngredient(node.filterItem())) {
+                FluidStack sample = TemplateFluidDisplayHelper.getFluid(node.filterItem());
+                int available = fluidCreditScratch.getAmount(sample);
+                claim = Math.min(preExisting, available);
+                if (claim > 0) {
+                    fluidCreditScratch.extractFluid(sample, claim);
+                }
+            } else {
+                int available = countMatching(creditScratch, node.filterItem());
+                claim = Math.min(preExisting, available);
+                if (claim > 0) {
+                    extractExact(creditScratch, node.filterItem(), claim);
+                }
+            }
             if (claim > 0) {
-                extractExact(creditScratch, node.filterItem(), claim);
                 preExistingCredit.put(i, claim);
             }
         }
@@ -1061,7 +1294,6 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
                 registerOutputDemand(i);
             }
         }
-        settleFromOwnStorage();
         reconcileDemandList();
     }
 
@@ -1234,16 +1466,29 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
                 break;
             }
         }
-        if (!anyItem) {
+        boolean anyFluid = !fluidStorage.isEmpty();
+        if (!anyItem && !anyFluid) {
             resetToIdle();
             return;
         }
         String backAddress = backToConnectedInventoryAddress();
-        if (!backAddress.isBlank() && backAddress.equals(targetAddress)) {
+        boolean addressedBackToConnectedInventory = !backAddress.isBlank() && backAddress.equals(targetAddress);
+        if (addressedBackToConnectedInventory && !anyFluid) {
+            // 只有纯物品、且地址确实是"送回连接库存"这个特殊地址时，才走直接
+            // 插入连接库存这条路——流体没法插入连接库存（物品容器装不了
+            // 流体），这条路对含流体的最终产物无效。
             attemptFinalShipmentBackToConnectedInventory();
             return;
         }
-
+        // 走到这里的情况：普通地址发货，或者目标虽然是连接库存但产物里含
+        // 流体（按设计，流体固定走连接库存背后的打包机，不经过连接库存
+        // 本身）。
+        PackagerBlockEntity packager = addressedBackToConnectedInventory
+                ? findPackagerServingConnectedInventory(behaviour != null ? behaviour.freqId : null, null)
+                : findDispatchPackager(behaviour.freqId, targetAddress);
+        if (packager == null) {
+            return;
+        }
         List<ItemStack> allItems = new ArrayList<>();
         for (int i = 0; i < storage.getSlots(); i++) {
             ItemStack s = storage.getStackInSlot(i);
@@ -1251,16 +1496,34 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
                 allItems.add(s.copy());
             }
         }
-        PackagerBlockEntity packager = findDispatchPackager(behaviour.freqId, targetAddress);
-        if (packager == null) {
-            return;
-        }
+        List<FluidStack> allFluids = fluidStorage.nonEmptyContents();
         for (int i = 0; i < storage.getSlots(); i++) {
             storage.setStackInSlot(i, ItemStack.EMPTY);
         }
-        sendItemsSplitIntoPackages(packager, allItems, targetAddress, null, 0, "生产彻底完成后的最终产物打包发货（含副产物）", false);
-        addLog("createimp.log.final_shipment", itemsArg(mergeItems(allItems)),
-                addressArg(targetAddress, "createimp.log.connected_storage"));
+        for (FluidStack f : allFluids) {
+            fluidStorage.extractFluid(f, f.getAmount());
+        }
+        // "送回连接库存"这个特殊地址本身不是一个真正能被包裹地址匹配的地址
+        // 标签，走打包机发货时（因为含流体只能这么发）改用空地址，效果等同
+        // 于"发给这个打包机自己面朝的目标"，跟物品直接插入连接库存本质上
+        // 是同一个终点。
+        String packageAddress = addressedBackToConnectedInventory ? null : targetAddress;
+        if (!allItems.isEmpty()) {
+            sendItemsSplitIntoPackages(packager, allItems, packageAddress, null, 0,
+                    "生产彻底完成后的最终产物打包发货（含副产物）", false);
+        }
+        if (!allFluids.isEmpty()) {
+            sendFluidsSplitIntoPackages(packager, allFluids, packageAddress,
+                    "生产彻底完成后的最终流体产物打包发货");
+        }
+        if (!allItems.isEmpty()) {
+            addLog("createimp.log.final_shipment", itemsArg(mergeItems(allItems)),
+                    addressArg(targetAddress, "createimp.log.connected_storage"));
+        }
+        if (!allFluids.isEmpty()) {
+            addLog("createimp.log.final_shipment", itemsArg(fluidsToLogItems(allFluids)),
+                    addressArg(targetAddress, "createimp.log.connected_storage"));
+        }
         resetToIdle();
     }
 
@@ -1512,6 +1775,15 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         if (stage != WorkStage.PRODUCTION || productionComplete) {
             return;
         }
+        // 每次这个方法被调用都重新结算一次需求列表，而不是只在刚进入生产
+        // 阶段那一刻结算一次——原料从打包机缓存真正转移进仓库自己的存储
+        // （物品/流体都一样）跟这里对需求列表的推进不是同一时刻发生的，
+        // 如果只在 beginProductionStage() 里结算一次，某个内部生产者→消费者
+        // 需求条目刚好赶在"原料还没转移进仓库"那一刻登记，就会永远卡在
+        // 需求列表里出不去（明明仓库里已经有这批原料了，却因为没人重新
+        // 核对过而一直傻乎乎地继续向网络请求）。这里补一次调用，让每次
+        // 周期性检查都有机会追上这个时间差。
+        settleFromOwnStorage();
         // 先通报"上一轮已经完成、产物现在到齐了"的节点，再去扫描这一轮新
         // 可以完成的节点——保证同一次调用里，"产物生产完成"日志排在"开始
         // 生产"日志前面，符合日志顺序要求。
@@ -1620,40 +1892,108 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
             return false;
         }
         if (node.demandMode()) {
-            List<ItemStack> toSend = new ArrayList<>();
+            List<ItemStack> itemsToSend = new ArrayList<>();
+            List<FluidStack> fluidsToSend = new ArrayList<>();
             for (WorkWarehouseTemplateSnapshot.IngredientEntry ing : node.ingredients()) {
                 int total = ing.amount() * node.requiredBatches();
                 if (total <= 0) {
                     continue;
                 }
-                toSend.add(ing.item().copyWithCount(total));
+                if (isFluidIngredient(ing.item())) {
+                    fluidsToSend.add(TemplateFluidDisplayHelper.getFluid(ing.item()).copyWithAmount(total));
+                } else {
+                    itemsToSend.add(ing.item().copyWithCount(total));
+                }
             }
-            for (ItemStack s : toSend) {
+            for (ItemStack s : itemsToSend) {
                 extractExact(storage, s, s.getCount());
+            }
+            for (FluidStack f : fluidsToSend) {
+                fluidStorage.extractFluid(f, f.getAmount());
             }
             String source = String.format("节点(%s) 按量请求模式=开 批次数=%d（全部批次一次性发出）",
                     node.filterItem().getItem(), node.requiredBatches());
-            sendItemsSplitIntoPackages(packager, toSend, node.address(),
-                    node.craftingMode() ? node.craftingArrangement() : null, node.requiredBatches(), source);
+            if (!itemsToSend.isEmpty()) {
+                sendItemsSplitIntoPackages(packager, itemsToSend, node.address(),
+                        node.craftingMode() ? node.craftingArrangement() : null, node.requiredBatches(), source);
+            }
+            if (!fluidsToSend.isEmpty()) {
+                sendFluidsSplitIntoPackages(packager, fluidsToSend, node.address(), source);
+            }
         } else {
             for (int batch = 0; batch < node.requiredBatches(); batch++) {
-                List<ItemStack> toSend = new ArrayList<>();
+                List<ItemStack> itemsToSend = new ArrayList<>();
+                List<FluidStack> fluidsToSend = new ArrayList<>();
                 for (WorkWarehouseTemplateSnapshot.IngredientEntry ing : node.ingredients()) {
                     if (ing.amount() <= 0) {
                         continue;
                     }
-                    toSend.add(ing.item().copyWithCount(ing.amount()));
+                    if (isFluidIngredient(ing.item())) {
+                        fluidsToSend.add(TemplateFluidDisplayHelper.getFluid(ing.item()).copyWithAmount(ing.amount()));
+                    } else {
+                        itemsToSend.add(ing.item().copyWithCount(ing.amount()));
+                    }
                 }
-                for (ItemStack s : toSend) {
+                for (ItemStack s : itemsToSend) {
                     extractExact(storage, s, s.getCount());
+                }
+                for (FluidStack f : fluidsToSend) {
+                    fluidStorage.extractFluid(f, f.getAmount());
                 }
                 String source = String.format("节点(%s) 按量请求模式=关 第%d/%d批（按配方单批数量逐批发出）",
                         node.filterItem().getItem(), batch + 1, node.requiredBatches());
-                sendItemsSplitIntoPackages(packager, toSend, node.address(),
-                        node.craftingMode() ? node.craftingArrangement() : null, 1, source);
+                if (!itemsToSend.isEmpty()) {
+                    sendItemsSplitIntoPackages(packager, itemsToSend, node.address(),
+                            node.craftingMode() ? node.craftingArrangement() : null, 1, source);
+                }
+                if (!fluidsToSend.isEmpty()) {
+                    sendFluidsSplitIntoPackages(packager, fluidsToSend, node.address(), source);
+                }
             }
         }
         return true;
+    }
+
+    /**
+     * 流体版的发货：固液分包，这里只处理流体部分，超出单个压缩罐容量
+     * （流包自己的配置项）时自动拆分成多个包裹依次寄出，跟物品那边"超出
+     * 单包容量自动拆分"是同一个原则。不附加 orderId/合成请求信息——按最新
+     * 设计，流体包裹的接收判断只看"种类是否在需求列表内、数量是否超出
+     * 剩余量"，不依赖 orderId，出库这一侧也不需要为此另外维护这份信息。
+     */
+    private void sendFluidsSplitIntoPackages(PackagerBlockEntity packager, List<FluidStack> fluids, String address, String sourceDescription) {
+        if (fluids.isEmpty()) {
+            return;
+        }
+        String logAddress = (address == null || address.isBlank()) ? "（连接库存）" : address;
+        addLog("createimp.log.fluids_sent", itemsArg(fluidsToLogItems(fluids)), WorkWarehouseTemplateSnapshot.LogArg.text(logAddress));
+        int capacity = Math.max(1, TemplateFluidDisplayHelper.tankCapacity());
+        for (FluidStack fluid : fluids) {
+            int remaining = fluid.getAmount();
+            while (remaining > 0) {
+                int take = Math.min(remaining, capacity);
+                FluidStack chunk = fluid.copyWithAmount(take);
+                injectFluidPackage(packager, chunk, address);
+                remaining -= take;
+            }
+        }
+    }
+
+    private static void injectFluidPackage(PackagerBlockEntity packager, FluidStack fluid, String address) {
+        ItemStack createdBox = TemplateFluidDisplayHelper.createFluidPackageBox(fluid);
+        PackageItem.clearAddress(createdBox);
+        if (address != null && !address.isBlank()) {
+            PackageItem.addAddress(createdBox, address);
+        }
+        if (!packager.heldBox.isEmpty() || packager.animationTicks != 0) {
+            packager.queuedExitingPackages.add(new BigItemStack(createdBox, 1));
+        } else {
+            packager.heldBox = createdBox;
+            packager.animationInward = false;
+            packager.animationTicks = 20;
+            packager.notifyUpdate();
+        }
+        packager.setChanged();
     }
 
     /**
@@ -1996,11 +2336,21 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         if (level == null || level.isClientSide()) {
             return;
         }
+        if (!FluidLogisticsCompat.isLoaded() && !fluidStorage.isEmpty()) {
+            // 中途卸载流体包裹：仓库内还有流体存量的话直接清空，流体存储功能
+            // 整体禁用（isFluidIngredient 恒为 false 之后，所有流体相关分支都
+            // 不会再被触发，行为退化成纯物品，和普通仪表卸载流体包裹后的
+            // 处理原则一致）。
+            fluidStorage.clear();
+            setChanged();
+            CreateImp.LOGGER.info("检测到流体包裹已卸载，已清空工作仓库内的流体存量");
+        }
         if (!isWorking()) {
             return;
         }
         if (pendingReconcile) {
             pendingReconcile = false;
+            monitorPackagerFluidCaches();
             reconcileDemandList();
         }
         if (stage == WorkStage.INTERRUPTING) {
@@ -2027,8 +2377,9 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         }
         ticksSinceLastMonitor = 0;
         monitorConnectedInventory();
-        requestRemainingDemandFromNetwork();
+        monitorPackagerFluidCaches();
         reconcileDemandList();
+        requestRemainingDemandFromNetwork();
     }
 
     @Override
@@ -2059,6 +2410,9 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         productionComplete = tag.getBoolean("ProductionComplete");
         if (!clientPacket && tag.contains("Storage", Tag.TAG_COMPOUND)) {
             storage.deserializeNBT(registries, tag.getCompound("Storage"));
+        }
+        if (!clientPacket && tag.contains("FluidStorage", Tag.TAG_COMPOUND)) {
+            fluidStorage.deserializeNBT(registries, tag.getCompound("FluidStorage"));
         }
         if (!clientPacket) {
             templateSnapshot = new ArrayList<>(tag.contains("TemplateSnapshot")
@@ -2123,6 +2477,7 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         tag.putBoolean("ProductionComplete", productionComplete);
         if (!clientPacket) {
             tag.put("Storage", storage.serializeNBT(registries));
+            tag.put("FluidStorage", fluidStorage.serializeNBT(registries));
             CatnipCodecUtils.encode(WorkWarehouseTemplateSnapshot.PanelSnapshot.CODEC.listOf(), registries, templateSnapshot)
                     .ifPresent(encoded -> tag.put("TemplateSnapshot", encoded));
             CatnipCodecUtils.encode(WorkWarehouseTemplateSnapshot.DemandEntry.CODEC.listOf(), registries, demandList)

@@ -22,6 +22,8 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
+import com.molox.createimp.compat.fluidlogistics.FluidLogisticsCompat;
+import com.molox.createimp.compat.fluidlogistics.TemplateFluidDisplayHelper;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
@@ -558,30 +560,44 @@ public class ProcessManagerScreen extends AbstractSimiScreen {
 
         pose.pushPose();
         pose.translate(0.0f, 0.0f, 190.0f);
-        drawItemCount(graphics, x, y, amount);
+        String text = (FluidLogisticsCompat.isLoaded() && TemplateFluidDisplayHelper.isVirtualFluidDisplay(product))
+                ? TemplateFluidDisplayHelper.formatStorageAmount(amount)
+                : formatItemCount(amount);
+        drawCountText(graphics, x, y, text);
         pose.popPose();
     }
 
     /**
-     * 完全照搬参考窗口（材料所需窗口）的数字贴图绘制算法（同一份
-     * {@code AllGuiTextures.NUMBERS} 贴图、同样的大数字压缩格式 k/m/+）。
+     * 原版风格的物品数量压缩文本（k/m/+），流体产物改走
+     * {@link TemplateFluidDisplayHelper#formatStorageAmount(int)}，见
+     * {@link #renderProcessItem}。
      */
-    private void drawItemCount(GuiGraphics graphics, int slotX, int slotY, int count) {
-        String text;
+    private static String formatItemCount(int count) {
         if (count >= 1_000_000_000) {
-            text = "+";
-        } else if (count >= 1_000_000) {
-            text = (count / 1_000_000) + "m";
-        } else if (count >= 10_000) {
-            text = (count / 1000) + "k";
-        } else if (count >= 1000) {
-            text = ((float) (count * 10 / 1000) / 10.0f) + "k";
-        } else if (count >= 100) {
-            text = "" + count;
-        } else {
-            text = " " + count;
+            return "+";
         }
-        if (text.isBlank()) {
+        if (count >= 1_000_000) {
+            return (count / 1_000_000) + "m";
+        }
+        if (count >= 10_000) {
+            return (count / 1000) + "k";
+        }
+        if (count >= 1000) {
+            return ((float) (count * 10 / 1000) / 10.0f) + "k";
+        }
+        if (count >= 100) {
+            return "" + count;
+        }
+        return " " + count;
+    }
+
+    /**
+     * 完全照搬参考窗口（材料所需窗口）的数字贴图绘制算法（同一份
+     * {@code AllGuiTextures.NUMBERS} 贴图），额外支持流体数量格式里用到的
+     * b/B（桶）字符。
+     */
+    private void drawCountText(GuiGraphics graphics, int slotX, int slotY, String text) {
+        if (text == null || text.isBlank()) {
             return;
         }
 
@@ -590,9 +606,13 @@ public class ProcessManagerScreen extends AbstractSimiScreen {
 
         int x = (int) Math.floor(-text.length() * 2.5);
         for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
+            char raw = text.charAt(i);
+            char c = Character.toLowerCase(raw);
             if (c == ' ') {
                 x += 4;
+                continue;
+            }
+            if (c == ',') {
                 continue;
             }
             int index = c - '0';
@@ -606,6 +626,8 @@ public class ProcessManagerScreen extends AbstractSimiScreen {
             } else if (c == 'm') {
                 spriteWidth = 7;
                 xOffset = 70;
+            } else if (c == 'b') {
+                xOffset = 78;
             } else if (c == '+') {
                 spriteWidth = 9;
                 xOffset = 84;

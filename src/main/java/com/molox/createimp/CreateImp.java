@@ -84,6 +84,9 @@ public class CreateImp {
         com.molox.createimp.block.batch_repackager.BatchRepackagerArmInteraction.register(modEventBus);
         modEventBus.addListener(CreateImp::registerPayloads);
         modEventBus.addListener(CreateImp::commonSetup);
+        if (FMLLoader.getDist() == Dist.CLIENT) {
+            modEventBus.addListener(com.molox.createimp.client.TemplateFluidTokenClientRenderer::onRegisterClientExtensions);
+        }
 
         NeoForge.EVENT_BUS.addListener(EventPriority.HIGH, CreateImp::onRightClickBlockServer);
     }

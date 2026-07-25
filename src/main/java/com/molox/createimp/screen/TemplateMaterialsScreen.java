@@ -4,6 +4,8 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.molox.createimp.CreateImp;
 import com.molox.createimp.client.ClientWorkWarehouseAvailabilityCache;
+import com.molox.createimp.compat.fluidlogistics.FluidLogisticsCompat;
+import com.molox.createimp.compat.fluidlogistics.TemplateFluidDisplayHelper;
 import com.molox.createimp.network.RequestWorkWarehouseAvailabilityPacket;
 import com.molox.createimp.item.TemplateOrderTokenHelper;
 import com.molox.createimp.network.OpenTemplateMaterialsGuiPacket;
@@ -565,32 +567,46 @@ public class TemplateMaterialsScreen extends AbstractSimiScreen {
 
         pose.pushPose();
         pose.translate(0.0f, 0.0f, 190.0f);
-        drawItemCount(graphics, x, y, entry.count, color);
+        String text = (FluidLogisticsCompat.isLoaded() && TemplateFluidDisplayHelper.isVirtualFluidDisplay(entry.stack))
+                ? TemplateFluidDisplayHelper.formatStorageAmount(entry.count)
+                : formatItemCount(entry.count);
+        drawCountText(graphics, x, y, text, color);
         pose.popPose();
     }
 
     /**
-     * 完全照搬原版 {@code StockKeeperRequestScreen.drawItemCount} 的数字贴图
-     * 绘制算法（同一份 {@code AllGuiTextures.NUMBERS} 贴图、同样的大数字压缩
-     * 格式 k/m/+），唯一区别是这里的数字含义是本窗口自己的材料数量，并且
-     * 额外支持按传入的 color 对数字整体染色（缺少材料显示为红色）。
+     * 原版风格的物品数量压缩文本（k/m/+），从原来的 {@code drawItemCount}
+     * 里拆出来，只负责算文本，不负责画。
      */
-    private void drawItemCount(GuiGraphics graphics, int slotX, int slotY, int count, int color) {
-        String text;
+    private static String formatItemCount(int count) {
         if (count >= 1_000_000_000) {
-            text = "+";
-        } else if (count >= 1_000_000) {
-            text = (count / 1_000_000) + "m";
-        } else if (count >= 10_000) {
-            text = (count / 1000) + "k";
-        } else if (count >= 1000) {
-            text = ((float) (count * 10 / 1000) / 10.0f) + "k";
-        } else if (count >= 100) {
-            text = "" + count;
-        } else {
-            text = " " + count;
+            return "+";
         }
-        if (text.isBlank()) {
+        if (count >= 1_000_000) {
+            return (count / 1_000_000) + "m";
+        }
+        if (count >= 10_000) {
+            return (count / 1000) + "k";
+        }
+        if (count >= 1000) {
+            return ((float) (count * 10 / 1000) / 10.0f) + "k";
+        }
+        if (count >= 100) {
+            return "" + count;
+        }
+        return " " + count;
+    }
+
+    /**
+     * 完全照搬原版 {@code StockKeeperRequestScreen.drawItemCount} 的数字贴图
+     * 绘制算法（同一份 {@code AllGuiTextures.NUMBERS} 贴图），额外支持流包
+     * 数量格式里用到的 b/B（桶，"1B"/"0.5B"这种）字符——照抄流包自己
+     * {@code FluidSlotAmountRenderer} 对这个字符的贴图坐标映射。不管是物品
+     * 数量文本还是流体数量文本，都统一走这一个方法绘制，因此都支持按传入
+     * 的 color 整体染色（缺少材料显示为红色）。
+     */
+    private void drawCountText(GuiGraphics graphics, int slotX, int slotY, String text, int color) {
+        if (text == null || text.isBlank()) {
             return;
         }
 
@@ -603,9 +619,13 @@ public class TemplateMaterialsScreen extends AbstractSimiScreen {
 
         int x = (int) Math.floor(-text.length() * 2.5);
         for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
+            char raw = text.charAt(i);
+            char c = Character.toLowerCase(raw);
             if (c == ' ') {
                 x += 4;
+                continue;
+            }
+            if (c == ',') {
                 continue;
             }
             int index = c - '0';
@@ -619,6 +639,8 @@ public class TemplateMaterialsScreen extends AbstractSimiScreen {
             } else if (c == 'm') {
                 spriteWidth = 7;
                 xOffset = 70;
+            } else if (c == 'b') {
+                xOffset = 78;
             } else if (c == '+') {
                 spriteWidth = 9;
                 xOffset = 84;

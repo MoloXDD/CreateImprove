@@ -16,6 +16,8 @@
     "MixinPackageOrderRequestPacket",
     "MixinLogisticsManager",
     "MixinLogisticalStockRequestPacket",
+    "MixinInventorySummaryTemplateGuard",
+    "MixinPackagerFluidCache",
     "MixinStockKeeperRequestScreen",
     "MixinStockKeeperTransferHandler",
     "StockKeeperCategoryEntryAccessor",
