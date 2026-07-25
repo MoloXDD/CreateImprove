@@ -159,6 +159,8 @@
   "text.autoconfig.createimp.option.templateConfig.stockKeeperTemplateDisplayStyle.STYLE_1": "Style 1",
   "text.autoconfig.createimp.option.templateConfig.stockKeeperTemplateDisplayStyle.STYLE_2": "Style 2",
   "text.autoconfig.createimp.option.templateConfig.mergeTemplateWithStock": "Merge Templates Into Stock",
+  "text.autoconfig.createimp.option.fixConfig": "Fix Options",
+  "text.autoconfig.createimp.option.fixConfig.fixDuplicatePackagerPromiseConsumption": "Fix Duplicate Promise Consumption With Multiple Packagers",
   "createimp.ponder.template_panel_build_chain.header": "Building a Template Chain with the Template Panel",
   "createimp.ponder.template_panel_build_chain.text_1": "Right-click a Stock Link before placement to connect it to the entire logistics network",
   "createimp.ponder.template_panel_build_chain.text_2": "Right-click a Template Panel with the item that should be monitored",

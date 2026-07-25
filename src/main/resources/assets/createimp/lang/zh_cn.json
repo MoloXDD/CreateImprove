@@ -159,6 +159,8 @@
   "text.autoconfig.createimp.option.templateConfig.stockKeeperTemplateDisplayStyle.STYLE_1": "样式1",
   "text.autoconfig.createimp.option.templateConfig.stockKeeperTemplateDisplayStyle.STYLE_2": "样式2",
   "text.autoconfig.createimp.option.templateConfig.mergeTemplateWithStock": "是否合并模板与库存",
+  "text.autoconfig.createimp.option.fixConfig": "修复功能配置",
+  "text.autoconfig.createimp.option.fixConfig.fixDuplicatePackagerPromiseConsumption": "修复多打包机下仪表重复减少承诺问题",
   "createimp.ponder.template_panel_build_chain.header": "使用模板仪表搭建模板链",
   "createimp.ponder.template_panel_build_chain.text_1": "放置前，右击一个仓储链接站以连接到整个物流网络",
   "createimp.ponder.template_panel_build_chain.text_2": "手持要监测的物品右击模板仪表，即可设置监测物品",

@@ -37,6 +37,9 @@ public class CreateImpConfig implements ConfigData {
     @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
     public TemplateConfig templateConfig = new TemplateConfig();
 
+    @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
+    public FixConfig fixConfig = new FixConfig();
+
     public static class ScrapBucket {
         public int itemsPerNugget = 64;
         public int mbPerNugget = 2000;
@@ -99,5 +102,17 @@ public class CreateImpConfig implements ConfigData {
             STYLE_1,
             STYLE_2
         }
+    }
+
+    public static class FixConfig {
+        /**
+         * Create原版打包机在检测"库存新增了多少"以扣减承诺队列时，是按每个打包机
+         * 各自私有的库存快照独立计算的；当多个打包机贴着同一个物理仓库时，每个
+         * 打包机都会独立观察到同一次入库，导致同一批到货被重复扣减多次承诺，
+         * 使得按量请求/补货等依赖承诺判断的功能误判缺口、反复超发请求。
+         * <p>
+         * 关闭此项后，恢复Create原版行为（不做去重），保留作为排查用的回退开关。
+         */
+        public boolean fixDuplicatePackagerPromiseConsumption = true;
     }
 }
