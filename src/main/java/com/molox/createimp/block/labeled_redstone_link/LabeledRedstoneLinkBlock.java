@@ -1,7 +1,6 @@
 package com.molox.createimp.block.labeled_redstone_link;
 
 import com.mojang.serialization.MapCodec;
-import com.molox.createimp.CreateImp;
 import com.molox.createimp.network.OpenLabeledRedstoneLinkGuiPacket;
 import com.molox.createimp.registry.ModBlockEntityTypes;
 import com.simibubi.create.AllItems;
@@ -11,7 +10,9 @@ import com.simibubi.create.foundation.block.WrenchableDirectionalBlock;
 import net.createmod.catnip.data.Iterate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.context.BlockPlaceContext;
@@ -106,18 +107,36 @@ public class LabeledRedstoneLinkBlock extends WrenchableDirectionalBlock
     protected void neighborChanged(BlockState state, Level level, BlockPos pos,
                                    Block block, BlockPos fromPos, boolean isMoving) {
         if (level.isClientSide()) return;
-        CreateImp.LOGGER.info("[LRL] neighborChanged from={} block={} time={}",
-                fromPos, block.getClass().getSimpleName(), level.getGameTime());
 
         Direction facing = state.getValue(FACING);
-        if (fromPos.equals(pos.relative(facing.getOpposite()))) {
+        boolean isSupportSide = fromPos.equals(pos.relative(facing.getOpposite()));
+
+        if (isSupportSide) {
             if (!canSurvive(state, level, pos)) {
-                level.destroyBlock(pos, true);
+                // 不在本tick内同步销毁：动态结构（旋转轴承等）组装时，支撑方块
+                // 和本方块可能在同一tick内被结构一并处理，此时观察到的"支撑消失"
+                // 可能只是同一tick内部处理顺序导致的瞬时状态，并不代表支撑真的
+                // 永久消失了。这里改为预约下一tick复查——如果本方块自己也已经
+                // 被结构安全带走，这个位置届时已经不是本方块，预约的复查会自动
+                // 失效；如果支撑确实被破坏（真实的玩家操作场景），下一tick复查
+                // 仍会失败，照常销毁，行为与之前一致。
+                level.scheduleTick(pos, this, 1);
                 return;
             }
         }
 
         // 直接调用，不经过 scheduleTick，和原版终端一致，消除额外1tick延迟
+        updateTransmittedSignal(state, level, pos);
+    }
+
+    // 延迟复查canSurvive（见neighborChanged里的说明），
+    // 顺带承接toggleReceiverMode里预约的信号重新发送。
+    @Override
+    public void tick(BlockState state, ServerLevel level, BlockPos pos, RandomSource random) {
+        if (!canSurvive(state, level, pos)) {
+            level.destroyBlock(pos, true);
+            return;
+        }
         updateTransmittedSignal(state, level, pos);
     }
 

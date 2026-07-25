@@ -1,6 +1,5 @@
 package com.molox.createimp.mixin;
 
-import com.molox.createimp.CreateImp;
 import com.molox.createimp.util.IFactoryPanelBehaviourDemandMode;
 
 import com.google.common.collect.HashMultimap;
@@ -48,14 +47,6 @@ public abstract class MixinFactoryPanelBehaviour implements IFactoryPanelBehavio
 
     @Unique
     private boolean createimp$demandMode = false;
-
-    // 仅用于诊断日志的边沿触发缓存：tickRequests每tick都会被调用，
-    // 直接每tick打印门控状态会刷屏，这里只在状态相较上一次记录发生变化时才输出一次。
-    @Unique
-    private boolean createimp$lastLoggedSatisfied, createimp$lastLoggedPromisedSatisfied,
-            createimp$lastLoggedWaitingForNetwork, createimp$lastLoggedRedstonePowered;
-    @Unique
-    private int createimp$lastLoggedPromised = Integer.MIN_VALUE;
 
     // 仅 Shadow FactoryPanelBehaviour 自身声明的字段
     @Shadow public Map<FactoryPanelPosition, FactoryPanelConnection> targetedBy;
@@ -133,21 +124,6 @@ public abstract class MixinFactoryPanelBehaviour implements IFactoryPanelBehavio
         if (panelBE.restocker) return;
 
         if (satisfied || promisedSatisfied || waitingForNetwork || redstonePowered) {
-            int currentPromised = getPromised();
-            boolean stateChanged = satisfied != createimp$lastLoggedSatisfied
-                    || promisedSatisfied != createimp$lastLoggedPromisedSatisfied
-                    || waitingForNetwork != createimp$lastLoggedWaitingForNetwork
-                    || redstonePowered != createimp$lastLoggedRedstonePowered
-                    || currentPromised != createimp$lastLoggedPromised;
-            if (stateChanged) {
-                CreateImp.LOGGER.info("[FactoryDemandDebug] pos={} 门控状态变化：satisfied={} promisedSatisfied={} waitingForNetwork={} redstonePowered={} 当前promised={}",
-                        panelBE.getBlockPos(), satisfied, promisedSatisfied, waitingForNetwork, redstonePowered, currentPromised);
-                createimp$lastLoggedSatisfied = satisfied;
-                createimp$lastLoggedPromisedSatisfied = promisedSatisfied;
-                createimp$lastLoggedWaitingForNetwork = waitingForNetwork;
-                createimp$lastLoggedRedstonePowered = redstonePowered;
-                createimp$lastLoggedPromised = currentPromised;
-            }
             ci.cancel();
             return;
         }
@@ -176,18 +152,12 @@ public abstract class MixinFactoryPanelBehaviour implements IFactoryPanelBehavio
         int promised = getPromised();
         int gap = demand - inStorage - promised;
 
-        CreateImp.LOGGER.info("[FactoryDemandDebug] pos={} filter={} demand={} inStorage={} promised={} gap={} recipeOutput={} craftingMode={}",
-                panelBE.getBlockPos(), filterItem.getItem(), demand, inStorage, promised, gap, recipeOutput,
-                !activeCraftingArrangement.isEmpty());
-
         if (gap <= 0) {
             ci.cancel();
             return;
         }
 
         int batchesNeeded = (gap + recipeOutput - 1) / recipeOutput;
-        CreateImp.LOGGER.info("[FactoryDemandDebug] pos={} batchesNeeded={} (基于gap={}, recipeOutput={})",
-                panelBE.getBlockPos(), batchesNeeded, gap, recipeOutput);
 
         // 第一轮遍历：先收集每种原料的"单批总需求"(不乘batchesNeeded)，
         // 即同一物品来自多个connection时，各connection.amount的总和。
@@ -217,13 +187,6 @@ public abstract class MixinFactoryPanelBehaviour implements IFactoryPanelBehavio
             isc.totalAmount += connection.amount;
         }
 
-        for (Map<ItemStack, FactoryPanelBehaviour.ItemStackConnections> networkMap : consolidated.values()) {
-            for (FactoryPanelBehaviour.ItemStackConnections isc : networkMap.values()) {
-                CreateImp.LOGGER.info("[FactoryDemandDebug] 单批总需求汇总 item={} totalAmount={} 来源连接数={}",
-                        isc.item.getItem(), isc.totalAmount, isc.size());
-            }
-        }
-
         // 第二轮：按各物品的实际网络库存，反推"这种物品最多能撑几个完整批次"，
         // 取所有物品里的最小值，并与原计划batchesNeeded取较小者，
         // 得到这次实际要执行的批次数。这样无论哪种原料库存不足，
@@ -242,13 +205,8 @@ public abstract class MixinFactoryPanelBehaviour implements IFactoryPanelBehavio
                 int available = summary.getCountOf(isc.item);
                 int batchesThisItemCanSupport = available / perBatchNeed;
                 actualBatches = Math.min(actualBatches, batchesThisItemCanSupport);
-                CreateImp.LOGGER.info("[FactoryDemandDebug] 库存反推 network={} item={} available={} perBatchNeed={} 该物品可支撑批次={} 取最小值后actualBatches={}",
-                        net, isc.item.getItem(), available, perBatchNeed, batchesThisItemCanSupport, actualBatches);
             }
         }
-
-        CreateImp.LOGGER.info("[FactoryDemandDebug] pos={} 最终actualBatches={} (原计划batchesNeeded={})",
-                panelBE.getBlockPos(), actualBatches, batchesNeeded);
 
         if (actualBatches <= 0) {
             // 一个完整批次都凑不出，本次彻底放弃，不发出任何请求，
@@ -274,8 +232,6 @@ public abstract class MixinFactoryPanelBehaviour implements IFactoryPanelBehavio
                 int clamped = (int) Math.min(actualTotal, Integer.MAX_VALUE);
                 BigItemStack requestEntry = new BigItemStack(isc.item, clamped);
                 toRequest.put(net, requestEntry);
-                CreateImp.LOGGER.info("[FactoryDemandDebug] 实际请求 network={} item={} 单批总需求={} × actualBatches={} = 请求量={}",
-                        net, isc.item.getItem(), isc.totalAmount, actualBatches, clamped);
                 for (FactoryPanelConnection conn : isc) {
                     sendEffect(conn.from, true);
                 }
@@ -321,16 +277,12 @@ public abstract class MixinFactoryPanelBehaviour implements IFactoryPanelBehavio
         }
 
         RequestPromiseQueue promises = Create.LOGISTICS.getQueuedPromises(network);
-        int promiseAmount = actualBatches * recipeOutput;
-        CreateImp.LOGGER.info("[FactoryDemandDebug] pos={} 本次发起请求完毕，craftContext批次数={}，写入承诺 filter={} promiseAmount={} (actualBatches={} × recipeOutput={})",
-                panelBE.getBlockPos(), craftContext.orderedCrafts().isEmpty() ? -1 : craftContext.orderedCrafts().get(0).count(),
-                filterItem.getItem(), promiseAmount, actualBatches, recipeOutput);
         if (promises != null) {
             // 承诺量必须用actualBatches而不是原计划的batchesNeeded，
             // 否则会向库存系统过度声明"即将收到的产物量"，
             // 但实际合成出来的产物只有actualBatches批，造成promisedSatisfied误判。
             promises.add(new RequestPromise(
-                    new BigItemStack(filterItem, promiseAmount)));
+                    new BigItemStack(filterItem, actualBatches * recipeOutput)));
         }
 
         panelBE.advancements.awardPlayer(AllAdvancements.FACTORY_GAUGE);
