@@ -2141,6 +2141,12 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
      * 随机），因为这里走的不是 {@code LogisticsManager.findPackagersForRequest}
      * 那条路径（工作仓库自己的发货逻辑，不经过物流网络的包裹请求分配），
      * 所以那个 Mixin 管不到这里，需要单独实现一份同样的判断。
+     * <p>
+     * 候选列表可能同时混着流体打包机与普通打包机（例如连接储存背后同一份
+     * 库存被一台物品打包机和一台流体打包机同时贴合）——是否对某个具体候选
+     * 生效地址过滤，按它自己的类型分别套用对应开关（见
+     * {@link #addressFilterEnabledFor}），判断算法本身完全一致，只是开关
+     * 分开，不会因为其中一类关了而影响另一类。
      */
     private static PackagerBlockEntity pickPackagerByAddress(List<PackagerBlockEntity> candidates, String address) {
         if (candidates.size() <= 1) {
@@ -2148,15 +2154,20 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         }
         // address为null代表调用方本来就没有"目标地址"这个概念（比如周期性回收
         // 打包机身上的流体缓存、或者最终产物按特殊地址直接返回连接库存背后的
-        // 打包机），这种情况下按地址过滤没有意义，直接跳过匹配，退回随机挑选，
-        // 和玩家在配置里关闭地址过滤功能时走的是同一条分支。
-        if (address == null || !CreateImp.getConfig().functionConfig.featureToggles.packagerAddressFilterEnabled) {
+        // 打包机），这种情况下按地址过滤没有意义，直接跳过匹配，退回随机挑选。
+        if (address == null) {
             return candidates.get(RNG.nextInt(candidates.size()));
         }
 
         List<PackagerBlockEntity> matched = new ArrayList<>();
         List<PackagerBlockEntity> noSign = new ArrayList<>();
         for (PackagerBlockEntity packager : candidates) {
+            if (!addressFilterEnabledFor(packager)) {
+                // 这个候选对应的开关是关闭的——按"关闭地址过滤"原有语义跳过
+                // 告示牌解析，不参与matched/noSign挑选，但仍留在candidates
+                // 全量池里参与最后的兜底随机，和玩家关闭功能时表现一致。
+                continue;
+            }
             String signAddress = PackagerSignAddressHelper.resolveSignAddress(packager);
             if (signAddress == null) {
                 noSign.add(packager);
@@ -2171,6 +2182,19 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
             return noSign.get(RNG.nextInt(noSign.size()));
         }
         return candidates.get(RNG.nextInt(candidates.size()));
+    }
+
+    /**
+     * 出库地址过滤功能对这个候选打包机是否生效：流体打包机（流体包裹自己的
+     * {@code FluidPackagerBlockEntity}）套用独立的"流体打包机出库地址过滤"
+     * 开关，其余（含本模组自己不区分具体类型直接注入包裹的普通打包机）套用
+     * 原有的开关。
+     */
+    private static boolean addressFilterEnabledFor(PackagerBlockEntity packager) {
+        if (FluidLogisticsCompat.isLoaded() && TemplateFluidDisplayHelper.isFluidPackager(packager)) {
+            return CreateImp.getConfig().modCompatConfig.fluidLogisticsCompat.fluidPackagerAddressFilterEnabled;
+        }
+        return CreateImp.getConfig().functionConfig.featureToggles.packagerAddressFilterEnabled;
     }
 
     private List<PackagerBlockEntity> findAdjacentPackagers() {

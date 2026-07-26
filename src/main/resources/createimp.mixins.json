@@ -14,6 +14,7 @@
     "MixinPackagerBlock",
     "MixinPackagerBlockEntity",
     "MixinPackagerArrivalDedup",
+    "MixinFluidPackagerArrivalDedup",
     "MixinPackageOrderRequestPacket",
     "MixinLogisticsManager",
     "MixinLogisticalStockRequestPacket",

@@ -127,6 +127,12 @@ public class CreateImp {
                 return BlockMovementChecks.CheckResult.of(
                         direction.getOpposite() == state.getValue(LabeledRedstoneLinkBlock.FACING));
             });
+            // 让流体包裹指读棒"自动连接动力合成器"这一功能对本模组批量动力
+            // 合成器同样生效——只兼容不依赖，未安装流体包裹时这里直接跳过，
+            // 不会触发流体包裹任何类的加载。不受配置项控制，装了就一直生效。
+            if (com.molox.createimp.compat.fluidlogistics.FluidLogisticsCompat.isLoaded()) {
+                com.molox.createimp.compat.fluidlogistics.BatchCrafterHandPointerAdapter.register();
+            }
         });
     }
 

@@ -4,6 +4,8 @@ import com.molox.createimp.CreateImp;
 import com.molox.createimp.block.template_panel.TemplateMaterialCalculator;
 import com.molox.createimp.block.work_warehouse.WorkWarehouseBlockEntity;
 import com.molox.createimp.block.work_warehouse.WorkWarehouseNetworkHelper;
+import com.molox.createimp.compat.fluidlogistics.FluidLogisticsCompat;
+import com.molox.createimp.compat.fluidlogistics.TemplateFluidDisplayHelper;
 import com.molox.createimp.item.TemplateOrderTarget;
 import com.molox.createimp.item.TemplateOrderTokenHelper;
 import com.molox.createimp.util.PackagerSignAddressHelper;
@@ -105,15 +107,17 @@ public abstract class MixinLogisticsManager {
     // 是该方法体内第一次出现的 List.get(int)，第二次出现在后面 stacks.get(i) 处，
     // 与此处无关）。若 Create 未来版本调整了这段代码的书写顺序，这个 ordinal
     // 需要重新核实。
+    // <p>
+    // 候选链表可能同时混着流体打包机与普通打包机（同一份目标库存被一台物品
+    // 打包机和一台流体打包机同时瞄准），是否对某个具体候选生效地址过滤，
+    // 按它自己的类型分别套用对应开关，判断算法与
+    // {@code WorkWarehouseBlockEntity#pickPackagerByAddress} 完全一致。
     @Redirect(method = "findPackagersForRequest",
             at = @At(value = "INVOKE", target = "Ljava/util/List;get(I)Ljava/lang/Object;", ordinal = 0))
     private static Object createimp$selectPackagerLinkByAddress(
             List<LogisticallyLinkedBehaviour> linkGroup, int index,
             UUID freqId, PackageOrderWithCrafts order, IdentifiedInventory ignoredHandler, String address) {
         if (linkGroup.size() <= 1) {
-            return linkGroup.get(index);
-        }
-        if (!CreateImp.getConfig().functionConfig.featureToggles.packagerAddressFilterEnabled) {
             return linkGroup.get(index);
         }
 
@@ -126,6 +130,12 @@ public abstract class MixinLogisticsManager {
             }
             PackagerBlockEntity packager = plbe.getPackager();
             if (packager == null) {
+                continue;
+            }
+            if (!createimp$addressFilterEnabledFor(packager)) {
+                // 这个候选对应的开关是关闭的——跳过告示牌解析，不参与
+                // matched/noSign挑选，但仍留在linkGroup全量池里参与最后的
+                // 兜底随机，和玩家关闭功能时表现一致。
                 continue;
             }
             String signAddress = PackagerSignAddressHelper.resolveSignAddress(packager);
@@ -143,5 +153,16 @@ public abstract class MixinLogisticsManager {
             return noSign.get(r.nextInt(noSign.size()));
         }
         return linkGroup.get(index);
+    }
+
+    /**
+     * 出库地址过滤功能对这个候选打包机是否生效：流体打包机套用独立的
+     * "流体打包机出库地址过滤"开关，其余套用原有的开关。
+     */
+    private static boolean createimp$addressFilterEnabledFor(PackagerBlockEntity packager) {
+        if (FluidLogisticsCompat.isLoaded() && TemplateFluidDisplayHelper.isFluidPackager(packager)) {
+            return CreateImp.getConfig().modCompatConfig.fluidLogisticsCompat.fluidPackagerAddressFilterEnabled;
+        }
+        return CreateImp.getConfig().functionConfig.featureToggles.packagerAddressFilterEnabled;
     }
 }

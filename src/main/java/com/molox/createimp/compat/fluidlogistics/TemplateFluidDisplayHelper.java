@@ -1,15 +1,16 @@
 package com.molox.createimp.compat.fluidlogistics;
 
-import com.yision.fluidlogistics.compat.ghost.VirtualFluidGhostStacks;
+import com.yision.fluidlogistics.compat.ghost.FluidGhostStacks;
 import com.yision.fluidlogistics.content.logistics.fluidPackage.CompressedTankItem;
 import com.yision.fluidlogistics.util.FluidAmountHelper;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.material.Fluids;
 import net.neoforged.neoforge.fluids.FluidStack;
 
 /**
  * 本类集中封装所有对流体包裹（FluidLogistics）具体类的直接引用（
  * {@code CompressedTankItem}、{@code FluidStack}、{@code FluidAmountHelper}、
- * {@code VirtualFluidGhostStacks}）。
+ * {@code FluidGhostStacks}）。
  * <p>
  * 【重要】本类里的任何方法都只允许在调用方已经确认
  * {@link FluidLogisticsCompat#isLoaded()} 为真之后才能调用——本类本身不做
@@ -30,9 +31,21 @@ public final class TemplateFluidDisplayHelper {
      * 目标”的压缩罐物品（即工厂仪表 / 我们模板仪表通过 JEI 拖拽流体设置出的
      * 那种过滤物，本身不是一份真实存在的物品，只是携带了流体种类与数量的
      * 数据组件）。
+     * <p>
+     * 【1.2.5 变更，反编译确认】流体包裹自 1.2.5 起彻底去掉了“虚拟/真实”
+     * 这个区分标记（{@code FluidTankContent} 从 {@code record(FluidStack,
+     * boolean virtual)} 改成了 {@code record(FluidStack)}，{@code
+     * CompressedTankItem.isVirtual}/{@code setFluidVirtual} 两个方法都已
+     * 不存在），压缩罐这个物品层面现在只剩“是不是装着流体”这一个判断维度
+     * （对应新增的 {@code CompressedTankItem.isFluidStack}）。本模组自己
+     * 从来不会把“包裹里真实压缩罐”这种 {@link ItemStack} 放进模板过滤物/
+     * 需求列表条目这个字段——这个字段的取值永远只来自
+     * {@link #createVirtualFluidGhostStack} 构造出的过滤物，所以这里直接
+     * 判断“是不是装着流体的压缩罐”跟原来的语义完全等价，不会因为流体
+     * 包裹去掉了虚拟标记而误认成真实压缩罐。
      */
     public static boolean isVirtualFluidDisplay(ItemStack stack) {
-        return stack.getItem() instanceof CompressedTankItem && CompressedTankItem.isVirtual(stack);
+        return CompressedTankItem.isFluidStack(stack);
     }
 
     /**
@@ -60,15 +73,34 @@ public final class TemplateFluidDisplayHelper {
      * 能天然互通。
      */
     public static ItemStack createVirtualFluidGhostStack(FluidStack fluid) {
-        return VirtualFluidGhostStacks.fromFluid(fluid);
+        return FluidGhostStacks.fromFluid(fluid);
     }
 
     /**
      * 流体连接/流体产出在模板配方配置界面允许的最大数量（mB），与流体包裹
-     * 自己各处流体数量上限保持一致的同一个常量。
+     * 工厂仪表面板设置项的上限保持一致。
+     * <p>
+     * 【1.2.5 变更，反编译确认】原来直接读取的公开常量 {@code
+     * FluidGaugeHelper.MAX_FLUID_AMOUNT} 所在的类已被拆分/移除，且没有留下
+     * 任何公开常量替代——这个数值（反编译确认仍是 100000）现在只以
+     * {@code private} 常量 {@code MAX_FACTORY_PANEL_AMOUNT} 的形式，藏在
+     * 流体包裹自己标记为 {@code @ApiStatus.Internal} 的
+     * {@code FluidPackageResourceType} 内部类里。这里改成通过流体包裹
+     * 公开在 {@code api.packager} 包下的 {@code PackageResourceType
+     * .display().factoryPanelRestockPolicy(...).maxSettingAmount()} 这条
+     * 链路间接取值——反编译确认流体这一侧的实现不会用到传入的
+     * {@code normalizedKey} 参数内容，只依赖自己的配置项计算，所以传入
+     * 任意一份有效流体压缩罐即可。好处是这个值会跟随流体包裹自己的配置
+     * 变化自动同步；代价是链路末端的 {@code FluidPackageResourceType}
+     * 本身是内部类，流体包裹后续版本随时可能改变这条调用链，每次跟进新
+     * 版本时都需要重新反编译确认这一处依然可用。
      */
     public static int maxFluidAmount() {
-        return com.yision.fluidlogistics.util.FluidGaugeHelper.MAX_FLUID_AMOUNT;
+        ItemStack sampleKey = createRealFluidTankStack(new FluidStack(Fluids.WATER, 1));
+        return com.yision.fluidlogistics.content.logistics.fluidPackage.FluidPackageResourceType.fluid()
+                .display()
+                .factoryPanelRestockPolicy(sampleKey)
+                .maxSettingAmount();
     }
 
     /**
@@ -115,10 +147,10 @@ public final class TemplateFluidDisplayHelper {
     }
 
     /**
-     * 判断一个需求列表里的监测过滤物（虚拟压缩罐，{@code virtual=true}，
-     * 数量恒为1）和一份真实流体包裹里的压缩罐（{@code virtual=false}，带
-     * 真实数量）是不是同一种流体——只比流体种类+数据组件，不比
-     * {@code virtual} 标记和数量，两者在这两个字段上必然不同，不能直接用
+     * 判断一个需求列表里的监测过滤物（{@link #createVirtualFluidGhostStack}
+     * 构造出来的压缩罐，数量恒为1）和一份真实流体包裹里的压缩罐（带真实
+     * 数量）是不是同一种流体——只比流体种类+数据组件，不比数量，两者的
+     * 数量按本模组自己的构造约定必然不同，不能直接用
      * {@code ItemStack.isSameItemSameComponents} 整体比对。
      */
     public static boolean isSameFluidType(ItemStack demandItem, FluidStack realFluid) {
@@ -144,12 +176,11 @@ public final class TemplateFluidDisplayHelper {
      * 扫描一个包裹（{@code PackageItem}）的9格内容，找第一个装着流体的
      * 压缩罐并取出流体。
      * <p>
-     * 【重要，之前这里猜错过一次】原来这里额外要求
-     * {@code !CompressedTankItem.isVirtual(slotStack)}（只认非虚拟压缩罐），
-     * 是我自己凭空加上去的限制——反编译流包自己接收包裹的逻辑
-     * （{@code FluidPackagerBlockEntity.collectSinglePackageFluid}）确认过，
-     * 它自己压根不检查 virtual 标记，只要 {@code CompressedTankItem.getFluid(...)}
-     * 不为空就认，已经按流包自己的真实做法改过来了。
+     * 只要求 {@code CompressedTankItem.getFluid(...)} 非空即可，不额外区分
+     * 任何标记——1.2.5 起流体包裹自己也是同样的判断口径（新增的
+     * {@code CompressedTankItem.isFluidStack} 同样只看流体是否非空，压缩罐
+     * 已经没有“虚拟/真实”这个区分维度了，见 {@link #isVirtualFluidDisplay}
+     * 的说明）。
      */
     public static FluidStack findRealFluidInPackage(ItemStack box) {
         if (box == null || box.isEmpty() || !com.simibubi.create.content.logistics.box.PackageItem.isPackage(box)) {
@@ -230,6 +261,50 @@ public final class TemplateFluidDisplayHelper {
     /** 单个压缩罐能装的流体上限（流包自己的配置项）。 */
     public static int tankCapacity() {
         return CompressedTankItem.getCapacity();
+    }
+
+    /**
+     * 判断一个打包机是不是流体包裹自己的流体打包机（{@code
+     * FluidPackagerBlockEntity}）。供出库地址过滤等需要区分"这是流体打包机
+     * 还是普通打包机"、从而分别套用各自配置开关的场景使用——调用前必须先
+     * 确认 {@link FluidLogisticsCompat#isLoaded()} 为真。
+     */
+    public static boolean isFluidPackager(com.simibubi.create.content.logistics.packager.PackagerBlockEntity packager) {
+        return packager instanceof com.yision.fluidlogistics.content.logistics.fluidPackager.FluidPackagerBlockEntity;
+    }
+
+    /**
+     * 计算流体打包机目标（它面朝贴合的流体容器）的物理仓库身份标识，用法与
+     * {@code InvManipulationBehaviour#getIdentifiedInventory()} 里
+     * {@code InventoryIdentifier.get(level, face)} 完全一致，只是流体打包机
+     * 用的是 {@code TankManipulationBehaviour} 而不是
+     * {@code InvManipulationBehaviour}——两者共同的父类
+     * {@code CapManipulationBehaviourBase} 并未提供这个方法，需要在这里单独
+     * 按同样的算法算一次。不是流体打包机、目标未连接、所在区块未加载等
+     * 任何拿不到有效目标的情况都返回 null。调用前必须先确认
+     * {@link FluidLogisticsCompat#isLoaded()} 为真。
+     */
+    public static com.simibubi.create.api.packager.InventoryIdentifier identifyFluidPackagerTarget(
+            com.simibubi.create.content.logistics.packager.PackagerBlockEntity packager) {
+        if (!(packager instanceof com.yision.fluidlogistics.content.logistics.fluidPackager.FluidPackagerBlockEntity fluidPackager)) {
+            return null;
+        }
+        com.simibubi.create.foundation.blockEntity.behaviour.inventory.TankManipulationBehaviour fluidTarget =
+                fluidPackager.fluidTarget;
+        if (fluidTarget == null) {
+            return null;
+        }
+        net.minecraft.world.level.Level level = fluidPackager.getLevel();
+        if (level == null) {
+            return null;
+        }
+        net.createmod.catnip.math.BlockFace face;
+        try {
+            face = fluidTarget.getTarget().getOpposite();
+        } catch (Exception e) {
+            return null;
+        }
+        return com.simibubi.create.api.packager.InventoryIdentifier.get(level, face);
     }
 
     /**
