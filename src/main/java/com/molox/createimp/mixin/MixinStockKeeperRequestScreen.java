@@ -68,8 +68,8 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
 
     @Unique
     private static boolean createimp$isStyle2() {
-        return CreateImp.getConfig().templateConfig.stockKeeperTemplateDisplayStyle
-                == CreateImpConfig.TemplateConfig.TemplateDisplayStyle.STYLE_2;
+        return CreateImp.getConfig().templateFunctionConfig.stockKeeperTemplateDisplayStyle
+                == CreateImpConfig.TemplateFunctionConfig.TemplateDisplayStyle.STYLE_2;
     }
 
     @Unique
@@ -350,7 +350,7 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
 
     @Unique
     private static boolean createimp$isMergeMode() {
-        return CreateImp.getConfig().templateConfig.mergeTemplateWithStock;
+        return CreateImp.getConfig().templateFunctionConfig.mergeTemplateWithStock;
     }
 
     @Inject(method = "refreshSearchResults", at = @At("RETURN"))

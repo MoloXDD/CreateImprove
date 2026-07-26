@@ -1,8 +1,18 @@
 {
+  "neoforge:conditions": [
+    {
+      "type": "createimp:feature_enabled",
+      "feature": "template_system"
+    }
+  ],
   "type": "minecraft:crafting_shapeless",
   "ingredients": [
-    {"item": "create:factory_gauge"},
-    {"item": "create:crafting_blueprint"}
+    {
+      "item": "create:factory_gauge"
+    },
+    {
+      "item": "create:crafting_blueprint"
+    }
   ],
   "result": {
     "id": "createimp:template_panel",

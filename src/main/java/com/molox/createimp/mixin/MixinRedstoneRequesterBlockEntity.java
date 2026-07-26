@@ -64,7 +64,7 @@ public abstract class MixinRedstoneRequesterBlockEntity {
         }
 
         String address = self.encodedTargetAdress;
-        String backAddress = CreateImp.getConfig().workWarehouseConfig.backToConnectedInventoryAddress;
+        String backAddress = CreateImp.getConfig().templateFunctionConfig.backToConnectedInventoryAddress;
         boolean routedToWarehouse = !backAddress.isBlank() && backAddress.equals(address);
 
         List<BigItemStack> regular = new ArrayList<>();

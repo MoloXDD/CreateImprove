@@ -93,7 +93,7 @@ public class ProcessManagerBlockEntity extends SmartBlockEntity {
         if (level == null || level.isClientSide()) {
             return;
         }
-        int max = Math.max(0, CreateImp.getConfig().processManagerConfig.historyLogRetentionCount);
+        int max = Math.max(0, CreateImp.getConfig().templateFunctionConfig.historyLogRetentionCount);
         boolean changed = false;
         while (historyEntries.size() > max) {
             historyEntries.remove(historyEntries.size() - 1);

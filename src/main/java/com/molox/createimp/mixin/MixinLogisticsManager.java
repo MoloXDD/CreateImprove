@@ -92,7 +92,7 @@ public abstract class MixinLogisticsManager {
         // 物品的收货逻辑并不适用（它只是工作仓库自己认识的一个特殊地址，
         // 不是一个真实存在的、可以被打包机送达的地址），所以这里直接把
         // 普通物品的请求部分整体取消，不让它们继续往下走。
-        String backAddress = com.molox.createimp.CreateImp.getConfig().workWarehouseConfig.backToConnectedInventoryAddress;
+        String backAddress = com.molox.createimp.CreateImp.getConfig().templateFunctionConfig.backToConnectedInventoryAddress;
         if (!backAddress.isBlank() && backAddress.equals(address)) {
             filtered = new ArrayList<>();
         }
@@ -113,7 +113,7 @@ public abstract class MixinLogisticsManager {
         if (linkGroup.size() <= 1) {
             return linkGroup.get(index);
         }
-        if (!CreateImp.getConfig().packagerAddressFilterConfig.enabled) {
+        if (!CreateImp.getConfig().functionConfig.featureToggles.packagerAddressFilterEnabled) {
             return linkGroup.get(index);
         }
 

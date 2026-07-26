@@ -104,7 +104,7 @@ public abstract class MixinPackageOrderRequestPacket {
         // 收货逻辑并不适用（它只是工作仓库自己认识的一个特殊地址，不是一个
         // 真实存在的、可以被打包机送达的地址），所以这里直接把普通物品的
         // 请求部分整体取消，不编程进红石请求器。
-        String backAddress = com.molox.createimp.CreateImp.getConfig().workWarehouseConfig.backToConnectedInventoryAddress;
+        String backAddress = com.molox.createimp.CreateImp.getConfig().templateFunctionConfig.backToConnectedInventoryAddress;
         if (!backAddress.isBlank() && backAddress.equals(this.address)) {
             strippedOrder = PackageOrderWithCrafts.empty();
         }

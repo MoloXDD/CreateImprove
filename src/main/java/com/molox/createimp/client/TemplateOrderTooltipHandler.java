@@ -32,7 +32,7 @@ public class TemplateOrderTooltipHandler {
 
         Player player = event.getEntity();
         boolean cannotRequest = player != null && isEncodeRequesterItem(player.getMainHandItem());
-        boolean mergeMode = CreateImp.getConfig().templateConfig.mergeTemplateWithStock
+        boolean mergeMode = CreateImp.getConfig().templateFunctionConfig.mergeTemplateWithStock
                 && Minecraft.getInstance().screen instanceof StockKeeperRequestScreen;
 
         int duplicateCount = 0;

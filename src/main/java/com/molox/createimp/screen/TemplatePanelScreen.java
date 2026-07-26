@@ -196,7 +196,8 @@ public class TemplatePanelScreen extends AbstractSimiScreen {
         }
 
         this.demandModeButton = null;
-        if (!this.behaviour.targetedBy.isEmpty()) {
+        if (!this.behaviour.targetedBy.isEmpty()
+                && com.molox.createimp.CreateImp.getConfig().functionConfig.featureToggles.templateDemandModeEnabled) {
             net.createmod.catnip.gui.element.ScreenElement demandIcon = (graphics, ix, iy) ->
                     graphics.blit(DEMAND_MODE_ICON, ix, iy, 0, 0, 16, 16, 16, 16);
             this.demandModeButton = new IconButton(x + 159, y + 67, demandIcon);
@@ -226,7 +227,8 @@ public class TemplatePanelScreen extends AbstractSimiScreen {
             this.activateCraftingButton.green = this.craftingActive;
         }
         if (this.demandModeButton != null) {
-            boolean shouldShow = !this.behaviour.targetedBy.isEmpty();
+            boolean shouldShow = !this.behaviour.targetedBy.isEmpty()
+                    && com.molox.createimp.CreateImp.getConfig().functionConfig.featureToggles.templateDemandModeEnabled;
             this.demandModeButton.visible = shouldShow;
             this.demandModeButton.active = shouldShow;
             if (shouldShow) {

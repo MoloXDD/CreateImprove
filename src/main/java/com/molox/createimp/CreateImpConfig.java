@@ -10,35 +10,63 @@ import java.util.List;
 @Config(name = "createimp")
 public class CreateImpConfig implements ConfigData {
 
-    @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
+    @ConfigEntry.Category("functionConfig")
+    @ConfigEntry.Gui.TransitiveObject
+    public FunctionConfig functionConfig = new FunctionConfig();
+
+    @ConfigEntry.Category("scrapBucket")
+    @ConfigEntry.Gui.TransitiveObject
     public ScrapBucket scrapBucket = new ScrapBucket();
 
-    @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
-    public QuickUnpack quickUnpack = new QuickUnpack();
-
-    @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
+    @ConfigEntry.Category("labeledRedstoneLinkConfig")
+    @ConfigEntry.Gui.TransitiveObject
     public LabeledRedstoneLinkConfig labeledRedstoneLinkConfig = new LabeledRedstoneLinkConfig();
 
-    @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
+    @ConfigEntry.Category("networkManagerConfig")
+    @ConfigEntry.Gui.TransitiveObject
     public NetworkManagerConfig networkManagerConfig = new NetworkManagerConfig();
 
-    @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
+    @ConfigEntry.Category("batchMechanicalCrafterConfig")
+    @ConfigEntry.Gui.TransitiveObject
     public BatchMechanicalCrafterConfig batchMechanicalCrafterConfig = new BatchMechanicalCrafterConfig();
 
-    @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
-    public WorkWarehouseConfig workWarehouseConfig = new WorkWarehouseConfig();
+    @ConfigEntry.Category("templateFunctionConfig")
+    @ConfigEntry.Gui.TransitiveObject
+    public TemplateFunctionConfig templateFunctionConfig = new TemplateFunctionConfig();
 
-    @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
-    public ProcessManagerConfig processManagerConfig = new ProcessManagerConfig();
-
-    @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
-    public PackagerAddressFilterConfig packagerAddressFilterConfig = new PackagerAddressFilterConfig();
-
-    @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
-    public TemplateConfig templateConfig = new TemplateConfig();
-
-    @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
+    @ConfigEntry.Category("fixConfig")
+    @ConfigEntry.Gui.TransitiveObject
     public FixConfig fixConfig = new FixConfig();
+
+    public static class FunctionConfig {
+        @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
+        public ItemToggles itemToggles = new ItemToggles();
+
+        @ConfigEntry.Gui.CollapsibleObject(startExpanded = true)
+        public FeatureToggles featureToggles = new FeatureToggles();
+
+        public static class ItemToggles {
+            @ConfigEntry.Gui.RequiresRestart
+            public boolean andesiteScrapBucketEnabled = true;
+            @ConfigEntry.Gui.RequiresRestart
+            public boolean brassScrapBucketEnabled = true;
+            @ConfigEntry.Gui.RequiresRestart
+            public boolean networkManagerEnabled = true;
+            @ConfigEntry.Gui.RequiresRestart
+            public boolean labeledRedstoneLinkEnabled = true;
+            @ConfigEntry.Gui.RequiresRestart
+            public boolean batchCraftingEnabled = true;
+            @ConfigEntry.Gui.RequiresRestart
+            public boolean templateSystemEnabled = true;
+        }
+
+        public static class FeatureToggles {
+            public boolean packagerAddressFilterEnabled = true;
+            public boolean quickUnpackEnabled = true;
+            public boolean factoryDemandModeEnabled = true;
+            public boolean templateDemandModeEnabled = true;
+        }
+    }
 
     public static class ScrapBucket {
         public int itemsPerNugget = 64;
@@ -51,10 +79,6 @@ public class CreateImpConfig implements ConfigData {
         public int fluidTransferInterval = 10;
         public List<String> blacklistedItems = new ArrayList<>();
         public List<String> blacklistedFluids = new ArrayList<>();
-    }
-
-    public static class QuickUnpack {
-        public boolean enabled = true;
     }
 
     public static class LabeledRedstoneLinkConfig {
@@ -71,19 +95,9 @@ public class CreateImpConfig implements ConfigData {
         public boolean showItemCount = true;
     }
 
-    public static class WorkWarehouseConfig {
+    public static class TemplateFunctionConfig {
         public String backToConnectedInventoryAddress = "/back";
-    }
-
-    public static class ProcessManagerConfig {
         public int historyLogRetentionCount = 10;
-    }
-
-    public static class PackagerAddressFilterConfig {
-        public boolean enabled = true;
-    }
-
-    public static class TemplateConfig {
         public TemplateDisplayStyle stockKeeperTemplateDisplayStyle = TemplateDisplayStyle.STYLE_1;
         public boolean mergeTemplateWithStock = false;
 

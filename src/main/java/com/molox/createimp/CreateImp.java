@@ -42,6 +42,7 @@ import com.simibubi.create.api.contraption.BlockMovementChecks;
 import com.molox.createimp.registry.ModBlockEntityTypes;
 import com.molox.createimp.registry.ModBlocks;
 import com.molox.createimp.registry.ModCapabilities;
+import com.molox.createimp.registry.ModConditions;
 import com.molox.createimp.registry.ModCreativeTabs;
 import com.molox.createimp.registry.ModDataComponents;
 import com.molox.createimp.registry.ModItems;
@@ -81,6 +82,7 @@ public class CreateImp {
         ModBlockEntityTypes.BLOCK_ENTITY_TYPES.register(modEventBus);
         ModDataComponents.DATA_COMPONENTS.register(modEventBus);
         ModMenuTypes.MENU_TYPES.register(modEventBus);
+        ModConditions.CONDITION_SERIALIZERS.register(modEventBus);
         modEventBus.addListener(ModCapabilities::register);
         com.molox.createimp.block.batch_mechanical_crafter.BatchCrafterArmInteraction.register(modEventBus);
         com.molox.createimp.block.batch_repackager.BatchRepackagerArmInteraction.register(modEventBus);

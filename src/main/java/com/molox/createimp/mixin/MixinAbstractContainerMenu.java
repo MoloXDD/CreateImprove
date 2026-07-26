@@ -56,7 +56,7 @@ public class MixinAbstractContainerMenu {
             }
         }
 
-        if (!CreateImp.getConfig().quickUnpack.enabled) {
+        if (!CreateImp.getConfig().functionConfig.featureToggles.quickUnpackEnabled) {
             return;
         }
         if (clickType != ClickType.PICKUP || button != 1) {

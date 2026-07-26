@@ -46,6 +46,7 @@ public abstract class MixinFactoryPanelScreen {
 
         if (restocker) return;
         if (connections == null || connections.isEmpty()) return;
+        if (!CreateImp.getConfig().functionConfig.featureToggles.factoryDemandModeEnabled) return;
 
         ScreenElement icon = (graphics, x, y) ->
                 graphics.blit(DEMAND_MODE_ICON, x, y, 0, 0, 16, 16, 16, 16);
@@ -79,7 +80,8 @@ public abstract class MixinFactoryPanelScreen {
     private void createimp$tick(CallbackInfo ci) {
         if (createimp$demandModeButton == null) return;
 
-        boolean shouldShow = !restocker && connections != null && !connections.isEmpty();
+        boolean shouldShow = !restocker && connections != null && !connections.isEmpty()
+                && CreateImp.getConfig().functionConfig.featureToggles.factoryDemandModeEnabled;
         createimp$demandModeButton.visible = shouldShow;
         createimp$demandModeButton.active = shouldShow;
 

@@ -1,9 +1,21 @@
 {
+  "neoforge:conditions": [
+    {
+      "type": "createimp:feature_enabled",
+      "feature": "brass_scrap_bucket"
+    }
+  ],
   "type": "minecraft:crafting_shapeless",
   "ingredients": [
-    {"item": "create:brass_casing"},
-    {"item": "minecraft:lava_bucket"},
-    {"item": "create:electron_tube"}
+    {
+      "item": "create:brass_casing"
+    },
+    {
+      "item": "minecraft:lava_bucket"
+    },
+    {
+      "item": "create:electron_tube"
+    }
   ],
   "result": {
     "id": "createimp:brass_scrap_bucket"

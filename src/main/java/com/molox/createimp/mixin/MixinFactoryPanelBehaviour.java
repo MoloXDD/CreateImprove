@@ -1,5 +1,6 @@
 package com.molox.createimp.mixin;
 
+import com.molox.createimp.CreateImp;
 import com.molox.createimp.util.IFactoryPanelBehaviourDemandMode;
 
 import com.google.common.collect.HashMultimap;
@@ -111,6 +112,13 @@ public abstract class MixinFactoryPanelBehaviour implements IFactoryPanelBehavio
 
     @Inject(method = "tickRequests", at = @At("HEAD"), cancellable = true)
     private void createimp$tickRequests(CallbackInfo ci) {
+        if (!CreateImp.getConfig().functionConfig.featureToggles.factoryDemandModeEnabled) {
+            if (createimp$demandMode) {
+                createimp$demandMode = false;
+                panelBE().setChanged();
+            }
+            return;
+        }
         if (!createimp$demandMode) return;
 
         var panelBE = panelBE();
@@ -293,7 +301,7 @@ public abstract class MixinFactoryPanelBehaviour implements IFactoryPanelBehavio
     private void createimp$write(CompoundTag nbt, HolderLookup.Provider registries,
                                  boolean clientPacket, CallbackInfo ci) {
         if (!isActive()) return;
-        if (targetedBy.isEmpty()) {
+        if (targetedBy.isEmpty() || !CreateImp.getConfig().functionConfig.featureToggles.factoryDemandModeEnabled) {
             createimp$demandMode = false;
         }
         CompoundTag panelTag = nbt.getCompound(CreateLang.asId(slot.name()));

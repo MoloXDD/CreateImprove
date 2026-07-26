@@ -1,4 +1,10 @@
 {
+  "neoforge:conditions": [
+    {
+      "type": "createimp:feature_enabled",
+      "feature": "batch_crafting"
+    }
+  ],
   "type": "minecraft:crafting_shaped",
   "pattern": [
     " B ",

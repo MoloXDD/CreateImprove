@@ -1441,7 +1441,7 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
      * 读取当前配置值，玩家改了配置立刻生效，不需要重启或者重新加载。
      */
     private static String backToConnectedInventoryAddress() {
-        return CreateImp.getConfig().workWarehouseConfig.backToConnectedInventoryAddress;
+        return CreateImp.getConfig().templateFunctionConfig.backToConnectedInventoryAddress;
     }
 
     /**
@@ -2150,7 +2150,7 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         // 打包机身上的流体缓存、或者最终产物按特殊地址直接返回连接库存背后的
         // 打包机），这种情况下按地址过滤没有意义，直接跳过匹配，退回随机挑选，
         // 和玩家在配置里关闭地址过滤功能时走的是同一条分支。
-        if (address == null || !CreateImp.getConfig().packagerAddressFilterConfig.enabled) {
+        if (address == null || !CreateImp.getConfig().functionConfig.featureToggles.packagerAddressFilterEnabled) {
             return candidates.get(RNG.nextInt(candidates.size()));
         }
 

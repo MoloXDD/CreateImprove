@@ -546,7 +546,8 @@ public class TemplatePanelBehaviour extends FilteringBehaviour implements MenuPr
         if (!this.active) {
             return;
         }
-        if (this.targetedBy.isEmpty()) {
+        if (this.targetedBy.isEmpty()
+                || !com.molox.createimp.CreateImp.getConfig().functionConfig.featureToggles.templateDemandModeEnabled) {
             this.demandMode = false;
         }
         CompoundTag panelTag = new CompoundTag();

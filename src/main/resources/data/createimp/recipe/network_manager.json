@@ -1,8 +1,18 @@
 {
+  "neoforge:conditions": [
+    {
+      "type": "createimp:feature_enabled",
+      "feature": "network_manager"
+    }
+  ],
   "type": "minecraft:crafting_shapeless",
   "ingredients": [
-    {"item": "create:stock_link"},
-    {"item": "create:linked_controller"}
+    {
+      "item": "create:stock_link"
+    },
+    {
+      "item": "create:linked_controller"
+    }
   ],
   "result": {
     "id": "createimp:network_manager"

@@ -1,6 +1,7 @@
 package com.molox.createimp.registry;
 
 import com.molox.createimp.CreateImp;
+import com.molox.createimp.CreateImpConfig;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.CreativeModeTab;
@@ -17,15 +18,24 @@ public class ModCreativeTabs {
                     .title(Component.translatable("itemGroup.createimp"))
                     .icon(() -> ModItems.NETWORK_MANAGER.get().getDefaultInstance())
                     .displayItems((parameters, output) -> {
-                        output.accept(ModItems.ANDESITE_SCRAP_BUCKET.get());
-                        output.accept(ModItems.BRASS_SCRAP_BUCKET.get());
-                        output.accept(ModItems.NETWORK_MANAGER.get());
-                        output.accept(ModItems.LABELED_REDSTONE_LINK.get());
-                        output.accept(ModItems.BATCH_MECHANICAL_CRAFTER.get());
-                        output.accept(ModItems.BATCH_REPACKAGER.get());
-                        output.accept(ModItems.TEMPLATE_PANEL.get());
-                        output.accept(ModItems.WORK_WAREHOUSE.get());
-                        output.accept(ModItems.PROCESS_MANAGER.get());
+                        CreateImpConfig.FunctionConfig.ItemToggles config = CreateImp.getConfig().functionConfig.itemToggles;
+                        if (config.andesiteScrapBucketEnabled)
+                            output.accept(ModItems.ANDESITE_SCRAP_BUCKET.get());
+                        if (config.brassScrapBucketEnabled)
+                            output.accept(ModItems.BRASS_SCRAP_BUCKET.get());
+                        if (config.networkManagerEnabled)
+                            output.accept(ModItems.NETWORK_MANAGER.get());
+                        if (config.labeledRedstoneLinkEnabled)
+                            output.accept(ModItems.LABELED_REDSTONE_LINK.get());
+                        if (config.batchCraftingEnabled) {
+                            output.accept(ModItems.BATCH_MECHANICAL_CRAFTER.get());
+                            output.accept(ModItems.BATCH_REPACKAGER.get());
+                        }
+                        if (config.templateSystemEnabled) {
+                            output.accept(ModItems.TEMPLATE_PANEL.get());
+                            output.accept(ModItems.WORK_WAREHOUSE.get());
+                            output.accept(ModItems.PROCESS_MANAGER.get());
+                        }
                     })
                     .build());
 }

@@ -44,8 +44,8 @@ public abstract class MixinRedstoneRequesterScreen {
 
     @Unique
     private static boolean createimp$isStyle2() {
-        return CreateImp.getConfig().templateConfig.stockKeeperTemplateDisplayStyle
-                == CreateImpConfig.TemplateConfig.TemplateDisplayStyle.STYLE_2;
+        return CreateImp.getConfig().templateFunctionConfig.stockKeeperTemplateDisplayStyle
+                == CreateImpConfig.TemplateFunctionConfig.TemplateDisplayStyle.STYLE_2;
     }
 
     @Inject(method = "renderBg", at = @At("TAIL"))

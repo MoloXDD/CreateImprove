@@ -1,4 +1,10 @@
 {
+  "neoforge:conditions": [
+    {
+      "type": "createimp:feature_enabled",
+      "feature": "template_system"
+    }
+  ],
   "type": "minecraft:crafting_shaped",
   "pattern": [
     " R ",
