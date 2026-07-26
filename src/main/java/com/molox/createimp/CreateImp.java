@@ -105,6 +105,20 @@ public class CreateImp {
                     ModBlocks.WORK_WAREHOUSE.get(),
                     WorkWarehouseUnpackingHandler.INSTANCE
             );
+            // 修复打包机无法把废料桶识别为容器、解包进废料桶摧毁的问题——见
+            // AndesiteScrapBucketUnpackingHandler/BrassScrapBucketUnpackingHandler
+            // 上的说明。这个注册表是 Create 公开的通用注册表，流体包裹的拆包机
+            // （FluidRepackagerBlockEntity）处理包裹里"普通物品"部分时也是查的
+            // 同一个注册表，因此这里顺带修好了"解包机解包固液混合包裹到废料桶"
+            // 这个兼容需求里物品的那一部分，不需要为流体包裹另外写一份。
+            UnpackingHandler.REGISTRY.register(
+                    ModBlocks.ANDESITE_SCRAP_BUCKET.get(),
+                    com.molox.createimp.block.andesite_scrap_bucket.AndesiteScrapBucketUnpackingHandler.INSTANCE
+            );
+            UnpackingHandler.REGISTRY.register(
+                    ModBlocks.BRASS_SCRAP_BUCKET.get(),
+                    com.molox.createimp.block.brass_scrap_bucket.BrassScrapBucketUnpackingHandler.INSTANCE
+            );
             BlockStressValues.IMPACTS.register(
                     ModBlocks.BATCH_MECHANICAL_CRAFTER.get(),
                     () -> CreateImp.getConfig().batchMechanicalCrafterConfig.maxSpeedStressImpact / 256.0

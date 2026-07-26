@@ -74,7 +74,7 @@ public class CreateImpConfig implements ConfigData {
 
     public static class ScrapBucket {
         public int itemsPerNugget = 64;
-        public int mbPerNugget = 2000;
+        public int mbPerNugget = 8000;
         public boolean generateExperienceNuggets = true;
         public String brassScrapBucketProduceItem = "create:experience_nugget";
         public int itemTransferAmount = 64;
