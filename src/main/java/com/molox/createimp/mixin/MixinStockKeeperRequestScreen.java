@@ -24,6 +24,7 @@ import com.simibubi.create.content.logistics.stockTicker.StockTickerBlockEntity;
 import com.simibubi.create.foundation.gui.AllGuiTextures;
 import com.simibubi.create.foundation.utility.CreateLang;
 import net.createmod.catnip.data.Couple;
+import net.createmod.catnip.gui.element.GuiGameElement;
 import net.minecraft.ChatFormatting;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.gui.Font;
@@ -33,6 +34,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.PacketDistributor;
+import org.joml.Matrix4f;
+import org.joml.Vector4f;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -49,6 +52,20 @@ import java.util.UUID;
 
 @Mixin(value = StockKeeperRequestScreen.class, priority = 500, remap = false)
 public abstract class MixinStockKeeperRequestScreen implements StockKeeperRequestScreenInvoker {
+
+    // ==== 流体模板悬浮裁剪手动校准区 ====
+    // 非悬浮状态的裁剪窗口用当前变换直接算，跟非悬浮时的原有表现完全一致；
+    // 悬浮状态不再信任变换矩阵里悬浮缩放那部分算出来的结果，而是在非悬浮
+    // 裁剪框的基础上，宽、高各增长 FLUID_TEMPLATE_HOVER_GROWTH 像素，中心点
+    // 在非悬浮中心的基础上偏移 (FLUID_TEMPLATE_HOVER_CENTER_OFFSET_X,
+    // FLUID_TEMPLATE_HOVER_CENTER_OFFSET_Y) 像素——实机看偏了就直接改这两个
+    // 偏移量，正数分别代表往右、往下偏。
+    @Unique
+    private static final float FLUID_TEMPLATE_HOVER_GROWTH = 3.0f;
+    @Unique
+    private static final float FLUID_TEMPLATE_HOVER_CENTER_OFFSET_X = 0.0f;
+    @Unique
+    private static final float FLUID_TEMPLATE_HOVER_CENTER_OFFSET_Y = 0.0f;
 
     @Unique
     private static final ResourceLocation TEMPLATE_SLOT_BG =
@@ -560,9 +577,6 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
         pose.popPose();
     }
 
-    @Unique
-    private static final int FLUID_TEMPLATE_BORDER_MARGIN = 3;
-
     /**
      * 判断这一条展示条目是不是"监测流体的模板令牌"：必须先是模板令牌，
      * 且流体包裹已安装（未安装时模板不可能监测到流体过滤物，这里的判断
@@ -582,45 +596,100 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
 
     /**
      * 样式1（背景样式）下，流体包裹的虚拟流体压缩罐物品自己的图标渲染会
-     * 铺满整个 16x16 图标区域，把下面刚画好的模板背景贴图整个遮住，看起来
-     * 完全看不出这是一个模板。这里不去碰流体图标本身的绘制（那是 Catnip
-     * 库 {@code GuiGameElement} 内部实现，没有源码不能猜其内部签名），而是
-     * 在图标画完之后，用和图标完全相同的一套 pushPose/translate/scale 变换
-     * （数值照抄样式2那段已经验证过的写法），把模板背景贴图四条 3 像素宽的
-     * 边框窄条重新覆盖画一遍——每条窄条取的都是背景贴图自己对应位置的原始
-     * 像素，画上去之后视觉效果等同于"图标四周被裁掉了一圈、露出下面的背景"，
-     * 不需要用到 enableScissor 也不需要了解 GuiGameElement 的任何内部实现。
+     * 铺满整个 16x16 图标区域，把下面刚画好的模板背景贴图整个遮住。
+     * <p>
+     * 反编译确认原版 {@code renderItemEntry} 画图标那一句是：
+     * <pre>
+     * GuiGameElement.of(stackWithCount).render(graphics);
+     * </pre>
+     * 用 {@code @WrapOperation} 包住这一句调用，在渲染前后分别
+     * {@code enableScissor}/{@code disableScissor}，达到"裁剪图标"的效果。
+     * <p>
+     * 非悬浮状态：直接用当前姿态矩阵，把本地坐标 (MARGIN,MARGIN) 和
+     * (16-MARGIN,16-MARGIN) 投影成屏幕坐标，作为裁剪范围——这跟非悬浮时
+     * 原本的表现完全一致，没有改动。
+     * <p>
+     * 悬浮状态：之前几版都是想办法推导"悬浮时图标真实缩放中心在哪"，反复
+     * 验证都跟实机表现对不上，不再猜了。这里改成纯粹的经验做法：先按上面
+     * 同一套本地坐标算出"如果不悬浮，这一帧应该是什么样子"（用悬浮系数把
+     * 当前矩阵的缩放部分除掉，还原出非悬浮时的框，公式推导见下），然后在
+     * 这个非悬浮框的基础上，宽、高各增长 {@code FLUID_TEMPLATE_HOVER_GROWTH}
+     * 像素，中心点整体偏移 ({@code FLUID_TEMPLATE_HOVER_CENTER_OFFSET_X},
+     * {@code FLUID_TEMPLATE_HOVER_CENTER_OFFSET_Y})——这两个偏移量放在类最
+     * 开头，实机对不上就直接改这两个数字。
+     * <p>
+     * 【还原非悬浮框的公式】原版对图标做缩放用的轴心是本地坐标 (9,9)，这个
+     * 点的屏幕投影位置 pivotScreen 不随缩放倍数变化（缩放轴心本身不动）。
+     * 设当前矩阵对某点 P 的投影为 mat(P)，悬浮缩放系数为 h（悬浮时 1.075，
+     * 不悬浮时 1.0），则有：mat(P) = pivotScreen + h × (matRest(P) - pivotScreen)，
+     * 也就是 matRest(P) = pivotScreen + (mat(P) - pivotScreen) / h。不悬浮时
+     * h=1，matRest(P) 直接等于 mat(P)，跟"非悬浮状态直接用当前矩阵"这一条
+     * 是同一回事，写成统一公式只是为了悬浮、非悬浮共用一套代码。
+     * <p>
+     * {@code GuiGraphics} 内部的裁剪范围是一个真正的栈（{@code ScissorStack}），
+     * {@code enableScissor}/{@code disableScissor} 分别对应入栈/出栈，出栈后
+     * 会恢复外层原有的裁剪范围（这里是仓管列表本身的滚动裁剪区），不会把
+     * 外层裁剪整个关掉，可以放心嵌套使用。
      */
-    @Inject(method = "renderItemEntry", at = @At("TAIL"))
-    private void createimp$drawFluidTemplateBorderStyle1(GuiGraphics graphics, float scale, BigItemStack entry,
-                                                         boolean isStackHovered, boolean isRenderingOrders, CallbackInfo ci) {
+    @Unique
+    private static final float FLUID_TEMPLATE_CROP_MARGIN = 1.0f;
+    @Unique
+    private static final float FLUID_TEMPLATE_HOVER_SCALE = 1.075f;
+
+    @WrapOperation(method = "renderItemEntry", at = @At(value = "INVOKE",
+            target = "Lnet/createmod/catnip/gui/element/GuiGameElement$GuiRenderBuilder;render(Lnet/minecraft/client/gui/GuiGraphics;)V"))
+    private void createimp$clipFluidTemplateIcon(GuiGameElement.GuiRenderBuilder instance, GuiGraphics graphics,
+                                                 Operation<Void> original,
+                                                 @Local(argsOnly = true) BigItemStack entry,
+                                                 @Local(argsOnly = true, ordinal = 0) boolean isStackHovered) {
         if (createimp$isStyle2() || !createimp$isFluidTemplateEntry(entry.stack)) {
+            original.call(instance, graphics);
             return;
         }
-        ResourceLocation texture = isRenderingOrders ? TEMPLATE_REQUEST_SLOT_BG : TEMPLATE_SLOT_BG;
-        float scaleFromHover = isStackHovered ? 1.075f : 1.0f;
-        int mTop = FLUID_TEMPLATE_BORDER_MARGIN - 1;
-        int mLeft = FLUID_TEMPLATE_BORDER_MARGIN - 1;
-        int mRight = FLUID_TEMPLATE_BORDER_MARGIN - 1;
-        int mBottom = FLUID_TEMPLATE_BORDER_MARGIN - 1;
-        PoseStack pose = graphics.pose();
-        pose.pushPose();
-        pose.translate(1.0, 1.0, 0.0);
-        pose.translate(9.0, 9.0, 0.0);
-        pose.scale(scale, scale, scale);
-        pose.scale(scaleFromHover, scaleFromHover, scaleFromHover);
-        pose.translate(-9.0, -9.0, 0.0);
-        pose.translate(0.0, 0.0, 150.0);
-        // 上边
-        graphics.blit(texture, -1, -1, 0, 0, 18, mTop, 18, 18);
-        // 下边
-        graphics.blit(texture, -1, 17 - mBottom, 0, 18 - mBottom, 18, mBottom, 18, 18);
-        // 左边（不含上下边已覆盖的角）
-        graphics.blit(texture, -1, -1 + mTop, 0, mTop, mLeft, 18 - mTop - mBottom, 18, 18);
-        // 右边（不含上下边已覆盖的角）
-        graphics.blit(texture, 17 - mRight, -1 + mTop, 18 - mRight, mTop, mRight, 18 - mTop - mBottom, 18, 18);
-        pose.popPose();
+        Matrix4f mat = new Matrix4f(graphics.pose().last().pose());
+        Vector4f pivot = mat.transform(new Vector4f(9.0f, 9.0f, 0.0f, 1.0f));
+        Vector4f hoverTopLeft = mat.transform(new Vector4f(FLUID_TEMPLATE_CROP_MARGIN, FLUID_TEMPLATE_CROP_MARGIN, 0.0f, 1.0f));
+        Vector4f hoverBottomRight = mat.transform(new Vector4f(16.0f - FLUID_TEMPLATE_CROP_MARGIN, 16.0f - FLUID_TEMPLATE_CROP_MARGIN, 0.0f, 1.0f));
+
+        float h = isStackHovered ? FLUID_TEMPLATE_HOVER_SCALE : 1.0f;
+        float restLeft = pivot.x() + (hoverTopLeft.x() - pivot.x()) / h;
+        float restTop = pivot.y() + (hoverTopLeft.y() - pivot.y()) / h;
+        float restRight = pivot.x() + (hoverBottomRight.x() - pivot.x()) / h;
+        float restBottom = pivot.y() + (hoverBottomRight.y() - pivot.y()) / h;
+
+        float x0f;
+        float y0f;
+        float x1f;
+        float y1f;
+        if (!isStackHovered) {
+            x0f = restLeft;
+            y0f = restTop;
+            x1f = restRight;
+            y1f = restBottom;
+        } else {
+            float centerX = (restLeft + restRight) / 2.0f + FLUID_TEMPLATE_HOVER_CENTER_OFFSET_X;
+            float centerY = (restTop + restBottom) / 2.0f + FLUID_TEMPLATE_HOVER_CENTER_OFFSET_Y;
+            // 这里传入 GROWTH/2 而不是 GROWTH：实机测试反馈过，按 GROWTH
+            // 直接算，最终视觉增长量是设定值的 2 倍，这里先除以 2 校准过，
+            // 使得 FLUID_TEMPLATE_HOVER_GROWTH 这个常量的取值本身就等于
+            // 玩家在游戏里实际看到的宽、高增长像素数。
+            float halfWidth = (restRight - restLeft + FLUID_TEMPLATE_HOVER_GROWTH / 2.0f) / 2.0f;
+            float halfHeight = (restBottom - restTop + FLUID_TEMPLATE_HOVER_GROWTH / 2.0f) / 2.0f;
+            x0f = centerX - halfWidth;
+            y0f = centerY - halfHeight;
+            x1f = centerX + halfWidth;
+            y1f = centerY + halfHeight;
+        }
+
+        int x0 = Math.round(Math.min(x0f, x1f));
+        int y0 = Math.round(Math.min(y0f, y1f));
+        int x1 = Math.round(Math.max(x0f, x1f));
+        int y1 = Math.round(Math.max(y0f, y1f));
+        graphics.enableScissor(x0, y0, x1, y1);
+        original.call(instance, graphics);
+        graphics.disableScissor();
     }
+
 
     @WrapWithCondition(method = "renderItemEntry", at = @At(value = "INVOKE",
             target = "Lcom/simibubi/create/content/logistics/stockTicker/StockKeeperRequestScreen;drawItemCount(Lnet/minecraft/client/gui/GuiGraphics;II)V"))
