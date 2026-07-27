@@ -550,6 +550,13 @@ public class BatchMechanicalCrafterBlockEntity extends KineticBlockEntity implem
         this.sendData();
         this.invCap = null;
         this.invalidateCapabilities();
+        // 连接关系变化（合成器加入或离开阵列）可能让原本因为"区域不够大"
+        // 被拒绝、原样留在打包机内的带合成表包裹，现在恰好有了一块足够的
+        // 正方形区域——复用现有的链条范围重试机制，让相邻打包机重新尝试
+        // 一次，不需要等到某个格子恰好清空才会被动触发。
+        if (this.level != null && !this.level.isClientSide()) {
+            this.tryProcessPackagerBoxChainWide();
+        }
     }
 
     /**

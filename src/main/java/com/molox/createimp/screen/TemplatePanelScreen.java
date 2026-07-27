@@ -4,11 +4,13 @@ import com.molox.createimp.block.template_panel.TemplatePanelBehaviour;
 import com.molox.createimp.block.template_panel.TemplatePanelConnection;
 import com.molox.createimp.block.template_panel.TemplatePanelConnectionHandler;
 import com.molox.createimp.block.template_panel.TemplatePanelPosition;
+import com.molox.createimp.compat.extragauges.ExtraGaugesCompat;
 import com.molox.createimp.compat.fluidlogistics.FluidLogisticsCompat;
 import com.molox.createimp.compat.fluidlogistics.TemplateFluidDisplayHelper;
 import com.molox.createimp.network.TemplatePanelConfigurationPacket;
 import com.molox.createimp.registry.ModItems;
 import com.simibubi.create.AllRecipeTypes;
+import com.simibubi.create.content.kinetics.crafter.MechanicalCraftingRecipe;
 import com.simibubi.create.content.logistics.AddressEditBox;
 import com.simibubi.create.content.logistics.BigItemStack;
 import com.simibubi.create.content.trains.station.NoShadowFontWrapper;
@@ -51,6 +53,17 @@ public class TemplatePanelScreen extends AbstractSimiScreen {
     private static final net.minecraft.resources.ResourceLocation DEMAND_MODE_ICON =
             net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(
                     com.molox.createimp.CreateImp.MODID, "textures/gui/demand_request_button.png");
+    /**
+     * 动力合成表过大无法逐格渲染时使用的遮盖贴图，直接复用额外仪表自带的
+     * 同一张贴图（其资源包内已经包含这张图，不需要我们自己再打包一份）。
+     * 这个字段只会在 {@link #tooLargeToRender} 判定为 true 时才会被用于绘制，
+     * 而 {@code availableMechanicalRecipe} 只有在 {@link ExtraGaugesCompat#isLoaded()}
+     * 为真时才可能非空，因此这里引用到的贴图资源在被绘制的那一刻必定真实
+     * 存在，不会出现资源缺失。
+     */
+    private static final net.minecraft.resources.ResourceLocation LARGE_RECIPE_PLACEHOLDER_TEXTURE =
+            net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(
+                    ExtraGaugesCompat.MOD_ID, "textures/gui/auto_crafting_gauge.png");
 
     private AddressEditBox addressBox;
     private IconButton confirmButton;
@@ -65,13 +78,29 @@ public class TemplatePanelScreen extends AbstractSimiScreen {
     private List<BigItemStack> inputConfig;
     private List<TemplatePanelConnection> connections;
     private CraftingRecipe availableCraftingRecipe;
+    /**
+     * 额外仪表（Extra Gauges）兼容：识别到的动力合成表，仅在安装了额外仪表
+     * 时才会被搜索、被赋值，未安装时恒为 null，行为与本次改动之前完全一致。
+     * 只有 {@link #availableCraftingRecipe} 找不到匹配的普通合成表时，才会
+     * 尝试搜索这个字段，两者不会同时非空。
+     */
+    private MechanicalCraftingRecipe availableMechanicalRecipe;
     private boolean craftingActive;
     private List<BigItemStack> craftingIngredients;
+    /**
+     * 动力合成模式下，渲染材料图标网格时使用的每行列数：普通合成表固定 3 列
+     * （沿用原有的补齐到 3 的倍数逻辑）；动力合成表按补齐后的正方形边长 n
+     * 渲染（见 {@link #convertMechanicalRecipeToPackageOrderContext}），避免
+     * 非正方形配方（比如 1×3、4×1）在固定 3 列的网格里显示错位。只影响
+     * 客户端展示，不影响实际发往工作仓库的合成表数据。
+     */
+    private int craftingColumns = 3;
 
     public TemplatePanelScreen(TemplatePanelBehaviour behaviour) {
         this.behaviour = behaviour;
         this.minecraft = Minecraft.getInstance();
         this.availableCraftingRecipe = null;
+        this.availableMechanicalRecipe = null;
         this.craftingActive = !behaviour.activeCraftingArrangement.isEmpty();
         this.updateConfigs();
     }
@@ -84,11 +113,58 @@ public class TemplatePanelScreen extends AbstractSimiScreen {
             return new BigItemStack(filter, c.amount);
         }).toList();
         this.searchForCraftingRecipe();
-        if (this.availableCraftingRecipe == null) {
-            this.craftingActive = false;
+        if (this.availableCraftingRecipe != null) {
+            this.craftingColumns = 3;
+            this.craftingIngredients = convertRecipeToPackageOrderContext(this.availableCraftingRecipe, this.inputConfig);
             return;
         }
-        this.craftingIngredients = convertRecipeToPackageOrderContext(this.availableCraftingRecipe, this.inputConfig);
+        if (this.availableMechanicalRecipe != null) {
+            this.craftingColumns = Math.max(1, Math.max(
+                    this.availableMechanicalRecipe.getWidth(), this.availableMechanicalRecipe.getHeight()));
+            this.craftingIngredients = convertMechanicalRecipeToPackageOrderContext(this.availableMechanicalRecipe, this.inputConfig);
+            return;
+        }
+        this.craftingActive = false;
+    }
+
+    /**
+     * 把一个动力合成表转换成材料列表：按左上角对齐，补齐成一个 n×n 的正方形
+     * （n = max(配方宽度, 配方高度)），空位一律填充空气占位。
+     * <p>
+     * 这里补齐成正方形是与批量动力合成器一侧（{@code BatchCrafterUnpackingHandler}）
+     * 的约定配套的：那一侧只能拿到这份摊平的列表本身，没有单独的"宽度"字段
+     * 可看，只能靠列表长度是不是完全平方数反推边长；如果这里不补齐、直接
+     * 按配方原始宽×高的长度传出去，配方本身不是正方形时那一侧根本无法正确
+     * 反推出边长，会按错误的边长换算行列号，导致材料摆放位置错乱。
+     * 补齐之后，配方原始内容固定摆在这个正方形的左上角，物理合成器链条
+     * 只要边长不小于这个 n 就能正确对应上，允许链条比配方本身更大。
+     */
+    public static List<BigItemStack> convertMechanicalRecipeToPackageOrderContext(
+            MechanicalCraftingRecipe recipe, List<BigItemStack> inputs) {
+        int width = recipe.getWidth();
+        int height = recipe.getHeight();
+        int n = Math.max(width, height);
+        BigItemStack emptyIngredient = new BigItemStack(ItemStack.EMPTY, 1);
+        NonNullList<Ingredient> ingredients = recipe.getIngredients();
+        List<BigItemStack> mutableInputs = BigItemStack.duplicateWrappers(inputs);
+
+        BigItemStack[] square = new BigItemStack[n * n];
+        java.util.Arrays.fill(square, emptyIngredient);
+        for (int row = 0; row < height; row++) {
+            for (int col = 0; col < width; col++) {
+                Ingredient ingredient = ingredients.get(row * width + col);
+                BigItemStack craftingIngredient = emptyIngredient;
+                if (!ingredient.isEmpty()) {
+                    for (BigItemStack bigItemStack : mutableInputs) {
+                        if (bigItemStack.count <= 0 || !ingredient.test(bigItemStack.stack)) continue;
+                        craftingIngredient = new BigItemStack(bigItemStack.stack, 1);
+                        break;
+                    }
+                }
+                square[row * n + col] = craftingIngredient;
+            }
+        }
+        return new ArrayList<>(java.util.Arrays.asList(square));
     }
 
     public static List<BigItemStack> convertRecipeToPackageOrderContext(CraftingRecipe availableCraftingRecipe, List<BigItemStack> inputs) {
@@ -182,13 +258,16 @@ public class TemplatePanelScreen extends AbstractSimiScreen {
         this.addRenderableWidget(this.relocateButton);
 
         this.activateCraftingButton = null;
-        if (this.availableCraftingRecipe != null) {
+        CraftingRecipe recipeForActivation = this.availableCraftingRecipe != null
+                ? this.availableCraftingRecipe : this.availableMechanicalRecipe;
+        if (recipeForActivation != null) {
+            CraftingRecipe finalRecipeForActivation = recipeForActivation;
             this.activateCraftingButton = new IconButton(x + 31, y + 27, AllIcons.I_3x3);
             this.activateCraftingButton.withCallback(() -> {
                 this.craftingActive = !this.craftingActive;
                 this.init();
                 if (this.craftingActive) {
-                    this.outputConfig.count = this.availableCraftingRecipe.getResultItem((HolderLookup.Provider) this.minecraft.level.registryAccess()).getCount();
+                    this.outputConfig.count = finalRecipeForActivation.getResultItem((HolderLookup.Provider) this.minecraft.level.registryAccess()).getCount();
                 }
             });
             this.activateCraftingButton.setToolTip(CreateLang.translate("gui.factory_panel.activate_crafting").component());
@@ -247,8 +326,15 @@ public class TemplatePanelScreen extends AbstractSimiScreen {
 
         int slot = 0;
         if (this.craftingActive) {
-            for (BigItemStack itemStack : this.craftingIngredients) {
-                this.renderInputItem(graphics, slot++, itemStack, mouseX, mouseY);
+            boolean tooLargeToRender = this.availableMechanicalRecipe != null
+                    && Math.max(this.availableMechanicalRecipe.getWidth(), this.availableMechanicalRecipe.getHeight()) > 3;
+            if (tooLargeToRender) {
+                graphics.blit(LARGE_RECIPE_PLACEHOLDER_TEXTURE, x + 56, y + 23, 0, 0, 79, 72);
+                this.showLargeRecipeTooltip(graphics, mouseX, mouseY);
+            } else {
+                for (BigItemStack itemStack : this.craftingIngredients) {
+                    this.renderInputItem(graphics, slot++, itemStack, mouseX, mouseY);
+                }
             }
         } else {
             for (BigItemStack itemStack : this.inputConfig) {
@@ -294,8 +380,9 @@ public class TemplatePanelScreen extends AbstractSimiScreen {
     }
 
     private void renderInputItem(GuiGraphics graphics, int slot, BigItemStack itemStack, int mouseX, int mouseY) {
-        int inputX = this.guiLeft + 68 + slot % 3 * 20;
-        int inputY = this.guiTop + 28 + slot / 3 * 20;
+        int columns = this.craftingActive ? this.craftingColumns : 3;
+        int inputX = this.guiLeft + 68 + slot % columns * 20;
+        int inputY = this.guiTop + 28 + slot / columns * 20;
         graphics.renderItem(itemStack.stack, inputX, inputY);
         if (!this.craftingActive && !itemStack.stack.isEmpty()) {
             graphics.renderItemDecorations(this.font, itemStack.stack, inputX, inputY,
@@ -323,6 +410,23 @@ public class TemplatePanelScreen extends AbstractSimiScreen {
                 CreateLang.translate("gui.factory_panel.sending_item", CreateLang.itemName(itemStack.stack).add(CreateLang.text(" x" + createimp$formatAmount(itemStack.stack, itemStack.count))).string()).component(),
                 CreateLang.translate("gui.factory_panel.scroll_to_change_amount").style(ChatFormatting.DARK_GRAY).style(ChatFormatting.ITALIC).component(),
                 CreateLang.translate("gui.factory_panel.left_click_disconnect").style(ChatFormatting.DARK_GRAY).style(ChatFormatting.ITALIC).component()
+        ), mouseX, mouseY);
+    }
+
+    /**
+     * 动力合成表宽或高超过 3（额外仪表兼容功能）时，材料展示区域不再逐格
+     * 渲染每一种材料的图标，鼠标悬停在这块区域上时改为显示这条提示。
+     * 只影响这一块区域的展示，配方实际参与生产的数据不受影响。
+     */
+    private void showLargeRecipeTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
+        int areaX = this.guiLeft + 68 - 2;
+        int areaY = this.guiTop + 28 - 2;
+        if (mouseX < areaX || mouseX >= areaX + 62 || mouseY < areaY || mouseY >= areaY + 62) {
+            return;
+        }
+        graphics.renderComponentTooltip(this.font, List.of(
+                Component.translatable("createimp.gui.factory_panel.large_recipe_no_render").withStyle(ChatFormatting.GRAY),
+                Component.translatable("createimp.gui.factory_panel.large_recipe_no_render_tip").withStyle(ChatFormatting.DARK_GRAY)
         ), mouseX, mouseY);
     }
 
@@ -451,6 +555,8 @@ public class TemplatePanelScreen extends AbstractSimiScreen {
     }
 
     private void searchForCraftingRecipe() {
+        this.availableCraftingRecipe = null;
+        this.availableMechanicalRecipe = null;
         ItemStack output = this.outputConfig.stack;
         if (output.isEmpty()) {
             return;
@@ -461,6 +567,38 @@ public class TemplatePanelScreen extends AbstractSimiScreen {
         Set<Item> itemsToUse = this.inputConfig.stream().map(b -> b.stack).filter(i -> !i.isEmpty()).map(ItemStack::getItem).collect(Collectors.toSet());
         ClientLevel level = Minecraft.getInstance().level;
         this.availableCraftingRecipe = level.getRecipeManager().getAllRecipesFor(RecipeType.CRAFTING).parallelStream()
+                .filter(r -> output.getItem() == r.value().getResultItem((HolderLookup.Provider) level.registryAccess()).getItem())
+                .filter(r -> {
+                    if (AllRecipeTypes.shouldIgnoreInAutomation(r)) {
+                        return false;
+                    }
+                    HashSet<Item> itemsUsed = new HashSet<>();
+                    for (Ingredient ingredient : r.value().getIngredients()) {
+                        if (ingredient.isEmpty()) continue;
+                        boolean available = false;
+                        for (BigItemStack bis : this.inputConfig) {
+                            if (bis.stack.isEmpty() || !ingredient.test(bis.stack)) continue;
+                            available = true;
+                            itemsUsed.add(bis.stack.getItem());
+                            break;
+                        }
+                        if (!available) {
+                            return false;
+                        }
+                    }
+                    return itemsUsed.size() >= itemsToUse.size();
+                }).findAny().map(RecipeHolder::value).orElse(null);
+        if (this.availableCraftingRecipe != null) {
+            return;
+        }
+        // 额外仪表兼容：只有在没有匹配到任何普通合成表、且额外仪表确实已安装时，
+        // 才尝试搜索动力合成表；未安装额外仪表时这段代码完全不会执行，
+        // availableMechanicalRecipe 恒为 null，行为与本次改动之前完全一致。
+        if (!ExtraGaugesCompat.isLoaded()) {
+            return;
+        }
+        RecipeType<MechanicalCraftingRecipe> mechanicalType = AllRecipeTypes.MECHANICAL_CRAFTING.getType();
+        this.availableMechanicalRecipe = level.getRecipeManager().getAllRecipesFor(mechanicalType).parallelStream()
                 .filter(r -> output.getItem() == r.value().getResultItem((HolderLookup.Provider) level.registryAccess()).getItem())
                 .filter(r -> {
                     if (AllRecipeTypes.shouldIgnoreInAutomation(r)) {
