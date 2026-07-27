@@ -315,11 +315,17 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
             return;
         }
         this.revalidateOrders();
-        if (this.itemsToOrder.isEmpty() || this.blockEntity == null) {
+        if (this.itemsToOrder.isEmpty() || this.blockEntity == null || this.blockEntity.behaviour == null) {
+            CreateImp.LOGGER.info(
+                    "[模板材料] 仓管界面放弃发送材料请求：请求栏为空={}, 仓管方块为空={}, 网络行为为空={}",
+                    this.itemsToOrder.isEmpty(), this.blockEntity == null,
+                    this.blockEntity != null && this.blockEntity.behaviour == null);
             return;
         }
+        CreateImp.LOGGER.info("[模板材料] 仓管界面发送材料计算请求：网络={}, 请求栏条目数={}",
+                this.blockEntity.behaviour.freqId, this.itemsToOrder.size());
         PacketDistributor.sendToServer(new RequestTemplateMaterialsPacket(
-                this.blockEntity.getBlockPos(), new ArrayList<>(this.itemsToOrder)));
+                this.blockEntity.behaviour.freqId, new ArrayList<>(this.itemsToOrder)));
     }
 
     @Inject(method = "renderForeground", at = @At("TAIL"))

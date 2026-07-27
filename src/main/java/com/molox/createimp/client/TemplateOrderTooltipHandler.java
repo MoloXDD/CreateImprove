@@ -3,8 +3,8 @@ package com.molox.createimp.client;
 import com.molox.createimp.CreateImp;
 import com.molox.createimp.item.TemplateOrderTarget;
 import com.molox.createimp.item.TemplateOrderTokenHelper;
+import com.molox.createimp.util.StockKeeperRequestScreenInvoker;
 import com.simibubi.create.AllTags;
-import com.simibubi.create.content.logistics.stockTicker.StockKeeperRequestScreen;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
@@ -33,7 +33,7 @@ public class TemplateOrderTooltipHandler {
         Player player = event.getEntity();
         boolean cannotRequest = player != null && isEncodeRequesterItem(player.getMainHandItem());
         boolean mergeMode = CreateImp.getConfig().templateFunctionConfig.mergeTemplateWithStock
-                && Minecraft.getInstance().screen instanceof StockKeeperRequestScreen;
+                && Minecraft.getInstance().screen instanceof StockKeeperRequestScreenInvoker;
 
         int duplicateCount = 0;
         for (ItemStack display : currentTemplateDisplays) {

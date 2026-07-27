@@ -10,9 +10,8 @@ import com.molox.createimp.network.RequestWorkWarehouseAvailabilityPacket;
 import com.molox.createimp.item.TemplateOrderTokenHelper;
 import com.molox.createimp.network.OpenTemplateMaterialsGuiPacket;
 import com.molox.createimp.network.RequestTemplateMaterialsPacket;
+import com.molox.createimp.network.RequestTemplateStockSamplePacket;
 import com.simibubi.create.content.logistics.BigItemStack;
-import com.simibubi.create.content.logistics.packager.InventorySummary;
-import com.simibubi.create.content.logistics.stockTicker.StockTickerBlockEntity;
 import com.simibubi.create.foundation.gui.AllGuiTextures;
 import com.simibubi.create.foundation.gui.AllIcons;
 import com.simibubi.create.foundation.gui.widget.IconButton;
@@ -22,12 +21,10 @@ import net.createmod.catnip.gui.ScreenOpener;
 import net.createmod.catnip.gui.element.ScreenElement;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.block.entity.BlockEntity;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.ArrayList;
@@ -110,13 +107,16 @@ public class TemplateMaterialsScreen extends AbstractSimiScreen {
      */
     private static final int WORK_WAREHOUSE_POLL_TICKS = 15;
 
+    /** 尚未收到过服务端回应时，跟踪物品的库存数量按这个哨兵值处理——既不
+     * 是"确实为0"，也不会在第一次收到真实数值时被误判为"发生了变化"。 */
+    private static final int UNKNOWN_COUNT = -1;
+
     private boolean canCompleteAll;
     private List<BigItemStack> missing;
     private List<BigItemStack> usedFromStock;
     private final LerpedFloat scroll;
     private UUID freqId;
     private int templateCount;
-    private final BlockPos stockTickerPos;
     private final List<BigItemStack> originalItemsToOrder;
     private final net.minecraft.client.gui.screens.Screen previousScreen;
 
@@ -126,6 +126,10 @@ public class TemplateMaterialsScreen extends AbstractSimiScreen {
     private final List<TrackedItem> trackedItems = new ArrayList<>();
     private int stockPollCooldown;
     private int workWarehousePollCooldown;
+    /** 上一次发出库存样本查询时，samples 列表里属于 trackedItems 的数量
+     * （其余部分是用于链失效检测的模板令牌本身），回应到达时用它来正确
+     * 切分两部分结果。 */
+    private int pendingTrackedCount;
 
     public TemplateMaterialsScreen(OpenTemplateMaterialsGuiPacket packet, net.minecraft.client.gui.screens.Screen previousScreen) {
         super(Component.translatable("createimp.gui.template_materials.title"));
@@ -135,7 +139,6 @@ public class TemplateMaterialsScreen extends AbstractSimiScreen {
         this.scroll = LerpedFloat.linear().startWithValue(0);
         this.freqId = packet.freqId();
         this.templateCount = packet.templateCount();
-        this.stockTickerPos = packet.requestContext().stockTickerPos();
         this.originalItemsToOrder = new ArrayList<>(packet.requestContext().itemsToOrder());
         this.previousScreen = previousScreen;
         this.rebuildTrackedItems();
@@ -286,8 +289,6 @@ public class TemplateMaterialsScreen extends AbstractSimiScreen {
 
     private void rebuildTrackedItems() {
         trackedItems.clear();
-        StockTickerBlockEntity blockEntity = resolveBlockEntity();
-        InventorySummary summary = blockEntity != null ? blockEntity.getLastClientsideStockSnapshotAsSummary() : null;
         List<ItemStack> allItems = new ArrayList<>();
         for (BigItemStack entry : missing) {
             allItems.add(entry.stack);
@@ -296,73 +297,81 @@ public class TemplateMaterialsScreen extends AbstractSimiScreen {
             allItems.add(entry.stack);
         }
         for (ItemStack stack : allItems) {
-            int count = summary != null ? summary.getCountOf(stack) : 0;
-            trackedItems.add(new TrackedItem(stack.copyWithCount(1), count));
+            trackedItems.add(new TrackedItem(stack.copyWithCount(1), UNKNOWN_COUNT));
         }
-        stockPollCooldown = STOCK_POLL_TICKS;
-    }
-
-    private StockTickerBlockEntity resolveBlockEntity() {
-        if (minecraft == null || minecraft.level == null) {
-            return null;
-        }
-        BlockEntity be = minecraft.level.getBlockEntity(stockTickerPos);
-        return be instanceof StockTickerBlockEntity stbe ? stbe : null;
+        // 立即在下一 tick 发起一次查询去填充真实数值，不用等满一整个轮询
+        // 周期——这次查询只是"记录基准值"，不会因为哨兵值而误触发重算。
+        stockPollCooldown = 0;
     }
 
     /**
      * 这一路轮询同时做两件事：
-     * 1. 链有效性检查（几乎零额外开销）：仓管同步给客户端的库存快照里，
-     *    "模板"分类下的每个条目都是服务端 collectOrderableTemplates()
-     *    实时算出来的，只有链仍然有效的模板才会出现在里面（
-     *    {@link InventorySummary#getCountOf} 按 isSameItemSameComponents
-     *    精确匹配，不会和网络里的同名普通物品混淆，已反编译确认）。
-     *    如果本次请求里任何一个模板 token 在这份快照里查不到了，说明它的
-     *    链在服务端已经失效，直接在客户端本地清空请求栏并退回仓管界面，
-     *    不需要额外发包问服务端。
-     * 2. 库存变化检测（开销较大）：只有确认跟踪物品的库存数量真的发生
-     *    变化时，才重新向服务端请求一次完整的材料计算。
+     * 1. 链有效性检查：查询本次请求里每一个模板令牌本身在当前网络库存
+     *    汇总里是否还查得到（{@code getCountOf} 按 isSameItemSameComponents
+     *    精确匹配，不会和网络里的同名普通物品混淆）。查不到说明这个模板
+     *    链在服务端已经失效，直接在客户端本地清空请求栏并退回原界面。
+     * 2. 库存变化检测：只有确认跟踪物品的库存数量真的发生变化时，才重新
+     *    向服务端请求一次完整的材料计算（开销较大，逻辑在配方链上递归，
+     *    所以不逐 tick 都做）。
+     * <p>
+     * 两者合并进同一次 {@link RequestTemplateStockSamplePacket} 查询，
+     * 按物流网络 UUID 为唯一锚点，不需要关心这次材料检查究竟是由 Create
+     * 原版仓管方块、还是由某个没有方块坐标可言的第三方界面触发的。
      */
     private void pollStockChanges() {
-        StockTickerBlockEntity blockEntity = resolveBlockEntity();
-        if (blockEntity == null) {
+        if (freqId == null) {
             return;
         }
-        if (stockPollCooldown > 0) {
-            stockPollCooldown--;
+        if (stockPollCooldown-- > 0) {
             return;
-        }
-        if (blockEntity.getTicksSinceLastUpdate() > STOCK_POLL_TICKS) {
-            blockEntity.refreshClientStockSnapshot();
         }
         stockPollCooldown = STOCK_POLL_TICKS;
-
-        InventorySummary summary = blockEntity.getLastClientsideStockSnapshotAsSummary();
-        if (summary == null) {
+        if (trackedItems.isEmpty()) {
             return;
         }
 
+        List<ItemStack> samples = new ArrayList<>(trackedItems.size() + originalItemsToOrder.size());
+        for (TrackedItem tracked : trackedItems) {
+            samples.add(tracked.sample());
+        }
+        pendingTrackedCount = samples.size();
         for (BigItemStack entry : originalItemsToOrder) {
-            if (!TemplateOrderTokenHelper.isToken(entry.stack)) {
-                continue;
+            if (TemplateOrderTokenHelper.isToken(entry.stack)) {
+                samples.add(entry.stack);
             }
-            if (summary.getCountOf(entry.stack) == 0) {
+        }
+        PacketDistributor.sendToServer(new RequestTemplateStockSamplePacket(freqId, samples));
+    }
+
+    /**
+     * 收到 {@link RequestTemplateStockSamplePacket} 的回应时调用，
+     * counts 顺序与上一次发出查询时的 samples 顺序一一对应。
+     */
+    public void applySampleCounts(List<Integer> counts) {
+        int trackedCount = Math.min(pendingTrackedCount, counts.size());
+        boolean changed = false;
+        for (int i = 0; i < trackedCount; i++) {
+            TrackedItem old = trackedItems.get(i);
+            int newCount = counts.get(i);
+            if (old.lastKnownCount() == UNKNOWN_COUNT) {
+                trackedItems.set(i, new TrackedItem(old.sample(), newCount));
+            } else if (newCount != old.lastKnownCount()) {
+                changed = true;
+            }
+        }
+        for (int i = trackedCount; i < counts.size(); i++) {
+            if (counts.get(i) == 0) {
+                CreateImp.LOGGER.info(
+                        "[模板材料] 客户端检测到模板令牌在网络={}下查不到，判定链已失效并关闭材料窗口，样本索引={}",
+                        freqId, i);
                 handleChainBroken();
                 return;
             }
         }
-
-        boolean changed = false;
-        for (TrackedItem tracked : trackedItems) {
-            if (summary.getCountOf(tracked.sample()) != tracked.lastKnownCount()) {
-                changed = true;
-                break;
-            }
+        if (changed) {
+            CreateImp.LOGGER.info("[模板材料] 检测到跟踪物品库存变化，向服务端重新请求材料计算：网络={}", freqId);
+            PacketDistributor.sendToServer(new RequestTemplateMaterialsPacket(freqId, originalItemsToOrder));
         }
-        if (!changed) {
-            return;
-        }
-        PacketDistributor.sendToServer(new RequestTemplateMaterialsPacket(stockTickerPos, originalItemsToOrder));
     }
 
     private record Row(Component header, List<BigItemStack> items, int headerColor) {

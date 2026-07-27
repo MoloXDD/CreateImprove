@@ -2,7 +2,6 @@ package com.molox.createimp.network;
 
 import com.molox.createimp.CreateImp;
 import com.simibubi.create.content.logistics.BigItemStack;
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.UUIDUtil;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
@@ -18,8 +17,9 @@ import java.util.UUID;
  * 全部上下文，触发客户端打开（或原地刷新）次级材料窗口。
  * <p>
  * 注意：{@link StreamCodec#composite} 最多只支持 6 个字段，因此把
- * "仓管坐标 + 原始请求栏内容"合并进 {@link RequestContext}，
  * "能否完成 + 链是否已失效"合并进 {@link CompletionState}，
+ * "原始请求栏内容"单独放进 {@link RequestContext}（不再携带仓管方块坐标，
+ * 材料窗口自身已经以 {@link #freqId} 为锚点，方块坐标不再是必需信息），
  * 各自作为一个整体字段传输，避免超出参数上限。
  */
 public record OpenTemplateMaterialsGuiPacket(CompletionState completionState,
@@ -29,10 +29,9 @@ public record OpenTemplateMaterialsGuiPacket(CompletionState completionState,
                                              int templateCount,
                                              RequestContext requestContext) implements CustomPacketPayload {
 
-    public record RequestContext(BlockPos stockTickerPos, List<BigItemStack> itemsToOrder) {
+    public record RequestContext(List<BigItemStack> itemsToOrder) {
         public static final StreamCodec<RegistryFriendlyByteBuf, RequestContext> STREAM_CODEC =
                 StreamCodec.composite(
-                        BlockPos.STREAM_CODEC, RequestContext::stockTickerPos,
                         BigItemStack.STREAM_CODEC.apply(ByteBufCodecs.list()), RequestContext::itemsToOrder,
                         RequestContext::new
                 );

@@ -1,10 +1,12 @@
 package com.molox.createimp.client;
 
+import com.molox.createimp.CreateImp;
 import com.molox.createimp.network.OpenLabeledRedstoneLinkGuiPacket;
 import com.molox.createimp.network.OpenNetworkManagerGuiPacket;
 import com.molox.createimp.network.OpenProcessManagerGuiPacket;
 import com.molox.createimp.network.OpenTemplateMaterialsGuiPacket;
 import com.molox.createimp.network.OpenWorkWarehouseGuiPacket;
+import com.molox.createimp.network.TemplateStockSampleResultPacket;
 import com.molox.createimp.network.UpdateBrassScrapBucketAmountPacket;
 import com.molox.createimp.network.WorkWarehouseActivateEffectPacket;
 import com.molox.createimp.network.WorkWarehouseAvailabilityPacket;
@@ -94,6 +96,10 @@ public final class ClientPayloadHandlers {
 
     public static void handle(OpenTemplateMaterialsGuiPacket packet, IPayloadContext context) {
         context.enqueueWork(() -> {
+            CreateImp.LOGGER.info(
+                    "[模板材料] 客户端收到材料计算结果：网络={}, 模板数={}, 能否完全满足={}, 链是否失效={}",
+                    packet.freqId(), packet.templateCount(),
+                    packet.completionState().canCompleteAll(), packet.completionState().anyChainBroken());
             if (packet.completionState().anyChainBroken()) {
                 if (Minecraft.getInstance().screen instanceof TemplateMaterialsScreen existing) {
                     existing.handleChainBroken();
@@ -113,5 +119,13 @@ public final class ClientPayloadHandlers {
     public static void handle(WorkWarehouseAvailabilityPacket packet, IPayloadContext context) {
         context.enqueueWork(() ->
                 ClientWorkWarehouseAvailabilityCache.update(packet.freqId(), packet.availableCount()));
+    }
+
+    public static void handle(TemplateStockSampleResultPacket packet, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (Minecraft.getInstance().screen instanceof TemplateMaterialsScreen screen) {
+                screen.applySampleCounts(packet.counts());
+            }
+        });
     }
 }

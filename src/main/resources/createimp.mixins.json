@@ -25,7 +25,10 @@
     "StockKeeperCategoryEntryAccessor",
     "MixinStockTickerInteractionHandler",
     "MixinRedstoneRequesterBlockEntity",
-    "MixinRedstoneRequesterScreen"
+    "MixinRedstoneRequesterScreen",
+    "MixinItemTunablePortableTickerAccess",
+    "PhantomCategoryEntryAccessor",
+    "MixinTunablePortableTickerScreen"
   ],
   "client": [],
   "injectors": {

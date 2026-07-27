@@ -140,45 +140,52 @@ dependencies {
     // http://www.gradle.org/docs/current/userguide/artifact_dependencies_tutorial.html
     // http://www.gradle.org/docs/current/userguide/dependency_management.html
 
+
+    //-----------------------------依赖模组-----------------------------------
     localRuntime files("libs/cloth-config-15.0.140-neoforge.jar")
     compileOnly files("libs/cloth-config-15.0.140-neoforge.jar")
+    compileOnly files("libs/ponder-neoforge-1.0.82+mc1.21.1.jar")
+    compileOnly files("libs/flywheel-neoforge-1.21.1-1.0.6.jar")
+    compileOnly files("libs/Registrate-MC1.21-1.3.0+67.jar")
     localRuntime files("libs/create-1.21.1-6.0.10.jar")
     compileOnly files("libs/create-1.21.1-6.0.10.jar")
-    compileOnly files("libs/jei-1.21.1-neoforge-19.27.0.340.jar")
-    localRuntime files("libs/iris-neoforge-1.8.12+mc1.21.1.jar")
+
+    //-----------------------------运行模组-----------------------------------
     localRuntime files("libs/sodium-neoforge-0.6.13+mc1.21.1.jar")
+    localRuntime files("libs/iris-neoforge-1.8.12+mc1.21.1.jar")
     localRuntime files("libs/irisveil-0.1.0.jar")
-    localRuntime files("libs/create-aeronautics-bundled-1.21.1-1.2.1.jar")
-    localRuntime files("libs/sable-neoforge-1.21.1-1.2.2.jar")
     localRuntime files("libs/colorwheel-neoforge-1.2.9+mc1.21.1.jar")
     localRuntime files("libs/createbetterfps-1.21.1-1.1.4.jar")
     localRuntime files("libs/Jade-1.21.1-NeoForge-15.10.5.jar")
     localRuntime files("libs/JadeAddons-1.21.1-NeoForge-6.1.0.jar")
-    localRuntime files("libs/jei-1.21.1-neoforge-19.27.0.340.jar")
-    compileOnly files("libs/ponder-neoforge-1.0.82+mc1.21.1.jar")
-    compileOnly files("libs/flywheel-neoforge-1.21.1-1.0.6.jar")
-    compileOnly files("libs/Registrate-MC1.21-1.3.0+67.jar")
     localRuntime files("libs/CopyID-neoforge-1.21.1-1.0.1.jar")
     localRuntime files("libs/jecharacters-1.21-neoforge-4.5.23.jar")
     localRuntime files("libs/IMBlocker-5.5.2-neoforge+1.20.6-1.21.8.jar")
-    //localRuntime files("libs/CreateCyberGoggles-1.21.1-7.6.5-NeoForge.jar")
-    //localRuntime files("libs/extra_gauges-2.1.2.jar")
-
-
-
-    //localRuntime files("libs/toms_storage-1.21-2.3.2.jar")
-    //localRuntime files("libs/modernfix-neoforge-5.27.15+mc1.21.1.jar")
-
-    //localRuntime files("libs/ftb-ultimine-neoforge-2101.1.15.jar")
-    //localRuntime files("libs/ftb-library-neoforge-2101.1.33.jar")
-    //localRuntime files("libs/architectury-13.0.8-neoforge.jar")
+    localRuntime files("libs/CreateCyberGoggles-1.21.1-7.6.5-NeoForge.jar")
+    localRuntime files("libs/ftb-ultimine-neoforge-2101.1.15.jar")
+    localRuntime files("libs/ftb-library-neoforge-2101.1.33.jar")
+    localRuntime files("libs/architectury-13.0.8-neoforge.jar")
 
 
     //-----------------------------兼容模组-----------------------------------
-    //localRuntime files("libs/fluidlogistics-1.2.5.jar")//流体包裹兼容
-    compileOnly files("libs/fluidlogistics-1.2.5.jar")//流体包裹兼容
-    localRuntime files("libs/deployer-0.1.2.jar")//Repackage、deployer兼容
-    localRuntime files("libs/repackaged-0.0.7.jar")//Repackage、deployer兼容
+    //JEI兼容
+    compileOnly files("libs/jei-1.21.1-neoforge-19.27.0.340.jar")
+    localRuntime files("libs/jei-1.21.1-neoforge-19.27.0.340.jar")
+
+    //流体包裹兼容
+    localRuntime files("libs/fluidlogistics-1.2.5.jar")
+    compileOnly files("libs/fluidlogistics-1.2.5.jar")
+
+    //幻翼物流兼容
+    localRuntime files("libs/createphantom-1.0.1.jar")
+    compileOnly files("libs/createphantom-1.0.1.jar")
+
+    //Repackage、deployer兼容
+    localRuntime files("libs/deployer-0.1.2.jar")
+    localRuntime files("libs/repackaged-0.0.7.jar")
+
+    //额外仪表兼容
+    localRuntime files("libs/extra_gauges-2.1.2.jar")
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.

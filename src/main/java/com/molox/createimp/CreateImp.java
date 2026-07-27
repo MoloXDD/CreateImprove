@@ -19,6 +19,8 @@ import com.molox.createimp.network.RequestWorkWarehouseInterruptPacket;
 import com.molox.createimp.network.OpenTemplateMaterialsGuiPacket;
 import com.molox.createimp.network.OpenWorkWarehouseGuiPacket;
 import com.molox.createimp.network.RequestTemplateMaterialsPacket;
+import com.molox.createimp.network.RequestTemplateStockSamplePacket;
+import com.molox.createimp.network.TemplateStockSampleResultPacket;
 import com.molox.createimp.network.RequestWorkWarehouseAvailabilityPacket;
 import com.molox.createimp.network.WorkWarehouseActivateEffectPacket;
 import com.molox.createimp.network.WorkWarehouseAvailabilityPacket;
@@ -307,6 +309,16 @@ public class CreateImp {
         registrar.playToClient(
                 WorkWarehouseAvailabilityPacket.TYPE,
                 WorkWarehouseAvailabilityPacket.STREAM_CODEC,
+                clientHandler(() -> ClientPayloadHandlers::handle)
+        );
+        registrar.playToServer(
+                RequestTemplateStockSamplePacket.TYPE,
+                RequestTemplateStockSamplePacket.STREAM_CODEC,
+                RequestTemplateStockSamplePacket::handle
+        );
+        registrar.playToClient(
+                TemplateStockSampleResultPacket.TYPE,
+                TemplateStockSampleResultPacket.STREAM_CODEC,
                 clientHandler(() -> ClientPayloadHandlers::handle)
         );
     }
