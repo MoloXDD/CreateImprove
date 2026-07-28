@@ -188,6 +188,10 @@ dependencies {
     localRuntime files("libs/extra_gauges-2.1.2.jar")
     compileOnly files("libs/extra_gauges-2.1.2.jar")
 
+    //物流附加兼容
+    localRuntime files("libs/createadditionallogistics-1.21.1-1.4.5.jar")
+    compileOnly files("libs/createadditionallogistics-1.21.1-1.4.5.jar")
+
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.

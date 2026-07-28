@@ -1,6 +1,8 @@
 package com.molox.createimp.mixin;
 
 import com.molox.createimp.CreateImp;
+import com.molox.createimp.compat.createadditionallogistics.CreateAdditionalLogisticsCompat;
+import com.molox.createimp.compat.createadditionallogistics.FactoryPanelPromiseLimitHelper;
 import com.molox.createimp.util.IFactoryPanelBehaviourDemandMode;
 
 import com.google.common.collect.HashMultimap;
@@ -167,6 +169,28 @@ public abstract class MixinFactoryPanelBehaviour implements IFactoryPanelBehavio
 
         int batchesNeeded = (gap + recipeOutput - 1) / recipeOutput;
 
+        // 承诺上限兼容（Create: Additional Logistics，软依赖，仅安装且该仪表
+        // 设置了有效上限时才会生效）：按量请求模式原本只受"缺口"和"库存"两个
+        // 条件限制，这里补上第三个条件——把网络上该物品当前的承诺量与上限
+        // 换算成的物品数量做比较，得到"这次最多还能再发几个完整批次"。
+        // 承诺量已经达到或超过上限时批次数直接归零，等价于彻底不发货；
+        // 未达到上限时允许最后一批把承诺量顶过上限（配方产出通常不是1，
+        // 凑不出恰好等于上限的数量），发出的批次始终是配方设置材料的整数倍。
+        int promiseLimitBatches = Integer.MAX_VALUE;
+        if (CreateAdditionalLogisticsCompat.isLoaded()) {
+            FactoryPanelBehaviour selfBehaviour = (FactoryPanelBehaviour) (Object) this;
+            if (FactoryPanelPromiseLimitHelper.hasPromiseLimit(selfBehaviour)) {
+                long limitInItems = (long) FactoryPanelPromiseLimitHelper.getPromiseLimitBatches(selfBehaviour) * recipeOutput;
+                long headroom = limitInItems - promised;
+                if (headroom <= 0) {
+                    promiseLimitBatches = 0;
+                } else {
+                    long batches = (headroom + recipeOutput - 1) / recipeOutput;
+                    promiseLimitBatches = (int) Math.min(batches, Integer.MAX_VALUE);
+                }
+            }
+        }
+
         // 第一轮遍历：先收集每种原料的"单批总需求"(不乘batchesNeeded)，
         // 即同一物品来自多个connection时，各connection.amount的总和。
         HashMap<UUID, Map<ItemStack, FactoryPanelBehaviour.ItemStackConnections>> consolidated = new HashMap<>();
@@ -196,10 +220,10 @@ public abstract class MixinFactoryPanelBehaviour implements IFactoryPanelBehavio
         }
 
         // 第二轮：按各物品的实际网络库存，反推"这种物品最多能撑几个完整批次"，
-        // 取所有物品里的最小值，并与原计划batchesNeeded取较小者，
-        // 得到这次实际要执行的批次数。这样无论哪种原料库存不足，
-        // 发出的请求始终是"单批所需总量"的整数倍，不会出现半批材料。
-        int actualBatches = batchesNeeded;
+        // 取所有物品里的最小值，再与原计划batchesNeeded、承诺上限允许的批次数
+        // 一并取较小者，得到这次实际要执行的批次数。这样无论是哪一个条件
+        // 卡住了，发出的请求始终是"单批所需总量"的整数倍，不会出现半批材料。
+        int actualBatches = Math.min(batchesNeeded, promiseLimitBatches);
         for (Map.Entry<UUID, Map<ItemStack, FactoryPanelBehaviour.ItemStackConnections>> entry
                 : consolidated.entrySet()) {
             UUID net = entry.getKey();
@@ -217,8 +241,8 @@ public abstract class MixinFactoryPanelBehaviour implements IFactoryPanelBehavio
         }
 
         if (actualBatches <= 0) {
-            // 一个完整批次都凑不出，本次彻底放弃，不发出任何请求，
-            // 等待下次tick库存补充后重试。
+            // 一个完整批次都凑不出（包括被承诺上限归零的情况），本次彻底放弃，
+            // 不发出任何请求，等待下次tick库存/承诺量变化后重试。
             for (Map<ItemStack, FactoryPanelBehaviour.ItemStackConnections> networkMap : consolidated.values()) {
                 for (FactoryPanelBehaviour.ItemStackConnections isc : networkMap.values()) {
                     for (FactoryPanelConnection conn : isc) {
@@ -249,9 +273,9 @@ public abstract class MixinFactoryPanelBehaviour implements IFactoryPanelBehavio
         PackageOrderWithCrafts craftContext = PackageOrderWithCrafts.empty();
         if (!activeCraftingArrangement.isEmpty()) {
             // 不能用PackageOrderWithCrafts.singleRecipe()——它构造出的CraftingEntry.count()
-            // 永远硬编码为1，会丢失真实批次数。这里用actualBatches（按库存反推后
-            // 实际能执行的批次数），而不是原计划的batchesNeeded，
-            // 确保理包机收到的配方声明量与实际送出的材料量完全一致。
+            // 永远硬编码为1，会丢失真实批次数。这里用actualBatches（按库存、缺口、
+            // 承诺上限三者共同反推后实际能执行的批次数），确保理包机收到的配方
+            // 声明量与实际送出的材料量完全一致。
             craftContext = new PackageOrderWithCrafts(
                     PackageOrder.empty(),
                     List.of(new PackageOrderWithCrafts.CraftingEntry(
