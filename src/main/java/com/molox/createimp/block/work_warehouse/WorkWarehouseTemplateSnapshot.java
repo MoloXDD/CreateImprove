@@ -202,7 +202,15 @@ public final class WorkWarehouseTemplateSnapshot {
                 Codec.INT.fieldOf("recipe_output").forGetter(PanelSnapshot::recipeOutput),
                 IngredientEntry.CODEC.listOf().fieldOf("ingredients").forGetter(PanelSnapshot::ingredients),
                 Codec.BOOL.fieldOf("demand_mode").forGetter(PanelSnapshot::demandMode),
-                ItemStack.CODEC.listOf().fieldOf("crafting_arrangement").forGetter(PanelSnapshot::craftingArrangement),
+                // 【问题修复】此前用 ItemStack.CODEC.listOf()，而原版 ItemStack.CODEC
+                // 的 id 字段校验明确拒绝编码 minecraft:air（用于表示"这一格是空的"
+                // 占位物），只要九宫格里有一个空格，整份 PanelSnapshot 列表就会
+                // 编码失败、CatnipCodecUtils.encode 静默返回空，导致 TemplateSnapshot
+                // 整体不写入存档、下次读取变成空列表——这正是生产会永久卡死的根因。
+                // 改用 ItemStack.OPTIONAL_CODEC.listOf()：该 Codec 会把空气编码成
+                // "什么都不写"、解码还原成 ItemStack.EMPTY，和原版容器槽位处理
+                // "可能为空的格子"的标准写法完全一致。
+                ItemStack.OPTIONAL_CODEC.listOf().fieldOf("crafting_arrangement").forGetter(PanelSnapshot::craftingArrangement),
                 Codec.STRING.fieldOf("address").forGetter(PanelSnapshot::address),
                 Codec.INT.fieldOf("required_batches").forGetter(PanelSnapshot::requiredBatches),
                 PanelState.CODEC.fieldOf("state").forGetter(PanelSnapshot::state),

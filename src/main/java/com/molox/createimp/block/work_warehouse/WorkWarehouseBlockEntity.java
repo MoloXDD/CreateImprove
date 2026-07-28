@@ -145,6 +145,34 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         return result;
     }
 
+    /**
+     * 关卡卸载时（断开连接、服务器关闭、切换维度等），把 {@link #ACTIVE_REGISTRY}/
+     * {@link #ACTIVE_REGISTRY_CLIENT} 里属于这个正在卸载的关卡的全部登记项清理掉。
+     * <p>
+     * {@link #remove()}/{@link #onChunkUnloaded()} 只覆盖"正常游玩过程中方块被
+     * 移除、或者所在区块单独被卸载"这两种情况；退出世界/断开连接本身并不保证
+     * 会对每一个仍然加载着的方块实体逐一触发这两个方法——这两份注册表是静态
+     * Map，不会随关卡对象一起被垃圾回收，上一局残留的方块实体对象就会一直
+     * 以强引用的形式留在里面，表现为进程面板重进游戏后出现一个绑定不到任何
+     * 真实仓库、点不进详情界面的"幽灵"进程（旧对象和新加载的真实对象同时
+     * 出现在同一个网络频率下）。
+     * <p>
+     * 在 {@link CreateImp} 里通过 {@code NeoForge.EVENT_BUS} 订阅
+     * {@code LevelEvent.Unload} 调用到这里；这个事件双端都会收到，服务端卸载
+     * 时清理 {@link #ACTIVE_REGISTRY}，客户端卸载时清理
+     * {@link #ACTIVE_REGISTRY_CLIENT}，按"是否属于这个正在卸载的关卡对象"精确
+     * 过滤，不会误清其他仍在加载的维度。
+     */
+    public static void onLevelUnload(net.neoforged.neoforge.event.level.LevelEvent.Unload event) {
+        net.minecraft.world.level.LevelAccessor level = event.getLevel();
+        boolean clientSide = level.isClientSide();
+        Map<UUID, Set<WorkWarehouseBlockEntity>> registry = registryFor(clientSide);
+        for (Set<WorkWarehouseBlockEntity> set : registry.values()) {
+            set.removeIf(be -> be.getLevel() == level);
+        }
+        registry.values().removeIf(Set::isEmpty);
+    }
+
     private UUID registeredFreqId = null;
 
     /**
@@ -2506,8 +2534,34 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         if (!clientPacket) {
             tag.put("Storage", storage.serializeNBT(registries));
             tag.put("FluidStorage", fluidStorage.serializeNBT(registries));
-            CatnipCodecUtils.encode(WorkWarehouseTemplateSnapshot.PanelSnapshot.CODEC.listOf(), registries, templateSnapshot)
-                    .ifPresent(encoded -> tag.put("TemplateSnapshot", encoded));
+            var templateSnapshotEncoded = CatnipCodecUtils.encode(
+                    WorkWarehouseTemplateSnapshot.PanelSnapshot.CODEC.listOf(), registries, templateSnapshot);
+            if (templateSnapshotEncoded.isPresent()) {
+                tag.put("TemplateSnapshot", templateSnapshotEncoded.get());
+            } else if (!templateSnapshot.isEmpty()) {
+                // 正常情况下不会走到这里（craftingArrangement 已改用 OPTIONAL_CODEC
+                // 修好了已知的编码失败成因），这里保留作为兜底报警：万一以后又
+                // 出现新的编码失败场景，能第一时间在日志里看到完整节点内容定位，
+                // 而不是像当初那样静默丢失、只能事后靠对比存档数据反推。
+                StringBuilder dump = new StringBuilder();
+                for (int i = 0; i < templateSnapshot.size(); i++) {
+                    WorkWarehouseTemplateSnapshot.PanelSnapshot node = templateSnapshot.get(i);
+                    dump.append("\n  节点").append(i)
+                            .append(": filterItem=").append(node.filterItem())
+                            .append(" templatePanel=").append(node.templatePanel())
+                            .append(" recipeOutput=").append(node.recipeOutput())
+                            .append(" ingredients=").append(node.ingredients())
+                            .append(" demandMode=").append(node.demandMode())
+                            .append(" craftingArrangement=").append(node.craftingArrangement())
+                            .append(" address=\"").append(node.address()).append('"')
+                            .append(" requiredBatches=").append(node.requiredBatches())
+                            .append(" state=").append(node.state())
+                            .append(" expectedOutputTotal=").append(node.expectedOutputTotal());
+                }
+                CreateImp.LOGGER.warn("[工作仓库][{}] write() 时 TemplateSnapshot 编码失败（CatnipCodecUtils.encode 返回空），"
+                                + "这次存档不会写入 TemplateSnapshot 字段，下次读取会变成空列表！当前列表节点数={}，逐节点内容：{}",
+                        worldPosition, templateSnapshot.size(), dump);
+            }
             CatnipCodecUtils.encode(WorkWarehouseTemplateSnapshot.DemandEntry.CODEC.listOf(), registries, demandList)
                     .ifPresent(encoded -> tag.put("DemandList", encoded));
             CatnipCodecUtils.encode(WorkWarehouseTemplateSnapshot.InTransitEntry.CODEC.listOf(), registries, inTransitList)

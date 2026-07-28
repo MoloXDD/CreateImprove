@@ -38,6 +38,7 @@ import com.molox.createimp.network.TemplatePanelConfigurationPacket;
 import com.molox.createimp.network.TemplatePanelConnectionPacket;
 import com.molox.createimp.network.UpdateBrassScrapBucketAmountPacket;
 import com.molox.createimp.block.template_panel.TemplatePanelBlockEntity;
+import com.molox.createimp.block.work_warehouse.WorkWarehouseBlockEntity;
 import com.molox.createimp.block.work_warehouse.WorkWarehouseUnpackingHandler;
 import com.molox.createimp.block.labeled_redstone_link.LabeledRedstoneLinkBlock;
 import com.simibubi.create.api.contraption.BlockMovementChecks;
@@ -95,6 +96,15 @@ public class CreateImp {
         }
 
         NeoForge.EVENT_BUS.addListener(EventPriority.HIGH, CreateImp::onRightClickBlockServer);
+        // 工作仓库的"当前真实加载在世界里的实例"注册表是静态Map，只在方块
+        // 被移除/所在区块被卸载时才会主动清理自己（见WorkWarehouseBlockEntity
+        // 类注释）；退出世界/断开连接这个动作本身不保证会对每一个仍加载着的
+        // 方块实体逐一触发这两个时机，会导致上一局残留的对象一直以强引用的
+        // 形式留在Map里，表现为进程面板重进游戏后出现绑定不到任何真实仓库的
+        // 幽灵/重复进程。这里订阅关卡卸载事件（断开连接、服务器关闭、切换
+        // 维度等都会触发，双端都会收到），按"是否属于这个正在卸载的关卡"
+        // 精确清理，不会误清其他仍在加载的维度。
+        NeoForge.EVENT_BUS.addListener(WorkWarehouseBlockEntity::onLevelUnload);
     }
 
     private static void commonSetup(FMLCommonSetupEvent event) {
