@@ -32,6 +32,7 @@ public record FeatureEnabledCondition(String feature) implements ICondition {
             case "labeled_redstone_link" -> config.labeledRedstoneLinkEnabled;
             case "batch_crafting" -> config.batchCraftingEnabled;
             case "template_system" -> config.templateSystemEnabled;
+            case "redstone_link_router" -> config.redstoneLinkRouterEnabled;
             default -> true;
         };
     }

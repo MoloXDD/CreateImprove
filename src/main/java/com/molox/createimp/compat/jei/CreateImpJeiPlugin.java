@@ -6,8 +6,11 @@ import com.molox.createimp.screen.NetworkManagerLabelEditScreen;
 import com.molox.createimp.screen.NetworkManagerLabelEditorMenu;
 import com.molox.createimp.screen.NetworkManagerLabelEditorScreen;
 import com.molox.createimp.network.SubmitBrassScrapBucketFilterPacket;
+import com.molox.createimp.network.SubmitRedstoneLinkRouterItemPacket;
 import com.molox.createimp.compat.fluidlogistics.FluidLogisticsCompat;
 import com.molox.createimp.compat.fluidlogistics.TemplateFluidDisplayHelper;
+import com.molox.createimp.screen.RedstoneLinkRouterSetItemMenu;
+import com.molox.createimp.screen.RedstoneLinkRouterSetItemScreen;
 import com.molox.createimp.screen.TemplatePanelSetItemMenu;
 import com.molox.createimp.screen.TemplatePanelSetItemScreen;
 import com.simibubi.create.content.logistics.filter.FilterItem;
@@ -53,6 +56,10 @@ public class CreateImpJeiPlugin implements IModPlugin {
         registration.addGhostIngredientHandler(
                 TemplatePanelSetItemScreen.class,
                 new TemplatePanelSetItemGhostHandler()
+        );
+        registration.addGhostIngredientHandler(
+                RedstoneLinkRouterSetItemScreen.class,
+                new RedstoneLinkRouterSetItemGhostHandler()
         );
         // 流体监测：只在实际装了流体包裹时才注册这个处理器，未安装时 JEI 里
         // 拖流体到模板仪表设置界面不会有任何反应，不影响上面物品鬼影处理器
@@ -268,6 +275,60 @@ public class CreateImpJeiPlugin implements IModPlugin {
             });
 
             return targets;
+        }
+
+        @Override
+        public void onComplete() {
+        }
+    }
+
+    /**
+     * 路由器物品终端配置界面有两个幽灵槽位（上：itemSlot1，下：itemSlot2），
+     * 分别对应 {@link RedstoneLinkRouterSetItemMenu} 里的槽位 0 和 1；两个命中区域
+     * 各自独立注册一个 target，JEI 会按拖拽落点自动选中其中一个。
+     */
+    private static class RedstoneLinkRouterSetItemGhostHandler
+            implements IGhostIngredientHandler<RedstoneLinkRouterSetItemScreen> {
+
+        @Override
+        public <I> List<IGhostIngredientHandler.Target<I>> getTargetsTyped(
+                RedstoneLinkRouterSetItemScreen screen,
+                ITypedIngredient<I> ingredient,
+                boolean doStart) {
+
+            List<IGhostIngredientHandler.Target<I>> targets = new ArrayList<>();
+            if (!ingredient.getType().equals(VanillaTypes.ITEM_STACK)) return targets;
+
+            RedstoneLinkRouterSetItemMenu menu = screen.getMenu();
+            targets.add(routerItemTarget(screen, menu, 0,
+                    RedstoneLinkRouterSetItemMenu.ITEM_SLOT_1_X, RedstoneLinkRouterSetItemMenu.ITEM_SLOT_1_Y));
+            targets.add(routerItemTarget(screen, menu, 1,
+                    RedstoneLinkRouterSetItemMenu.ITEM_SLOT_2_X, RedstoneLinkRouterSetItemMenu.ITEM_SLOT_2_Y));
+            return targets;
+        }
+
+        private <I> IGhostIngredientHandler.Target<I> routerItemTarget(
+                RedstoneLinkRouterSetItemScreen screen, RedstoneLinkRouterSetItemMenu menu,
+                int ghostSlot, int slotX, int slotY) {
+            int slotScreenX = screen.getGuiLeft() + slotX;
+            int slotScreenY = screen.getGuiTop() + slotY;
+            return new IGhostIngredientHandler.Target<I>() {
+                @Override
+                public Rect2i getArea() {
+                    return new Rect2i(slotScreenX, slotScreenY, 16, 16);
+                }
+
+                @Override
+                public void accept(I value) {
+                    if (value instanceof ItemStack stack && !stack.isEmpty()) {
+                        ItemStack copy = stack.copy();
+                        copy.setCount(1);
+                        menu.ghostInventory.setStackInSlot(ghostSlot, copy);
+                        PacketDistributor.sendToServer(new SubmitRedstoneLinkRouterItemPacket(
+                                menu.pos, menu.rowIndex, menu.slotIndex, ghostSlot, copy));
+                    }
+                }
+            };
         }
 
         @Override

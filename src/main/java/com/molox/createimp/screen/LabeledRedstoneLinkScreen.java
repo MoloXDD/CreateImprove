@@ -9,12 +9,15 @@ import com.simibubi.create.foundation.gui.AllGuiTextures;
 import com.simibubi.create.foundation.gui.AllIcons;
 import com.simibubi.create.foundation.gui.widget.IconButton;
 import net.createmod.catnip.gui.AbstractSimiScreen;
+import net.createmod.catnip.gui.ScreenOpener;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
 import net.neoforged.neoforge.network.PacketDistributor;
+
+import java.util.function.Consumer;
 
 public class LabeledRedstoneLinkScreen extends AbstractSimiScreen {
 
@@ -41,21 +44,37 @@ public class LabeledRedstoneLinkScreen extends AbstractSimiScreen {
     private static final int EDITBOX_COLOR = 0xEEEEEE;
     private static final int TITLE_COLOR   = 0x3D3C48;
 
-    private final BlockPos pos;
     private final String initialText;
+    private final Consumer<String> onSave;
+    private final Runnable onCloseAction;
 
     private FrequencyEditBox frequencyEditBox;
     private IconButton confirmButton;
 
-    private LabeledRedstoneLinkScreen(BlockPos pos, String initialText) {
+    private LabeledRedstoneLinkScreen(String initialText, Consumer<String> onSave, Runnable onCloseAction) {
         super(CommonComponents.EMPTY);
-        this.pos = pos;
         this.initialText = initialText;
+        this.onSave = onSave;
+        this.onCloseAction = onCloseAction;
     }
 
+    /** 真实的标码无线红石信号终端方块：打开后直接把频率保存到对应方块实体。 */
     public static void open(OpenLabeledRedstoneLinkGuiPacket packet) {
-        Minecraft.getInstance().setScreen(
-                new LabeledRedstoneLinkScreen(packet.pos(), packet.frequencyText()));
+        BlockPos pos = packet.pos();
+        Minecraft.getInstance().setScreen(new LabeledRedstoneLinkScreen(
+                packet.frequencyText(),
+                text -> PacketDistributor.sendToServer(new SaveLabeledRedstoneLinkConfigPacket(pos, text)),
+                null
+        ));
+    }
+
+    /**
+     * 路由器文本终端模块：不对应任何真实方块，保存目标由调用方通过 {@code onSave}
+     * 回调决定；关闭这个界面（无论是确认键还是 Esc，两者都会走 {@code onClose()}）
+     * 之后，通过 {@code returnToRouter} 决定回到哪个界面——通常是重新打开路由器界面。
+     */
+    public static void openForRouter(String initialText, Consumer<String> onSave, Runnable returnToRouter) {
+        ScreenOpener.open(new LabeledRedstoneLinkScreen(initialText, onSave, returnToRouter));
     }
 
     @Override
@@ -89,7 +108,7 @@ public class LabeledRedstoneLinkScreen extends AbstractSimiScreen {
 
     private void onConfirm() {
         if (frequencyEditBox.isFocused()) {
-            frequencyEditBox.exitEditMode(LabeledRedstoneLinkBlockEntity.DEFAULT_FREQUENCY);
+            frequencyEditBox.exitEditMode(currentDefaultFrequency());
         }
         saveCurrentFrequency();
         onClose();
@@ -97,9 +116,24 @@ public class LabeledRedstoneLinkScreen extends AbstractSimiScreen {
 
     private void saveCurrentFrequency() {
         String text = frequencyEditBox.getValue().isBlank()
-                ? LabeledRedstoneLinkBlockEntity.DEFAULT_FREQUENCY
+                ? currentDefaultFrequency()
                 : frequencyEditBox.getValue();
-        PacketDistributor.sendToServer(new SaveLabeledRedstoneLinkConfigPacket(pos, text));
+        onSave.accept(text);
+    }
+
+    /** 只在真正需要应用默认值的时刻（这里：编辑框为空、准备退出编辑/保存）检查一次客户端当前语言。 */
+    private String currentDefaultFrequency() {
+        String languageCode = Minecraft.getInstance().getLanguageManager().getSelected();
+        return LabeledRedstoneLinkBlockEntity.defaultFrequencyFor(languageCode);
+    }
+
+    @Override
+    public void onClose() {
+        if (onCloseAction != null) {
+            onCloseAction.run();
+        } else {
+            super.onClose();
+        }
     }
 
     @Override
@@ -136,7 +170,7 @@ public class LabeledRedstoneLinkScreen extends AbstractSimiScreen {
         // Esc：无论是否在编辑状态，都以当前文本退出窗口
         if (keyCode == 256) {
             if (frequencyEditBox.isFocused()) {
-                frequencyEditBox.exitEditMode(LabeledRedstoneLinkBlockEntity.DEFAULT_FREQUENCY);
+                frequencyEditBox.exitEditMode(currentDefaultFrequency());
             }
             onConfirm();
             return true;

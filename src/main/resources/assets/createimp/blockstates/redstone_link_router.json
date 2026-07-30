@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "createimp:block/redstone_link_router/redstone_link_router" },
+    "facing=east": { "model": "createimp:block/redstone_link_router/redstone_link_router", "y": 90 },
+    "facing=south": { "model": "createimp:block/redstone_link_router/redstone_link_router", "y": 180 },
+    "facing=west": { "model": "createimp:block/redstone_link_router/redstone_link_router", "y": 270 }
+  }
+}

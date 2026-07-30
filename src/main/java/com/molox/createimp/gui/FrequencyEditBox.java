@@ -193,6 +193,7 @@ public class FrequencyEditBox extends EditBox {
     }
 
     private String getDefaultFrequency() {
-        return com.molox.createimp.block.labeled_redstone_link.LabeledRedstoneLinkBlockEntity.DEFAULT_FREQUENCY;
+        String languageCode = Minecraft.getInstance().getLanguageManager().getSelected();
+        return com.molox.createimp.block.labeled_redstone_link.LabeledRedstoneLinkBlockEntity.defaultFrequencyFor(languageCode);
     }
 }

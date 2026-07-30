@@ -36,6 +36,8 @@ public class ModCreativeTabs {
                             output.accept(ModItems.WORK_WAREHOUSE.get());
                             output.accept(ModItems.PROCESS_MANAGER.get());
                         }
+                        if (config.redstoneLinkRouterEnabled)
+                            output.accept(ModItems.REDSTONE_LINK_ROUTER.get());
                     })
                     .build());
 }

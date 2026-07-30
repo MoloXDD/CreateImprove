@@ -15,6 +15,11 @@ import com.molox.createimp.network.OpenNetworkManagerEditPacket;
 import com.molox.createimp.network.OpenNetworkManagerEditorPacket;
 import com.molox.createimp.network.OpenNetworkManagerGuiPacket;
 import com.molox.createimp.network.OpenProcessManagerGuiPacket;
+import com.molox.createimp.network.OpenRedstoneLinkRouterGuiPacket;
+import com.molox.createimp.network.OpenRedstoneLinkRouterSetItemPacket;
+import com.molox.createimp.network.SaveRedstoneLinkRouterDataPacket;
+import com.molox.createimp.network.SaveRedstoneLinkRouterLabelPacket;
+import com.molox.createimp.network.SubmitRedstoneLinkRouterItemPacket;
 import com.molox.createimp.network.RequestWorkWarehouseInterruptPacket;
 import com.molox.createimp.network.OpenTemplateMaterialsGuiPacket;
 import com.molox.createimp.network.OpenWorkWarehouseGuiPacket;
@@ -330,6 +335,31 @@ public class CreateImp {
                 TemplateStockSampleResultPacket.TYPE,
                 TemplateStockSampleResultPacket.STREAM_CODEC,
                 clientHandler(() -> ClientPayloadHandlers::handle)
+        );
+        registrar.playToClient(
+                OpenRedstoneLinkRouterGuiPacket.TYPE,
+                OpenRedstoneLinkRouterGuiPacket.STREAM_CODEC,
+                clientHandler(() -> ClientPayloadHandlers::handle)
+        );
+        registrar.playToServer(
+                SaveRedstoneLinkRouterDataPacket.TYPE,
+                SaveRedstoneLinkRouterDataPacket.STREAM_CODEC,
+                SaveRedstoneLinkRouterDataPacket::handle
+        );
+        registrar.playToServer(
+                OpenRedstoneLinkRouterSetItemPacket.TYPE,
+                OpenRedstoneLinkRouterSetItemPacket.STREAM_CODEC,
+                OpenRedstoneLinkRouterSetItemPacket::handle
+        );
+        registrar.playToServer(
+                SubmitRedstoneLinkRouterItemPacket.TYPE,
+                SubmitRedstoneLinkRouterItemPacket.STREAM_CODEC,
+                SubmitRedstoneLinkRouterItemPacket::handle
+        );
+        registrar.playToServer(
+                SaveRedstoneLinkRouterLabelPacket.TYPE,
+                SaveRedstoneLinkRouterLabelPacket.STREAM_CODEC,
+                SaveRedstoneLinkRouterLabelPacket::handle
         );
     }
 

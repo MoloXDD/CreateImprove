@@ -14,7 +14,9 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.BlockGetter;
@@ -46,6 +48,23 @@ public class LabeledRedstoneLinkBlock extends WrenchableDirectionalBlock
                 .setValue(FACING, Direction.UP)
                 .setValue(RECEIVER, false)
                 .setValue(POWERED, false));
+    }
+
+    /**
+     * 刚放下这个方块时，把默认频率文本按摆放者当前客户端语言解析一次并写入方块
+     * 实体——只在这一个时刻检查语言，之后不会再重复判断（除非玩家自己把文本删空
+     * 重新触发默认值，见 {@link LabeledRedstoneLinkBlockEntity#setFrequencyText}）。
+     */
+    @Override
+    public void setPlacedBy(Level level, BlockPos pos, BlockState state,
+                            @javax.annotation.Nullable LivingEntity placer, ItemStack stack) {
+        super.setPlacedBy(level, pos, state, placer, stack);
+        if (level.isClientSide()) return;
+        if (!(level.getBlockEntity(pos) instanceof LabeledRedstoneLinkBlockEntity be)) return;
+        String defaultText = (placer instanceof ServerPlayer serverPlayer)
+                ? LabeledRedstoneLinkBlockEntity.defaultFrequencyFor(serverPlayer.getLanguage())
+                : LabeledRedstoneLinkBlockEntity.DEFAULT_FREQUENCY_EN;
+        be.setFrequencyText(defaultText, placer instanceof Player player ? player : null);
     }
 
     @Override

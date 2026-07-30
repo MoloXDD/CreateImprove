@@ -1,0 +1,29 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "createimp:feature_enabled",
+      "feature": "redstone_link_router"
+    }
+  ],
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " R ",
+    " E ",
+    " B "
+  ],
+  "key": {
+    "R": {
+      "item": "create:redstone_link"
+    },
+    "E": {
+      "item": "create:electron_tube"
+    },
+    "B": {
+      "item": "create:brass_casing"
+    }
+  },
+  "result": {
+    "id": "createimp:redstone_link_router",
+    "count": 1
+  }
+}

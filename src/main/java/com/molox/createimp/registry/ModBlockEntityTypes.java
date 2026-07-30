@@ -7,6 +7,7 @@ import com.molox.createimp.block.batch_repackager.BatchRepackagerBlockEntity;
 import com.molox.createimp.block.brass_scrap_bucket.BrassScrapBucketBlockEntity;
 import com.molox.createimp.block.labeled_redstone_link.LabeledRedstoneLinkBlockEntity;
 import com.molox.createimp.block.process_manager.ProcessManagerBlockEntity;
+import com.molox.createimp.block.redstone_link_router.RedstoneLinkRouterBlockEntity;
 import com.molox.createimp.block.template_panel.TemplatePanelBlockEntity;
 import com.molox.createimp.block.work_warehouse.WorkWarehouseBlockEntity;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -72,4 +73,11 @@ public class ModBlockEntityTypes {
                             (pos, state) -> new ProcessManagerBlockEntity(
                                     ModBlockEntityTypes.PROCESS_MANAGER.get(), pos, state),
                             ModBlocks.PROCESS_MANAGER.get()).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<RedstoneLinkRouterBlockEntity>> REDSTONE_LINK_ROUTER =
+            BLOCK_ENTITY_TYPES.register("redstone_link_router",
+                    () -> BlockEntityType.Builder.of(
+                            (pos, state) -> new RedstoneLinkRouterBlockEntity(
+                                    ModBlockEntityTypes.REDSTONE_LINK_ROUTER.get(), pos, state),
+                            ModBlocks.REDSTONE_LINK_ROUTER.get()).build(null));
 }

@@ -42,7 +42,11 @@ public class ProcessManagerScreen extends AbstractSimiScreen {
     private static final int TEXTURE_W = 256;
     private static final int TEXTURE_H = 256;
 
-    // 贴图内背景实际绘制区域：左上角(13,0)，右下角(246,219)。
+    // 贴图内背景实际绘制区域：左上角(13,0)，右下角(246,219)——这两个坐标本身是
+    // "该点左侧/上侧有多少像素"的记号，即右下角那个像素本身也要画进去，所以
+    // 实际绘制宽高要在坐标差的基础上各 +1，否则背景最下面一行、最右边一列的
+    // 像素会被漏画，看起来像是被裁掉了一圈。窗口本身用于居中定位的宽高
+    // （WINDOW_WIDTH/WINDOW_HEIGHT）不跟着变，避免因为改这个尺寸导致窗口位置跟着挪动。
     private static final int BG_SRC_X = 13;
     private static final int BG_SRC_Y = 0;
     private static final int BG_SRC_RIGHT = 246;
@@ -51,10 +55,10 @@ public class ProcessManagerScreen extends AbstractSimiScreen {
     // 会跟着背景一起画出来，但不参与窗口居中的宽度计算）。
     private static final int BG_CENTERING_RIGHT = 238;
 
-    private static final int BG_DRAW_WIDTH = BG_SRC_RIGHT - BG_SRC_X;
-    private static final int BG_DRAW_HEIGHT = BG_SRC_BOTTOM - BG_SRC_Y;
+    private static final int BG_DRAW_WIDTH = BG_SRC_RIGHT - BG_SRC_X + 1;
+    private static final int BG_DRAW_HEIGHT = BG_SRC_BOTTOM - BG_SRC_Y + 1;
     private static final int WINDOW_WIDTH = BG_CENTERING_RIGHT - BG_SRC_X;
-    private static final int WINDOW_HEIGHT = BG_DRAW_HEIGHT;
+    private static final int WINDOW_HEIGHT = BG_SRC_BOTTOM - BG_SRC_Y;
 
     // 进程卡片背景贴图，尺寸固定 202x48，整张图直接绘制不做裁切。
     private static final ResourceLocation PROGRESS_TEXTURE =

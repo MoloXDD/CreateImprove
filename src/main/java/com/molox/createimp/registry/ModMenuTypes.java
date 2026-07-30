@@ -4,6 +4,7 @@ import com.molox.createimp.CreateImp;
 import com.molox.createimp.screen.BrassScrapBucketMenu;
 import com.molox.createimp.screen.NetworkManagerLabelEditMenu;
 import com.molox.createimp.screen.NetworkManagerLabelEditorMenu;
+import com.molox.createimp.screen.RedstoneLinkRouterSetItemMenu;
 import com.molox.createimp.screen.TemplatePanelSetItemMenu;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.world.inventory.MenuType;
@@ -31,4 +32,8 @@ public class ModMenuTypes {
     public static final DeferredHolder<MenuType<?>, MenuType<TemplatePanelSetItemMenu>> TEMPLATE_PANEL_SET_ITEM =
             MENU_TYPES.register("template_panel_set_item",
                     () -> IMenuTypeExtension.create(TemplatePanelSetItemMenu::new));
+
+    public static final DeferredHolder<MenuType<?>, MenuType<RedstoneLinkRouterSetItemMenu>> REDSTONE_LINK_ROUTER_SET_ITEM =
+            MENU_TYPES.register("redstone_link_router_set_item",
+                    () -> IMenuTypeExtension.create(RedstoneLinkRouterSetItemMenu::new));
 }

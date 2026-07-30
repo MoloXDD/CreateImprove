@@ -54,4 +54,8 @@ public class ModItems {
     public static final DeferredItem<com.molox.createimp.item.TemplateFluidTokenItem> TEMPLATE_FLUID_TOKEN =
             ITEMS.register("template_fluid_token",
                     () -> new com.molox.createimp.item.TemplateFluidTokenItem(new Item.Properties().stacksTo(64)));
+
+    public static final DeferredItem<BlockItem> REDSTONE_LINK_ROUTER =
+            ITEMS.registerSimpleBlockItem("redstone_link_router", ModBlocks.REDSTONE_LINK_ROUTER,
+                    new Item.Properties());
 }

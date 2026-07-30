@@ -4,6 +4,7 @@ import com.molox.createimp.CreateImp;
 import com.molox.createimp.network.OpenLabeledRedstoneLinkGuiPacket;
 import com.molox.createimp.network.OpenNetworkManagerGuiPacket;
 import com.molox.createimp.network.OpenProcessManagerGuiPacket;
+import com.molox.createimp.network.OpenRedstoneLinkRouterGuiPacket;
 import com.molox.createimp.network.OpenTemplateMaterialsGuiPacket;
 import com.molox.createimp.network.OpenWorkWarehouseGuiPacket;
 import com.molox.createimp.network.TemplateStockSampleResultPacket;
@@ -15,6 +16,7 @@ import com.molox.createimp.screen.BrassScrapBucketScreen;
 import com.molox.createimp.screen.LabeledRedstoneLinkScreen;
 import com.molox.createimp.screen.NetworkManagerScreen;
 import com.molox.createimp.screen.ProcessManagerScreen;
+import com.molox.createimp.screen.RedstoneLinkRouterScreen;
 import com.molox.createimp.screen.TemplateMaterialsScreen;
 import com.molox.createimp.screen.WorkWarehouseScreen;
 import com.molox.createimp.util.StockKeeperRequestScreenInvoker;
@@ -56,6 +58,10 @@ public final class ClientPayloadHandlers {
 
     public static void handle(OpenProcessManagerGuiPacket packet, IPayloadContext context) {
         context.enqueueWork(() -> ProcessManagerScreen.open(packet));
+    }
+
+    public static void handle(OpenRedstoneLinkRouterGuiPacket packet, IPayloadContext context) {
+        context.enqueueWork(() -> RedstoneLinkRouterScreen.open(packet));
     }
 
     public static void handle(OpenWorkWarehouseGuiPacket packet, IPayloadContext context) {

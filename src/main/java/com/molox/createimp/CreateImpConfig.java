@@ -62,6 +62,8 @@ public class CreateImpConfig implements ConfigData {
             public boolean batchCraftingEnabled = true;
             @ConfigEntry.Gui.RequiresRestart
             public boolean templateSystemEnabled = true;
+            @ConfigEntry.Gui.RequiresRestart
+            public boolean redstoneLinkRouterEnabled = true;
         }
 
         public static class FeatureToggles {

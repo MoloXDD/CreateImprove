@@ -37,7 +37,7 @@ public record SaveLabeledRedstoneLinkConfigPacket(
             ServerPlayer player = (ServerPlayer) context.player();
             if (!(player.level().getBlockEntity(packet.pos()) instanceof LabeledRedstoneLinkBlockEntity be))
                 return;
-            be.setFrequencyText(packet.frequencyText());
+            be.setFrequencyText(packet.frequencyText(), player);
         });
     }
 }

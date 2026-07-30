@@ -20,6 +20,7 @@ import com.molox.createimp.registry.ModMenuTypes;
 import com.molox.createimp.screen.BrassScrapBucketScreen;
 import com.molox.createimp.screen.NetworkManagerLabelEditScreen;
 import com.molox.createimp.screen.NetworkManagerLabelEditorScreen;
+import com.molox.createimp.screen.RedstoneLinkRouterSetItemScreen;
 import com.molox.createimp.screen.TemplatePanelSetItemScreen;
 import com.simibubi.create.AllPartialModels;
 import com.simibubi.create.content.kinetics.base.SingleAxisRotatingVisual;
@@ -146,6 +147,8 @@ public class CreateImpClient {
                 BrassScrapBucketScreen::new);
         event.register(ModMenuTypes.TEMPLATE_PANEL_SET_ITEM.get(),
                 TemplatePanelSetItemScreen::new);
+        event.register(ModMenuTypes.REDSTONE_LINK_ROUTER_SET_ITEM.get(),
+                RedstoneLinkRouterSetItemScreen::new);
     }
 
     private static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {

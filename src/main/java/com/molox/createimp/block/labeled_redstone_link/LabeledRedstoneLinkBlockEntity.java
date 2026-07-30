@@ -7,19 +7,45 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 
+import javax.annotation.Nullable;
 import java.util.List;
 
 public class LabeledRedstoneLinkBlockEntity extends SmartBlockEntity
-        implements ClipboardCloneable {
+        implements ClipboardCloneable, LabeledRedstoneLinkable {
 
-    public static final String DEFAULT_FREQUENCY = "默认红石频率";
+    /**
+     * 默认频率文本按摆放者/操作者当前客户端语言解析，只在"刚放下标码终端"
+     * （见 {@link LabeledRedstoneLinkBlock#setPlacedBy}）或"删除了所有文本"
+     * （见 {@link #setFrequencyText}、{@link #readFromClipboard}）这两个真正需要
+     * 应用默认值的时刻检查一次语言，而不是每次显示都重新判断。
+     */
+    public static final String DEFAULT_FREQUENCY_ZH = "默认频率";
+    public static final String DEFAULT_FREQUENCY_EN = "Default Frequency";
+    private static final String DEFAULT_FREQUENCY_LANGUAGE_ZH = "zh_cn";
+
+    public static String defaultFrequencyFor(String languageCode) {
+        return DEFAULT_FREQUENCY_LANGUAGE_ZH.equals(languageCode) ? DEFAULT_FREQUENCY_ZH : DEFAULT_FREQUENCY_EN;
+    }
+
+    private static String defaultFrequencyFor(@Nullable Player contextPlayer) {
+        if (contextPlayer instanceof ServerPlayer serverPlayer) {
+            return defaultFrequencyFor(serverPlayer.getLanguage());
+        }
+        return DEFAULT_FREQUENCY_EN;
+    }
+
     private static final String CLIPBOARD_KEY = "labeled_redstone_link";
 
-    private String frequencyText = DEFAULT_FREQUENCY;
+    // 这里的初始值只是一个占位——真正按摆放者语言解析出来的默认文本由
+    // LabeledRedstoneLinkBlock#setPlacedBy 在方块放下之后立即写入；如果这个方块实体
+    // 是通过非正常摆放的途径创建的（例如 /setblock 之类没有走 setPlacedBy 的场景），
+    // 才会停留在这个占位值上。
+    private String frequencyText = DEFAULT_FREQUENCY_EN;
 
     // 对应原版的 transmittedSignal / receivedSignal / receivedSignalChanged
     private int transmittedSignal = 0;
@@ -54,8 +80,8 @@ public class LabeledRedstoneLinkBlockEntity extends SmartBlockEntity
         return frequencyText;
     }
 
-    public void setFrequencyText(String text) {
-        String newFreq = (text == null || text.isBlank()) ? DEFAULT_FREQUENCY : text;
+    public void setFrequencyText(String text, @Nullable Player contextPlayer) {
+        String newFreq = (text == null || text.isBlank()) ? defaultFrequencyFor(contextPlayer) : text;
         if (newFreq.equals(frequencyText)) return;
 
         if (level != null && !level.isClientSide()) {
@@ -195,7 +221,7 @@ public class LabeledRedstoneLinkBlockEntity extends SmartBlockEntity
     public void read(CompoundTag tag, HolderLookup.Provider registries, boolean clientPacket) {
         super.read(tag, registries, clientPacket);
         frequencyText = tag.getString("FrequencyText");
-        if (frequencyText.isBlank()) frequencyText = DEFAULT_FREQUENCY;
+        if (frequencyText.isBlank()) frequencyText = DEFAULT_FREQUENCY_EN;
         transmittedSignal = tag.getInt("TransmittedSignal");
         receivedSignal = tag.getInt("ReceivedSignal");
         receivedSignalChanged = tag.getBoolean("ReceivedSignalChanged");
@@ -219,7 +245,7 @@ public class LabeledRedstoneLinkBlockEntity extends SmartBlockEntity
                                      Player player, Direction side, boolean simulate) {
         if (!tag.contains("Frequency")) return false;
         if (simulate) return true;
-        setFrequencyText(tag.getString("Frequency"));
+        setFrequencyText(tag.getString("Frequency"), player);
         return true;
     }
 }
