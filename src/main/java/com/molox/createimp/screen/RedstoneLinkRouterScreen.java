@@ -261,6 +261,13 @@ public class RedstoneLinkRouterScreen extends AbstractSimiScreen {
     /** 文本终端超长文本横向滚动用的计时器，每 tick 递增，画面上按此计算滚动偏移。 */
     private float labelScrollTicks = 0;
 
+    /** 长按判定为拖动的时间阈值：参考桌面系统"按下就几乎立刻能拖"的手感调快，不再像最初 350ms 那样让人感觉半天不跟手。 */
+    private static final long DRAG_HOLD_THRESHOLD_MS = 150;
+    /** 拖动模块中心点判定候选：不再用一个很小的半径，而是"落在候选槽位的整个矩形范围内"，覆盖一整个模块大小。 */
+
+    /** 非空表示鼠标左键正按在一个无连接的模块上，可能是普通点击、也可能正在长按拖动，见 {@link DraggingComponentState}。 */
+    private DraggingComponentState draggingComponent;
+
     private IconButton confirmButton;
     private IconButton clearButton;
 
@@ -361,6 +368,12 @@ public class RedstoneLinkRouterScreen extends AbstractSimiScreen {
      */
     @Override
     public void onClose() {
+        if (draggingComponent != null) {
+            if (draggingComponent.started) {
+                finalizeDrag(draggingComponent);
+            }
+            draggingComponent = null;
+        }
         saveToServer();
         super.onClose();
     }
@@ -818,6 +831,270 @@ public class RedstoneLinkRouterScreen extends AbstractSimiScreen {
         reclampScroll();
     }
 
+    /**
+     * 每帧调用一次：处理"按下 -> 长按转拖动"的状态机（还没到阈值之前什么都不做），
+     * 以及拖动开始之后持续的候选位置更新。
+     */
+    private void updateDraggingComponent(int funcScreenX, int funcScreenY, float offX, float offY, int mouseX, int mouseY) {
+        if (draggingComponent == null) return;
+        if (!draggingComponent.started) {
+            if (System.currentTimeMillis() - draggingComponent.pressStartMillis < DRAG_HOLD_THRESHOLD_MS) return;
+            startDragging(draggingComponent);
+        }
+        updateDragCandidate(draggingComponent, funcScreenX, funcScreenY, offX, offY, mouseX, mouseY);
+    }
+
+    /** 长按阈值刚触发的那一刻：把模块从原位置摘出来（不触发 settleAll，留着这个空位当基准状态），起点本身作为初始候选。 */
+    private void startDragging(DraggingComponentState drag) {
+        drag.started = true;
+        if (drag.verticalOnly) {
+            drag.immutableGroup = computeRigidGroup(drag.component, buildNeighborGraph());
+        }
+        drag.originalRowCount = rows.size();
+        rows.get(drag.originRef.rowIndex()).components.set(drag.originRef.slotIndex(), null);
+        drag.stableSnapshot = snapshotBoard();
+        drag.currentCandidateRef = drag.originRef;
+    }
+
+    private BoardSnapshot snapshotBoard() {
+        List<List<PlacedComponent>> positions = new ArrayList<>();
+        List<ComponentConnectionSnapshot> states = new ArrayList<>();
+        for (Row row : rows) {
+            positions.add(new ArrayList<>(row.components));
+            for (PlacedComponent c : row.components) {
+                if (c != null) states.add(new ComponentConnectionSnapshot(c));
+            }
+        }
+        return new BoardSnapshot(positions, states);
+    }
+
+    /**
+     * 把整个棋盘（包括行数本身）还原成快照当时的样子——之所以要处理行数，是因为
+     * 拖动到"新增行"按钮上会临时插入一个真实的新行来测试候选是否可行（见
+     * {@link #updateDragCandidate}），候选变化时必须能把这个临时行一起撤销掉。
+     */
+    private void restoreBoardFromSnapshot(BoardSnapshot snapshot) {
+        while (rows.size() > snapshot.positions.size()) {
+            rows.remove(rows.size() - 1);
+        }
+        while (rows.size() < snapshot.positions.size()) {
+            rows.add(new Row());
+        }
+        for (int r = 0; r < rows.size(); r++) {
+            rows.get(r).components.clear();
+            rows.get(r).components.addAll(snapshot.positions.get(r));
+        }
+        for (ComponentConnectionSnapshot state : snapshot.componentStates) {
+            state.restore();
+        }
+    }
+
+    /**
+     * 找出浮动模块当前覆盖到的有效候选位置（有效位置：某一行里，列号从 0 到这一行
+     * "添加组件"按钮所在列号之间，含按钮本身那一列——落在按钮位置上就是"追加到
+     * 这一行末尾"）；判定方式是"浮动模块的中心点落在候选槽位的整个矩形范围内"，
+     * 覆盖一整个模块大小，不是一个很小的半径；纵向范围进一步扩大到整行高度
+     * （横向不变），行与行之间本来就不重叠，所以扩大纵向范围也不会产生重叠。
+     * 找不到就落回起点候选。
+     * <p>
+     * 候选范围还包含"新增行"按钮所在的那一格——当成一个还不存在、内容永远是空的
+     * 虚拟行来测试（只有列 0 一个合法位置）；真的被采纳时才会插入一个真实的空行，
+     * 移开候选时这一行会随着"还原快照"自动被清理掉；如果最终就是在这一行落位，
+     * 它就会一直保留下来，不会再被撤销。
+     * <p>
+     * 有连接（{@code verticalOnly}）的模块横坐标锁死在原来那一列，只在这一列的
+     * 范围内按行寻找；无连接的模块横纵都能移动，和之前一样。
+     * <p>
+     * 如果候选发生了变化，先把整个棋盘还原成拖动开始时的基准快照，再对新候选尝试
+     * 一次真正的 {@link #shiftGroup}（只有目标槽位当前有模块占着才需要挪；纵向拖动
+     * 时额外把这个模块自己的刚性组当成绝对不能被牵动的保护集合传进去）；如果挪不动，
+     * 或者挪动"成功"了但目标槽位实际上还是没空出来，就退回起点候选。
+     */
+    private void updateDragCandidate(DraggingComponentState drag, int funcScreenX, int funcScreenY,
+                                     float offX, float offY, int mouseX, int mouseY) {
+        double centerY = mouseY - drag.grabOffsetY + COMPONENT_HEIGHT / 2.0;
+        int fixedColumn = drag.originRef.slotIndex();
+        double centerX = drag.verticalOnly
+                ? componentScreenX(funcScreenX, offX, fixedColumn) + COMPONENT_WIDTH / 2.0
+                : mouseX - drag.grabOffsetX + COMPONENT_WIDTH / 2.0;
+
+        ComponentRef nearest = null;
+        double nearestDist = Double.MAX_VALUE;
+        // 行范围包含 drag.originalRowCount 这一格本身——它对应"新增行"按钮所在的
+        // 位置，当成一个还不存在、内容永远是空的虚拟行来测试（列 0 到 0 之间，
+        // 也就是只有列 0 一个合法位置）。真的被采纳时才会插入一个真实的空行。
+        for (int r = 0; r <= drag.originalRowCount; r++) {
+            boolean isNewRowSlot = r == drag.originalRowCount;
+            int rowTop = rowTopOf(r);
+            int maxSlot = isNewRowSlot ? 0 : effectiveComponentCount(rows.get(r));
+            // 命中判定纵向范围用整行高度（ROW_HEIGHT），而不是组件本身居中之后的那一小块，
+            // 横向范围不变；行与行之间本来就是按 ROW_HEIGHT（+ 分隔条）顺序排列、互不重叠的，
+            // 所以直接用整行高度不会导致相邻行的命中区域重叠。
+            int rowHitTop = Math.round(funcScreenY + rowTop - offY);
+            if (drag.verticalOnly) {
+                if (fixedColumn > maxSlot) continue;
+                int slotDrawX = componentScreenX(funcScreenX, offX, fixedColumn);
+                if (!isPointInRect(centerX, centerY, slotDrawX, rowHitTop, COMPONENT_WIDTH, ROW_HEIGHT)) continue;
+                int slotDrawY = componentScreenY(funcScreenY, offY, rowTop);
+                double slotCenterY = slotDrawY + COMPONENT_HEIGHT / 2.0;
+                double dist = Math.abs(centerY - slotCenterY);
+                if (dist < nearestDist) {
+                    nearestDist = dist;
+                    nearest = new ComponentRef(r, fixedColumn);
+                }
+            } else {
+                for (int s = 0; s <= maxSlot; s++) {
+                    int slotDrawX = componentScreenX(funcScreenX, offX, s);
+                    if (!isPointInRect(centerX, centerY, slotDrawX, rowHitTop, COMPONENT_WIDTH, ROW_HEIGHT)) continue;
+                    int slotDrawY = componentScreenY(funcScreenY, offY, rowTop);
+                    double slotCenterX = slotDrawX + COMPONENT_WIDTH / 2.0;
+                    double slotCenterY = slotDrawY + COMPONENT_HEIGHT / 2.0;
+                    double dist = Math.hypot(centerX - slotCenterX, centerY - slotCenterY);
+                    if (dist < nearestDist) {
+                        nearestDist = dist;
+                        nearest = new ComponentRef(r, s);
+                    }
+                }
+            }
+        }
+
+        ComponentRef target = nearest != null ? nearest : drag.originRef;
+        if (target.equals(drag.currentCandidateRef)) return;
+
+        // 还原到基准快照——这一步本身就会把上一次候选如果是"新增行"而临时插入的
+        // 那一行清理掉（见 restoreBoardFromSnapshot 对行数的处理）。
+        restoreBoardFromSnapshot(drag.stableSnapshot);
+        if (target.rowIndex() == drag.originalRowCount) {
+            // 候选是"新增行"按钮位置：真的插入一个空行，槽位 0 天然可用，不需要 shiftGroup。
+            rows.add(new Row());
+        } else if (!target.equals(drag.originRef)) {
+            Row targetRow = rows.get(target.rowIndex());
+            PlacedComponent occupant = target.slotIndex() < targetRow.components.size()
+                    ? targetRow.components.get(target.slotIndex()) : null;
+            boolean valid = true;
+            if (occupant != null) {
+                Set<PlacedComponent> immutable = drag.verticalOnly ? drag.immutableGroup : Set.of();
+                if (!shiftGroup(occupant, 1, 1, immutable, false)) {
+                    valid = false;
+                } else {
+                    // shiftGroup 返回“成功”只代表这次搬运本身可行，不代表目标槽位
+                    // 现在真的空出来了——刚性组横跨多行时，理论上组内可能有另一个
+                    // 成员级联搬运之后又恰好落回这个槽位（同一个刚性组在同一行出现
+                    // 两个成员、且两者列号正好相差1的情况）。这里必须显式校验一遍
+                    // 实际结果，而不是只信 shiftGroup 的布尔返回值。
+                    PlacedComponent stillThere = target.slotIndex() < rows.get(target.rowIndex()).components.size()
+                            ? rows.get(target.rowIndex()).components.get(target.slotIndex()) : null;
+                    if (stillThere != null) {
+                        valid = false;
+                    }
+                }
+            }
+            if (!valid) {
+                restoreBoardFromSnapshot(drag.stableSnapshot);
+                target = drag.originRef;
+            }
+        }
+        drag.currentCandidateRef = target;
+    }
+
+    /**
+     * 松开左键、且已经处于拖动状态时调用：把模块真正放进当前候选位置（此时该位置
+     * 应该已经腾好空位了）。纵向拖动的模块如果最终落到了和起点不同的行，需要把
+     * 全图里所有指向它原坐标的连接引用重写成新坐标——列号没变，只是行号变了，
+     * 直接按坐标整体查找替换即可，不需要 {@link #shiftGroup} 那一整套列移位的机制
+     * （那一套本来就只处理"同一行内变列"，不支持"变行"）。最后补一次全图结算保险。
+     */
+    private void finalizeDrag(DraggingComponentState drag) {
+        ComponentRef target = drag.currentCandidateRef != null ? drag.currentCandidateRef : drag.originRef;
+        Row targetRow = rows.get(target.rowIndex());
+        boolean occupied = target.slotIndex() < targetRow.components.size()
+                && targetRow.components.get(target.slotIndex()) != null;
+        if (occupied) {
+            // 正常情况下走不到这里——候选一旦被采纳，目标槽位就应该一直保持空着
+            // 直到松手落位。这里只是最后一道保险：万一出现没预料到的情况，退回
+            // 起点（基准快照本身就保证起点是空的），绝不能直接覆盖掉别的模块
+            // 导致数据丢失。
+            restoreBoardFromSnapshot(drag.stableSnapshot);
+            target = drag.originRef;
+            targetRow = rows.get(target.rowIndex());
+        }
+        while (targetRow.components.size() <= target.slotIndex()) targetRow.components.add(null);
+        targetRow.components.set(target.slotIndex(), drag.component);
+
+        if (drag.verticalOnly && target.rowIndex() != drag.originRef.rowIndex()) {
+            for (Row row : rows) {
+                for (PlacedComponent c : row.components) {
+                    if (c == null) continue;
+                    replaceRef(c.inputConnections, drag.originRef, target);
+                    replaceRef(c.outputConnections, drag.originRef, target);
+                }
+            }
+        }
+        settleAll();
+    }
+
+    private void replaceRef(List<ComponentRef> refs, ComponentRef oldRef, ComponentRef newRef) {
+        for (int i = 0; i < refs.size(); i++) {
+            if (refs.get(i).equals(oldRef)) refs.set(i, newRef);
+        }
+    }
+
+    /**
+     * 拖动一个有连接的模块时，把它所有输入/输出连接线都预览出来（用当前候选位置
+     * 代表它拖动后的新位置），和 pre.png 一样半透明处理。连接对象的位置在整个拖动
+     * 过程中是稳定的——它们所在的刚性组被 {@link DraggingComponentState#immutableGroup}
+     * 保护，不会被别处候选的让位搬运牵动，所以这里可以直接用 {@code drag.component}
+     * 自己记录的连接引用去查，不需要每次重新计算。
+     */
+    private void drawDraggingConnectionPreviews(GuiGraphics graphics, int funcScreenX, int funcScreenY, float offX, float offY) {
+        DraggingComponentState drag = draggingComponent;
+        if (!drag.verticalOnly) return;
+        ComponentRef candidate = drag.currentCandidateRef;
+        if (candidate == null) return;
+
+        RenderSystem.enableBlend();
+        RenderSystem.setShaderColor(1f, 1f, 1f, PREVIEW_ALPHA);
+        for (ComponentRef partnerRef : drag.component.outputConnections) {
+            drawPreviewConnectionLine(graphics, funcScreenX, funcScreenY, offX, offY, candidate, partnerRef);
+        }
+        for (ComponentRef partnerRef : drag.component.inputConnections) {
+            drawPreviewConnectionLine(graphics, funcScreenX, funcScreenY, offX, offY, partnerRef, candidate);
+        }
+        RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+    }
+
+    /** 拖动过程中，当前候选位置画一个 pre.png 幽灵，和连接预览用的是同一张贴图、同样的半透明处理。 */
+    private void drawDraggingPreview(GuiGraphics graphics, int funcScreenX, int funcScreenY, float offX, float offY) {
+        ComponentRef candidate = draggingComponent.currentCandidateRef;
+        if (candidate == null) return;
+        int drawX = componentScreenX(funcScreenX, offX, candidate.slotIndex());
+        int drawY = componentScreenY(funcScreenY, offY, rowTopOf(candidate.rowIndex()));
+        RenderSystem.enableBlend();
+        RenderSystem.setShaderColor(1f, 1f, 1f, PREVIEW_ALPHA);
+        graphics.blit(PRE_COMPONENT_TEXTURE, drawX, drawY, 0, 0, COMPONENT_WIDTH, COMPONENT_HEIGHT,
+                COMPONENT_WIDTH, COMPONENT_HEIGHT);
+        RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+        RenderSystem.disableBlend();
+    }
+
+    /** 浮动跟随鼠标的模块本体，画在最上层（含功能区裁剪范围之外，避免贴着边缘拖动时被突然裁掉一截）。纵向拖动的模块横坐标锁死在原来那一列，只有纵坐标跟鼠标走。 */
+    private void drawDraggingComponent(GuiGraphics graphics, int funcScreenX, float offX, int mouseX, int mouseY) {
+        DraggingComponentState drag = draggingComponent;
+        int drawX = drag.verticalOnly
+                ? componentScreenX(funcScreenX, offX, drag.originRef.slotIndex())
+                : (int) Math.round(mouseX - drag.grabOffsetX);
+        int drawY = (int) Math.round(mouseY - drag.grabOffsetY);
+        ResourceLocation texture = drag.component.type.texture;
+        graphics.blit(texture, drawX, drawY, 0, 0, COMPONENT_WIDTH, COMPONENT_HEIGHT,
+                COMPONENT_WIDTH, COMPONENT_HEIGHT);
+        if (drag.component.type == ComponentType.ITEM_LINK) {
+            drawComponentItemIcon(graphics, drawX + ITEM_ICON_1_X, drawY + ITEM_ICON_1_Y, drag.component.itemSlot1);
+            drawComponentItemIcon(graphics, drawX + ITEM_ICON_2_X, drawY + ITEM_ICON_2_Y, drag.component.itemSlot2);
+        } else if (drag.component.type == ComponentType.LABEL_LINK) {
+            drawComponentLabelText(graphics, drawX + LABEL_TEXT_X, drawY + LABEL_TEXT_Y, drag.component.labelText);
+        }
+    }
+
     /** 在 insertIndex 位置插入一个空行，把地图里所有引用了"行号 >= insertIndex"的连接引用整体 +1。 */
     private void insertRowAt(int insertIndex) {
         rows.add(insertIndex, new Row());
@@ -1109,15 +1386,18 @@ public class RedstoneLinkRouterScreen extends AbstractSimiScreen {
         int funcScreenX = guiLeft + FUNC_X;
         int funcScreenY = guiTop + FUNC_Y;
 
-        int mapMouseX = activeModal == null ? mouseX : Integer.MIN_VALUE;
-        int mapMouseY = activeModal == null ? mouseY : Integer.MIN_VALUE;
-
-        graphics.enableScissor(funcScreenX, funcScreenY, funcScreenX + FUNC_WIDTH, funcScreenY + FUNC_HEIGHT);
-
         float offX = scrollX.getValue(partialTicks);
         float offY = scrollY.getValue(partialTicks);
 
-        LinkpointTarget hoverTarget = (activeModal instanceof ConnectingState)
+        updateDraggingComponent(funcScreenX, funcScreenY, offX, offY, mouseX, mouseY);
+
+        boolean draggingActive = draggingComponent != null && draggingComponent.started;
+        int mapMouseX = (activeModal == null && !draggingActive) ? mouseX : Integer.MIN_VALUE;
+        int mapMouseY = (activeModal == null && !draggingActive) ? mouseY : Integer.MIN_VALUE;
+
+        graphics.enableScissor(funcScreenX, funcScreenY, funcScreenX + FUNC_WIDTH, funcScreenY + FUNC_HEIGHT);
+
+        LinkpointTarget hoverTarget = (activeModal instanceof ConnectingState || draggingActive)
                 ? null : findLinkpointTarget(funcScreenX, funcScreenY, offX, offY, mapMouseX, mapMouseY);
 
         Set<RedstoneLinkRouterConnectionRef> poweredRefs = currentPoweredRefs();
@@ -1148,7 +1428,13 @@ public class RedstoneLinkRouterScreen extends AbstractSimiScreen {
                 }
             }
 
-            drawAddButton(graphics, funcScreenX, funcScreenY, offX, offY, rowTop, effectiveComponentCount(row), mapMouseX, mapMouseY);
+            int addButtonSlot = effectiveComponentCount(row);
+            if (draggingActive && draggingComponent.currentCandidateRef != null
+                    && draggingComponent.currentCandidateRef.rowIndex() == i
+                    && draggingComponent.currentCandidateRef.slotIndex() == addButtonSlot) {
+                addButtonSlot += 1;
+            }
+            drawAddButton(graphics, funcScreenX, funcScreenY, offX, offY, rowTop, addButtonSlot, mapMouseX, mapMouseY);
         }
 
         for (int i = 0; i < rows.size(); i++) {
@@ -1159,7 +1445,9 @@ public class RedstoneLinkRouterScreen extends AbstractSimiScreen {
         int addRowTop = rowTopOf(rows.size());
         drawAddButton(graphics, funcScreenX, funcScreenY, offX, offY, addRowTop, 0, mapMouseX, mapMouseY);
 
-        drawConnectionLines(graphics, funcScreenX, funcScreenY, offX, offY, mouseX, mouseY);
+        int connectionHoverMouseX = draggingActive ? Integer.MIN_VALUE : mouseX;
+        int connectionHoverMouseY = draggingActive ? Integer.MIN_VALUE : mouseY;
+        drawConnectionLines(graphics, funcScreenX, funcScreenY, offX, offY, connectionHoverMouseX, connectionHoverMouseY);
 
         if (activeModal instanceof ConnectingState cs) {
             ComponentRef hoveredCandidate = cs.findHoveredCandidate(mouseX, mouseY);
@@ -1168,7 +1456,16 @@ public class RedstoneLinkRouterScreen extends AbstractSimiScreen {
             }
         }
 
+        if (draggingActive) {
+            drawDraggingPreview(graphics, funcScreenX, funcScreenY, offX, offY);
+            drawDraggingConnectionPreviews(graphics, funcScreenX, funcScreenY, offX, offY);
+        }
+
         graphics.disableScissor();
+
+        if (draggingActive) {
+            drawDraggingComponent(graphics, funcScreenX, offX, mouseX, mouseY);
+        }
 
         if (activeModal != null) {
             activeModal.render(graphics, mouseX, mouseY, partialTicks);
@@ -1212,6 +1509,18 @@ public class RedstoneLinkRouterScreen extends AbstractSimiScreen {
         ComponentRef front = fromLeft ? candidateDisplay : originDisplay;
         ComponentRef back = fromLeft ? originDisplay : candidateDisplay;
 
+        drawPreviewConnectionLine(graphics, funcScreenX, funcScreenY, offX, offY, front, back);
+
+        RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+    }
+
+    /**
+     * 用 pre 系列半透明贴图画一条连接线（front 提供输出，back 提供输入），同行画一段
+     * 直线，跨行复用 {@link #addCrossRowSegments} 算出来的线段。调用方自己负责开关
+     * 混合模式和 shader 颜色（{@link #renderConnectionPreview}、拖动连接预览都会用到）。
+     */
+    private void drawPreviewConnectionLine(GuiGraphics graphics, int funcScreenX, int funcScreenY, float offX, float offY,
+                                           ComponentRef front, ComponentRef back) {
         if (front.rowIndex() == back.rowIndex()) {
             int lineX = componentScreenX(funcScreenX, offX, front.slotIndex()) + COMPONENT_WIDTH;
             int lineY = Math.round(funcScreenY + rowTopOf(front.rowIndex()) + LINKPOINT_Y_IN_ROW - offY);
@@ -1236,8 +1545,6 @@ public class RedstoneLinkRouterScreen extends AbstractSimiScreen {
                 }
             }
         }
-
-        RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
     }
 
     /** 连接线两遍绘制：先画所有非高亮的，再单独画一遍所有命中鼠标的（高亮贴图），保证高亮永远在最上层。 */
@@ -1356,11 +1663,12 @@ public class RedstoneLinkRouterScreen extends AbstractSimiScreen {
     private void drawComponentLabelText(GuiGraphics graphics, int areaX, int areaY, String text) {
         if (text == null || text.isEmpty()) return;
         int totalWidth = font.width(text);
-        int textY = areaY + (LABEL_TEXT_HEIGHT - font.lineHeight) / 2;
+        float textY = areaY + (LABEL_TEXT_HEIGHT - font.lineHeight) / 2f + 0.5f;
 
         graphics.enableScissor(areaX, areaY, areaX + LABEL_TEXT_WIDTH, areaY + LABEL_TEXT_HEIGHT);
         if (totalWidth <= LABEL_TEXT_WIDTH) {
-            drawLabelText(graphics, text, areaX, textY);
+            float centeredX = areaX + (LABEL_TEXT_WIDTH - totalWidth) / 2f;
+            drawLabelText(graphics, text, centeredX, textY);
         } else {
             int cycle = totalWidth + LABEL_SCROLL_GAP;
             float scrollPixels = labelScrollTicks * LABEL_SCROLL_SPEED;
@@ -1581,7 +1889,13 @@ public class RedstoneLinkRouterScreen extends AbstractSimiScreen {
 
                 ComponentRef clickedComponent = hitTestPlacedComponent(funcScreenX, funcScreenY, offX, offY, mouseX, mouseY);
                 if (clickedComponent != null) {
-                    openComponentEditor(clickedComponent);
+                    PlacedComponent clicked = rows.get(clickedComponent.rowIndex()).components.get(clickedComponent.slotIndex());
+                    boolean hasAnyConnection = !clicked.inputConnections.isEmpty() || !clicked.outputConnections.isEmpty();
+                    int compDrawX = componentScreenX(funcScreenX, offX, clickedComponent.slotIndex());
+                    int compDrawY = componentScreenY(funcScreenY, offY, rowTopOf(clickedComponent.rowIndex()));
+                    draggingComponent = new DraggingComponentState(
+                            clickedComponent, clicked, System.currentTimeMillis(),
+                            mouseX - compDrawX, mouseY - compDrawY, hasAnyConnection);
                     return true;
                 }
 
@@ -1601,6 +1915,15 @@ public class RedstoneLinkRouterScreen extends AbstractSimiScreen {
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         draggingMap = false;
+        if (button == 0 && draggingComponent != null) {
+            DraggingComponentState drag = draggingComponent;
+            draggingComponent = null;
+            if (drag.started) {
+                finalizeDrag(drag);
+            } else {
+                openComponentEditor(drag.originRef);
+            }
+        }
         return super.mouseReleased(mouseX, mouseY, button);
     }
 
@@ -1676,6 +1999,84 @@ public class RedstoneLinkRouterScreen extends AbstractSimiScreen {
 
     private static final class Row {
         private final List<PlacedComponent> components = new ArrayList<>();
+    }
+
+    /**
+     * 一次"按下模块 -> 可能拖动"的完整状态。{@code started=false} 时只是记下了按下的
+     * 时刻和抓取点，还没真的动手；一旦按住超过 {@link #DRAG_HOLD_THRESHOLD_MS} 就会
+     * 转成 {@code started=true}，模块本体从 {@link #rows} 里被摘出来单独浮动跟随鼠标。
+     * <p>
+     * {@code stableSnapshot} 是"模块刚被摘出、其它任何东西都还没挪动"这个基准状态的
+     * 完整快照——每次候选位置发生变化时，先把整个棋盘还原成这份基准快照，再对新候选
+     * 重新尝试一次真正的 {@code shiftGroup}，而不是去手动计算"怎么撤销上一次的搬运"。
+     * <p>
+     * 快照必须同时包含"每一行的排列"和"每个模块自身的输入/输出连接引用列表内容"
+     * 两部分——{@link #commitWorkingToReal} 提交一次搬运时会顺带原地重写所有受影响
+     * 模块的连接引用（把旧坐标改写成新坐标），如果只还原排列、不还原这些被顺带
+     * 重写过的引用内容，某个尝试过又被放弃的候选就会在棋盘上留下"排列已经复原、
+     * 但某些模块的连接引用还指向那次搬运造出来的坐标"这种悬挂状态，下一次
+     * {@link #buildNeighborGraph} 扫描到这些错误坐标就会数组越界崩溃。
+     */
+    private static final class DraggingComponentState {
+        private final ComponentRef originRef;
+        private final PlacedComponent component;
+        private final long pressStartMillis;
+        private final double grabOffsetX;
+        private final double grabOffsetY;
+        /** 是否为"有连接、只能纵向移动"的模块（无连接模块横纵都能移动）。 */
+        private final boolean verticalOnly;
+        private boolean started;
+        private ComponentRef currentCandidateRef;
+        private BoardSnapshot stableSnapshot;
+        /** 拖动开始那一刻真实的行数（不含任何为了测试候选而临时插入的新行）；拖到
+         *  "新增行"按钮上时，这个值就是那个虚拟新行的行号。 */
+        private int originalRowCount;
+        /** 只在 verticalOnly 时使用：这个模块被拿起瞬间所在的整个刚性组，作为拖动全程
+         *  的"绝对不可被牵动"保护集合，传给别的候选让位时用的 shiftGroup，防止它自己
+         *  的刚性组被别处的让位搬运误伤——和连接流程里 immutable 的用法完全一致。 */
+        private Set<PlacedComponent> immutableGroup;
+
+        private DraggingComponentState(ComponentRef originRef, PlacedComponent component,
+                                       long pressStartMillis, double grabOffsetX, double grabOffsetY,
+                                       boolean verticalOnly) {
+            this.originRef = originRef;
+            this.component = component;
+            this.pressStartMillis = pressStartMillis;
+            this.grabOffsetX = grabOffsetX;
+            this.grabOffsetY = grabOffsetY;
+            this.verticalOnly = verticalOnly;
+        }
+    }
+
+    /** 完整棋盘快照：每一行的排列 + 每个模块自身连接引用列表的内容，见 {@link DraggingComponentState} 上的说明。 */
+    private static final class BoardSnapshot {
+        private final List<List<PlacedComponent>> positions;
+        private final List<ComponentConnectionSnapshot> componentStates;
+
+        private BoardSnapshot(List<List<PlacedComponent>> positions, List<ComponentConnectionSnapshot> componentStates) {
+            this.positions = positions;
+            this.componentStates = componentStates;
+        }
+    }
+
+    /** 单个模块的连接引用列表内容快照（不是位置，是它自己 inputConnections/outputConnections 里装的坐标）。 */
+    private static final class ComponentConnectionSnapshot {
+        private final PlacedComponent component;
+        private final List<ComponentRef> inputConnections;
+        private final List<ComponentRef> outputConnections;
+
+        private ComponentConnectionSnapshot(PlacedComponent component) {
+            this.component = component;
+            this.inputConnections = new ArrayList<>(component.inputConnections);
+            this.outputConnections = new ArrayList<>(component.outputConnections);
+        }
+
+        private void restore() {
+            component.inputConnections.clear();
+            component.inputConnections.addAll(inputConnections);
+            component.outputConnections.clear();
+            component.outputConnections.addAll(outputConnections);
+        }
     }
 
     private record LinkpointTarget(int rowIndex, int slotIndex, boolean showLeft, boolean showRight) {

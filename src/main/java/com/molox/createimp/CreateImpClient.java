@@ -102,6 +102,10 @@ public class CreateImpClient {
                 ModItems.BATCH_MECHANICAL_CRAFTER.get().asItem(),
                 new ItemDescription.Modifier(ModItems.BATCH_MECHANICAL_CRAFTER.get().asItem(), FontHelper.Palette.STANDARD_CREATE)
         );
+        TooltipModifier.REGISTRY.register(
+                ModItems.REDSTONE_LINK_ROUTER.get().asItem(),
+                new ItemDescription.Modifier(ModItems.REDSTONE_LINK_ROUTER.get().asItem(), FontHelper.Palette.STANDARD_CREATE)
+        );
 
         CatnipServices.PLATFORM.executeOnClientOnly(() -> () -> {
             ResourceLocation templatePanelId = ResourceLocation.fromNamespaceAndPath(CreateImp.MODID, "template_panel");

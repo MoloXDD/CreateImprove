@@ -161,7 +161,7 @@ dependencies {
     localRuntime files("libs/CopyID-neoforge-1.21.1-1.0.1.jar")
     localRuntime files("libs/jecharacters-1.21-neoforge-4.5.23.jar")
     localRuntime files("libs/IMBlocker-5.5.2-neoforge+1.20.6-1.21.8.jar")
-    localRuntime files("libs/CreateCyberGoggles-1.21.1-7.6.5-NeoForge.jar")
+    //localRuntime files("libs/CreateCyberGoggles-1.21.1-7.6.5-NeoForge.jar")
     localRuntime files("libs/ftb-ultimine-neoforge-2101.1.15.jar")
     localRuntime files("libs/ftb-library-neoforge-2101.1.33.jar")
     localRuntime files("libs/architectury-13.0.8-neoforge.jar")
@@ -173,23 +173,26 @@ dependencies {
     localRuntime files("libs/jei-1.21.1-neoforge-19.27.0.340.jar")
 
     //流体包裹兼容
-    localRuntime files("libs/fluidlogistics-1.2.5.jar")
+    //localRuntime files("libs/fluidlogistics-1.2.5.jar")
     compileOnly files("libs/fluidlogistics-1.2.5.jar")
+
+    //流体物流兼容
+    localRuntime files("libs/create_factory_logistics-1.21.1-1.6.0-all.jar")
 
     //幻翼物流兼容
     localRuntime files("libs/createphantom-1.0.1.jar")
     compileOnly files("libs/createphantom-1.0.1.jar")
 
     //Repackage、deployer兼容
-    localRuntime files("libs/deployer-0.1.2.jar")
-    localRuntime files("libs/repackaged-0.0.7.jar")
+    //localRuntime files("libs/deployer-0.1.2.jar")
+    //localRuntime files("libs/repackaged-0.0.7.jar")
 
     //额外仪表兼容
-    localRuntime files("libs/extra_gauges-2.1.2.jar")
+    //localRuntime files("libs/extra_gauges-2.1.2.jar")
     compileOnly files("libs/extra_gauges-2.1.2.jar")
 
     //物流附加兼容
-    localRuntime files("libs/createadditionallogistics-1.21.1-1.4.5.jar")
+    //localRuntime files("libs/createadditionallogistics-1.21.1-1.4.5.jar")
     compileOnly files("libs/createadditionallogistics-1.21.1-1.4.5.jar")
 
 }
