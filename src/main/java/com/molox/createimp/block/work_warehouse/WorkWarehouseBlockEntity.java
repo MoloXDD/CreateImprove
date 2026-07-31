@@ -641,6 +641,11 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         addLog("createimp.log.enter_requesting_materials");
         addLog("createimp.log.waiting_materials", demandEntriesArg(demandList));
         monitorConnectedInventory();
+        // 和其余会走到 reconcileDemandList() 的调用点保持一致：先确保打包机
+        // 流体缓存里当前已有的存量（理论上这一刻应该是空的，这里只是为了
+        // 防御性地保持时序一致，不依赖"此刻一定没有残留缓存"这个假设）已经
+        // 搬进 fluidStorage，再结算需求列表。
+        monitorPackagerFluidCaches();
         reconcileDemandList();
         requestRemainingDemandFromNetwork();
     }
@@ -663,17 +668,33 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         boolean changed = false;
         for (WorkWarehouseTemplateSnapshot.DemandEntry entry : demandList) {
             ItemStack toMatch = entry.item();
-            ItemStack extracted = extractBehaviour.extract(ItemHelper.ExtractionCountMode.UPTO, entry.amount(),
-                    stack -> ItemStack.isSameItemSameComponents(stack, toMatch));
-            if (extracted.isEmpty()) {
+            // Create 自带的 ItemHelper.extract(UPTO, ...) 内部用单个 ItemStack
+            // 累加提取结果，一旦这个累加器的数量达到该物品的堆叠上限就不会再
+            // 继续从其他槽位提取——对堆叠上限大于 1 的物品没有影响，但对堆叠
+            // 上限为 1 的物品（比如盾牌、工具、盔甲）来说，无论 entry.amount()
+            // 要求多少，单次调用最多也只能真正提取出 1 个。这里改为循环调用，
+            // 直到取满这次需要的数量，或者连接库存里已经再也找不到匹配的物品
+            // 为止（每轮至少提取到 1 个才会继续，不会死循环）。
+            int remainingToExtract = entry.amount();
+            int extractedTotal = 0;
+            while (remainingToExtract > 0) {
+                ItemStack extracted = extractBehaviour.extract(ItemHelper.ExtractionCountMode.UPTO, remainingToExtract,
+                        stack -> ItemStack.isSameItemSameComponents(stack, toMatch));
+                if (extracted.isEmpty()) {
+                    break;
+                }
+                ItemHandlerHelper.insertItemStacked(storage, extracted, false);
+                decrementInTransit(extracted.copy());
+                transferred.add(extracted.copy());
+                extractedTotal += extracted.getCount();
+                remainingToExtract -= extracted.getCount();
+            }
+            if (extractedTotal <= 0) {
                 updated.add(entry);
                 continue;
             }
             changed = true;
-            ItemHandlerHelper.insertItemStacked(storage, extracted, false);
-            decrementInTransit(extracted.copy());
-            transferred.add(extracted.copy());
-            int remaining = entry.amount() - extracted.getCount();
+            int remaining = entry.amount() - extractedTotal;
             if (remaining > 0) {
                 updated.add(new WorkWarehouseTemplateSnapshot.DemandEntry(entry.network(), entry.item(), remaining,
                         entry.ownerNode(), entry.sourceProducerIndex()));
@@ -683,6 +704,13 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
             demandList = updated;
             setChanged();
             addLog("createimp.log.received_from_storage", materialOrProductLabelArg(), itemsArg(mergeItems(transferred)));
+            // 在可能触发"需求列表清空→进入生产阶段"的 reconcileDemandList()
+            // 之前，先把打包机流体缓存里已经确认到账（consumeFluidFromDemandList
+            // 已经扣减过需求列表）、但还没来得及物理转移进 fluidStorage 的流体
+            // 搬运过来，避免 beginProductionStage() 结算 preExistingCredit 时
+            // 因为这份流体还没到 fluidStorage 而漏算、重新登记出一条多余的
+            // 需求（这正是"进入生产阶段时又把流体请求了一遍"的成因）。
+            monitorPackagerFluidCaches();
             reconcileDemandList();
         }
     }
@@ -1803,15 +1831,23 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         if (stage != WorkStage.PRODUCTION || productionComplete) {
             return;
         }
-        // 每次这个方法被调用都重新结算一次需求列表，而不是只在刚进入生产
-        // 阶段那一刻结算一次——原料从打包机缓存真正转移进仓库自己的存储
-        // （物品/流体都一样）跟这里对需求列表的推进不是同一时刻发生的，
-        // 如果只在 beginProductionStage() 里结算一次，某个内部生产者→消费者
-        // 需求条目刚好赶在"原料还没转移进仓库"那一刻登记，就会永远卡在
-        // 需求列表里出不去（明明仓库里已经有这批原料了，却因为没人重新
-        // 核对过而一直傻乎乎地继续向网络请求）。这里补一次调用，让每次
-        // 周期性检查都有机会追上这个时间差。
-        settleFromOwnStorage();
+        // 注意：这里不再调用 settleFromOwnStorage()。该方法只应该在
+        // beginProductionStage() 里、生产刚开始那一刻结算一次（见该方法自身
+        // 的文档说明）——storage/fluidStorage 里的物品一旦被这份账本认领过，
+        // 会一直原样躺在那里等真正被节点寄出或者最终发货取走，如果这里每次
+        // 都重新扫描一遍当前存储内容再认领一次，会把同一批从未被取走的库存
+        // 反复当成"新发现的库存"重复认领，导致账面需求被清得比实际到货快，
+        // 曾经出现过"只收到一部分产物、账面却已经判定生产彻底完成"的问题，
+        // 根源就是这里。
+        //
+        // 之前为了赶上"打包机缓存搬运"和"需求列表结算"之间的时间差而加上的
+        // 这次重复调用，现在改为在真正会触发该时间差的两个调用点各自补一次
+        // monitorPackagerFluidCaches()（见 monitorConnectedInventory() 内部
+        // 和 startMaterialRequestStage()），确保任何一次可能让需求列表清空、
+        // 从而触发 beginProductionStage() 的调用之前，打包机缓存里已经确认
+        // 到账的流体都已经被真正搬进 fluidStorage，preExistingCredit 账本
+        // 不会再漏算——这样就不需要靠反复重新扫描存储这种粗放方式来弥补。
+        //
         // 先通报"上一轮已经完成、产物现在到齐了"的节点，再去扫描这一轮新
         // 可以完成的节点——保证同一次调用里，"产物生产完成"日志排在"开始
         // 生产"日志前面，符合日志顺序要求。
