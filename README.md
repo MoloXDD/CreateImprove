@@ -106,6 +106,17 @@ After interruption, the Work Warehouse will send all materials currently stored 
 
 ![image](https://media.forgecdn.net/attachments/description/1580762/description_06a11e23-1265-4722-9432-f23227326f16.png)
 
+### **Redstone Link Router**
+
+The Redstone Link Router allows players to arbitrarily add and connect Wireless Redstone Link frequencies within its interface, including the item frequencies of vanilla Create Wireless Redstone Links and the text frequencies added by this mod.
+When two frequencies are connected, the frequency on the left transmits its redstone signal to the frequency on the right. It also supports connecting a single frequency to multiple frequencies, allowing one frequency to control multiple others, and vice versa.
+
+On top of that, players are allowed to use basic Logic Gates to control the transmission of redstone signals between frequencies. The add-frequency window supports adding AndGate and OrGate. Meanwhile, left-clicking a connection line between frequencies allows you to configure a NOT gate on the input end of that connection.
+
+In this way, you can also control Labeled Redstone Links with the vanilla Create Redstone Remote.
+
+![image](https://media.forgecdn.net/attachments/description/1580762/description_292534ab-6b55-4e6a-907c-81df192fdacb.png)
+
 ### **Packager Outbound Address Filtering**
 
 In vanilla Create, when requesting items from a storage that is connected to multiple Packagers on the same network, one of those Packagers is chosen at random to ship the items.
@@ -141,3 +152,16 @@ If there are only 30 Oak Logs left in the network, it will request all 30 Oak Lo
 Allows players to right-click Packages inside inventory or any container GUI to quickly unpack them.
 
 The contents will first fill the current container or inventory, then the hotbar. If there is insufficient space, items will be dropped at the player's feet.
+
+### **Compatibilities**
+Added compatibility with [Create: Fluid Logistics](https://modrinth.com/mod/createfluidlogistic), enabling fluids to participate in template production and allowing players to create Fluid Templates. Work Warehouses can receive and send fluid packages via their attached Packager or the Packager of the connected storage, without requiring an additional Fluid Packager. The outgoing address filter for Packagers also applies to Fluid Packagers. Scrap Buckets can now use a Fluid Packager to unpack fluids and destroy them.The hand pointer from Create: Fluid Logistics can be used on the Batch Mechanical Crafter.
+
+Added compatibility with [Create: Phantom](https://modrinth.com/mod/createphantom), allowing the tunable portable ticker from Phantom Logistics to see and request templates. Fluid Templates are also supported.
+
+Added compatibility with [Create: Extra Gauges](https://modrinth.com/mod/extra-gauges), enabling Template Panels to configure Mechanical Crafting recipes larger than 3x3 and participate normally in template production.
+
+Added compatibility with [Create: Additional Logistics](https://modrinth.com/mod/create-additional-logistics), ensuring that the Demand Request Mode of Factory Panels is properly limited by the promise cap added by Additional Logistics.
+
+It has been confirmed that, due to the new version of [Create: Mobile Packages](https://modrinth.com/mod/create-mobile-packages) being incompatible with the latest version 1.2.5 of [Create: Fluid Logistics](https://modrinth.com/mod/createfluidlogistic), and since this mod's compatibility with Fluid Logistics is based on that version, it will not be compatible with Mobile Packages until it updates.
+
+It has been confirmed that, due to Mixin architecture conflicts, this mod will not be compatible with [Create: Factory Logistics](https://modrinth.com/mod/create_factory_logistics) in the short term.
