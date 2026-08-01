@@ -71,12 +71,12 @@ public class ProcessManagerBlockEntity extends SmartBlockEntity {
      * 列表最前面，随后立即按当前配置的保留数量清理超出部分。
      */
     public void archiveHistory(ItemStack requestedProduct, int requestedAmount, long completionGameTime,
-                               List<WorkWarehouseTemplateSnapshot.LogEntry> logEntries) {
+                               List<WorkWarehouseTemplateSnapshot.LogEntry> logEntries, boolean logTruncated) {
         if (level == null || level.isClientSide()) {
             return;
         }
         historyEntries.add(0, new ProcessManagerHistoryEntry(
-                requestedProduct.copy(), requestedAmount, completionGameTime, new ArrayList<>(logEntries)));
+                requestedProduct.copy(), requestedAmount, completionGameTime, new ArrayList<>(logEntries), logTruncated));
         trimHistoryIfNeeded();
         setChanged();
         notifyUpdate();

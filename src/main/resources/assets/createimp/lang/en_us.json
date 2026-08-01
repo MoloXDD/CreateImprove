@@ -167,6 +167,7 @@
   "createimp.log.enter_production_complete": "Work Warehouse entered _production complete stage_",
   "createimp.log.final_shipment": "Output final product: _%s_, output address: _%s_",
   "createimp.log.enter_idle": "Template request complete, Work Warehouse entered _idle stage_",
+  "createimp.log.truncated_warning": "Log too large, oldest log entries were discarded",
   "createimp.log.label_material": "material",
   "createimp.log.label_product": "product",
   "createimp.log.connected_storage_short": "Connected Storage",

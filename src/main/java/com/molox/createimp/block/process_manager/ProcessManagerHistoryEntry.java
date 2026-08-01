@@ -16,7 +16,8 @@ import java.util.List;
  * 用的是同一份数据、同一套格式，不需要额外转换。
  */
 public record ProcessManagerHistoryEntry(ItemStack requestedProduct, int requestedAmount, long completionGameTime,
-                                         List<WorkWarehouseTemplateSnapshot.LogEntry> logEntries) {
+                                         List<WorkWarehouseTemplateSnapshot.LogEntry> logEntries,
+                                         boolean logTruncated) {
     /**
      * 防御性归一化：requestedProduct 只是类型标记，真实数量由
      * requestedAmount 单独承载。原版 ItemStack.CODEC 对内部 count 字段做了
@@ -31,6 +32,7 @@ public record ProcessManagerHistoryEntry(ItemStack requestedProduct, int request
             ItemStack.CODEC.fieldOf("product").forGetter(ProcessManagerHistoryEntry::requestedProduct),
             Codec.INT.fieldOf("amount").forGetter(ProcessManagerHistoryEntry::requestedAmount),
             Codec.LONG.fieldOf("completion_time").forGetter(ProcessManagerHistoryEntry::completionGameTime),
-            WorkWarehouseTemplateSnapshot.LogEntry.CODEC.listOf().fieldOf("logs").forGetter(ProcessManagerHistoryEntry::logEntries)
+            WorkWarehouseTemplateSnapshot.LogEntry.CODEC.listOf().fieldOf("logs").forGetter(ProcessManagerHistoryEntry::logEntries),
+            Codec.BOOL.optionalFieldOf("log_truncated", false).forGetter(ProcessManagerHistoryEntry::logTruncated)
     ).apply(instance, ProcessManagerHistoryEntry::new));
 }

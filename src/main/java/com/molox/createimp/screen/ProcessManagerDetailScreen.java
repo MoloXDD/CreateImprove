@@ -141,6 +141,30 @@ public class ProcessManagerDetailScreen extends AbstractSimiScreen {
     private int totalContentHeight = 0;
     /** 是否处于"置底"状态：为 true 时每 tick 都会自动追到最新日志。 */
     private boolean stickToBottom = true;
+    /**
+     * 上一次 {@link #refreshLog} 时，日志列表最前面那一条的轻量指纹
+     * （{@code elapsedTicks + key}），用于判断最前面的条目是否已经被
+     * 硬性字节上限截断逻辑丢弃换掉——不能直接拿 {@link WorkWarehouseTemplateSnapshot.LogEntry}
+     * 整体做 {@code equals()} 比较，因为它内部经由 {@code LogArg.ItemCount}
+     * 携带的 {@code ItemStack} 字段本身没有重写 {@code equals()}（反编译确认
+     * 只会退化成对象引用比较），客户端每次收到方块实体同步包解码出来的都是
+     * 全新实例，会导致哪怕内容完全没变也一直被判定为"变了"。改用这两个
+     * 不涉及 {@code ItemStack} 的普通值字段拼指纹，能可靠判断内容是否真的
+     * 变化。列表为空时为 {@code null}。
+     */
+    private record EntryFingerprint(long elapsedTicks, String key) {
+    }
+    private EntryFingerprint knownFirstEntryFingerprint = null;
+    /**
+     * 这次记录的日志是否曾经因为超过硬性字节上限被丢弃过最旧的条目。
+     * 历史模式下从构造时固定传入；实时模式下每 tick 跟随
+     * {@link WorkWarehouseBlockEntity#isLogTruncated()} 更新，因为这个状态
+     * 可能是玩家正停留在详情界面时才变为 true 的。
+     */
+    private boolean logTruncated;
+    /** {@link #logTruncated} 对应的警告行是否已经插入过 {@link #renderedLines}，
+     *  避免重复插入。 */
+    private boolean truncationWarningInserted = false;
 
     private IconButton confirmButton;
     private IconButton downButton;
@@ -158,17 +182,19 @@ public class ProcessManagerDetailScreen extends AbstractSimiScreen {
         this.staticEntries = null;
         this.returnScroll = returnScroll;
         this.returnToHistoryMode = returnToHistoryMode;
+        this.logTruncated = false;
     }
 
     /** 历史模式：日志内容是"历史请求日志"里的一条固定记录，不会再变化，也不需要自动退出。 */
     public ProcessManagerDetailScreen(BlockPos managerPos, List<WorkWarehouseTemplateSnapshot.LogEntry> staticEntries,
-                                      float returnScroll) {
+                                      boolean logTruncated, float returnScroll) {
         super(Component.translatable("block.createimp.process_manager"));
         this.managerPos = managerPos;
         this.warehousePos = null;
         this.staticEntries = new ArrayList<>(staticEntries);
         this.returnScroll = returnScroll;
         this.returnToHistoryMode = true;
+        this.logTruncated = logTruncated;
     }
 
     @Override
@@ -327,10 +353,11 @@ public class ProcessManagerDetailScreen extends AbstractSimiScreen {
     private void refreshLog() {
         List<WorkWarehouseTemplateSnapshot.LogEntry> entries;
         if (staticEntries != null) {
+            entries = staticEntries;
             if (knownEntryCount > 0) {
+                insertTruncationWarningIfNeeded();
                 return;
             }
-            entries = staticEntries;
         } else {
             Minecraft mc = Minecraft.getInstance();
             if (mc.level == null) {
@@ -340,12 +367,26 @@ public class ProcessManagerDetailScreen extends AbstractSimiScreen {
                 return;
             }
             entries = warehouse.getLogEntries();
+            logTruncated = warehouse.isLogTruncated();
         }
-        if (entries.size() < knownEntryCount) {
+
+        EntryFingerprint currentFirstFingerprint = entries.isEmpty() ? null
+                : new EntryFingerprint(entries.get(0).elapsedTicks(), entries.get(0).key());
+        boolean frontChanged = !java.util.Objects.equals(currentFirstFingerprint, knownFirstEntryFingerprint);
+
+        if (entries.size() == knownEntryCount && !frontChanged) {
+            insertTruncationWarningIfNeeded();
+            return;
+        }
+
+        if (entries.size() < knownEntryCount || frontChanged) {
+            // 最前面的条目已经不是原来那条（被硬性字节上限截断丢弃了），或者
+            // 仓库本身回到空闲把日志整体清空了——两种情况都没法只靠"追加新增
+            // 的几条"来更新，必须整体重建，保证客户端显示的内容和服务端
+            // 当前实际持有的日志列表完全一致。
             renderedLines.clear();
             knownEntryCount = 0;
-        } else if (entries.size() == knownEntryCount) {
-            return;
+            truncationWarningInserted = false;
         }
 
         int maxWidth = LOG_LINE_MAX_WIDTH;
@@ -361,8 +402,36 @@ public class ProcessManagerDetailScreen extends AbstractSimiScreen {
             }
         }
         knownEntryCount = entries.size();
+        knownFirstEntryFingerprint = currentFirstFingerprint;
+        insertTruncationWarningIfNeeded();
         recomputeTotalHeight();
     }
+
+    /**
+     * 日志曾经被截断过时，在 {@link #renderedLines} 最前方插入一条红色警告行
+     * （复用 {@code CANCEL} 分类的配色，和"请求中断"日志的红色完全一致）。
+     * 只会真正插入一次：{@link #truncationWarningInserted} 保证重复调用不会
+     * 重复插入；{@link #logTruncated} 在实时模式下可能是玩家正停留在详情
+     * 界面时才从 false 变为 true 的，所以每次 {@link #refreshLog} 都要检查，
+     * 不能只在条目数量变化时才检查。
+     */
+    private void insertTruncationWarningIfNeeded() {
+        if (!logTruncated || truncationWarningInserted) {
+            return;
+        }
+        truncationWarningInserted = true;
+        List<ProcessLogTextUtil.Segment> combined = ProcessLogTextUtil.parseHighlight(
+                Component.translatable("createimp.log.truncated_warning").getString());
+        List<List<ProcessLogTextUtil.Segment>> lines = ProcessLogTextUtil.wrap(font, combined, LOG_LINE_MAX_WIDTH);
+        List<RenderedLine> warningLines = new ArrayList<>();
+        for (int lineIndex = 0; lineIndex < lines.size(); lineIndex++) {
+            warningLines.add(new RenderedLine(lines.get(lineIndex), lineIndex == 0,
+                    WorkWarehouseTemplateSnapshot.LogCategory.CANCEL));
+        }
+        renderedLines.addAll(0, warningLines);
+        recomputeTotalHeight();
+    }
+
 
     private void recomputeTotalHeight() {
         int height = LOG_ENTRY_GAP; // 最顶部留白

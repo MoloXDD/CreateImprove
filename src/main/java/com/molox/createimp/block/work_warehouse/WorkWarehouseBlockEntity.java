@@ -34,6 +34,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
@@ -314,12 +315,57 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
     }
 
     /**
-     * 本次工作从激活到当前发生过的全部事件日志，只在服务端持久化。
-     * 每条日志都存了记录那一刻相对 {@link #activationGameTime} 的经过 tick 数，
-     * 供以后做"日志详情"界面时使用；{@link #resetToIdle()} 回到空闲状态时
-     * 会被整体清空。
+     * 本次工作从激活到当前发生过的全部事件日志。虽然注释历史上写的是"只在
+     * 服务端持久化"，但 {@link #write} 实际并未按 {@code clientPacket} 区分，
+     * 这份日志本身也会随方块实体同步包一起发给客户端（详情界面实时模式正是
+     * 靠这一点直接读取客户端本地这份数据）——2026-08 排查确认这是一处和
+     * 进程面板归档历史同源的隐患：日志本身没有任何体积上限，一旦某次工作
+     * 日志堆积得足够大，会让这个方块实体自己的同步包就先一步突破客户端
+     * NBT 解码硬性配额而崩溃，不需要等归档到进程面板那一步。{@link #resetToIdle}
+     * 回到空闲状态时会被整体清空。
      */
     private final List<WorkWarehouseTemplateSnapshot.LogEntry> logEntries = new ArrayList<>();
+
+    /**
+     * {@link #logEntries} 当前累计编码字节数的运行时缓存，随每次
+     * {@link #addLog} 增量更新，避免每次都要把整份列表重新编码一遍才能
+     * 知道是否超过 {@link #LOG_ENTRIES_HARD_CAP_BYTES}。方块重新加载时在
+     * {@link #read} 里按当时载入的 {@link #logEntries} 重新算一遍，不持久化
+     * 这个缓存值本身。
+     */
+    private long logEntriesEncodedBytes = 0;
+
+    /**
+     * 这次工作的日志是否曾经因为超过 {@link #LOG_ENTRIES_HARD_CAP_BYTES}
+     * 而丢弃过最旧的条目。一旦置true就不会再变回false，直到 {@link #resetToIdle}
+     * 把这次工作的状态整体清空。会同步给客户端，也会随归档一起交给进程面板，
+     * 供"历史请求日志"界面在这次记录的日志最前方提示"最早的日志条目被丢弃"。
+     */
+    private boolean logTruncated = false;
+
+    public boolean isLogTruncated() {
+        return logTruncated;
+    }
+
+    /**
+     * 单次工作日志硬性字节上限：{@link #logEntries} 编码后的原始字节数一旦
+     * 超过这个值，就从最旧的一条开始丢弃，直到重新回到这个值以内。
+     * <p>
+     * 取值依据：客户端解码方块实体同步包时用的 NBT 配额硬上限固定是
+     * {@code FriendlyByteBuf.DEFAULT_NBT_QUOTA}（2097152 字节，即 2MiB，
+     * 已反编译核实），超过这个值客户端会直接解码失败崩溃。这个上限只约束
+     * "单次工作自己这一份日志"；进程面板保留的历史记录条数（见
+     * {@code CreateImpConfig.TemplateFunctionConfig.historyLogRetentionCount}，
+     * 已改为限定在 1~10 之间）会把多份归档记录一起塞进同一个方块实体同步包，
+     * 因此这里没有把上限定得逼近 2MiB 本身，而是按"最多 10 份归档记录、
+     * 每份都不超过这个上限"的最坏情况合计控制在明显低于 2MiB 的安全范围
+     * 内，为这里的字节数估算方式（按 NBT 二进制写入后的原始字节数估算，
+     * 和真正的 NbtAccounter 记账方式并非完全一致）留出余量，同时也为方块
+     * 实体自身其余字段留出空间。物品参数经过瘦身处理后（见
+     * {@link WorkWarehouseTemplateSnapshot.LogArg.ItemCount}），这个上限
+     * 在正常使用场景下极难触达，只有真正异常庞大的模板链才会用到。
+     */
+    private static final long LOG_ENTRIES_HARD_CAP_BYTES = 150L * 1024L;
 
     /**
      * 最新一条日志的翻译键、参数与经过时间，专门拆出来单独同步给客户端
@@ -378,13 +424,48 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         }
         long elapsed = Math.max(0, level.getGameTime() - activationGameTime);
         List<WorkWarehouseTemplateSnapshot.LogArg> argList = List.of(args);
-        logEntries.add(new WorkWarehouseTemplateSnapshot.LogEntry(elapsed, key, argList, category));
+        WorkWarehouseTemplateSnapshot.LogEntry newEntry =
+                new WorkWarehouseTemplateSnapshot.LogEntry(elapsed, key, argList, category);
+        logEntries.add(newEntry);
+        logEntriesEncodedBytes += estimateEncodedBytes(level.registryAccess(), newEntry);
+        while (logEntriesEncodedBytes > LOG_ENTRIES_HARD_CAP_BYTES && logEntries.size() > 1) {
+            WorkWarehouseTemplateSnapshot.LogEntry removed = logEntries.remove(0);
+            logEntriesEncodedBytes -= estimateEncodedBytes(level.registryAccess(), removed);
+            logTruncated = true;
+        }
         latestLogKey = key;
         latestLogArgs = argList;
         latestLogCategory = category;
         latestLogElapsedTicks = elapsed;
         setChanged();
         notifyUpdate();
+    }
+
+    /**
+     * 粗略估算一条 {@link WorkWarehouseTemplateSnapshot.LogEntry} 编码成 NBT
+     * 之后的原始字节数：先按它自己的 {@code CODEC} 编码成 {@link Tag}，再
+     * 用 NBT 二进制写入方式量出真正的字节数——这个数值和真正判定客户端
+     * 解码是否失败的 {@code NbtAccounter} 记账方式不完全一致（后者对每个
+     * 字段有固定的额外开销计费），但足够作为 {@link #LOG_ENTRIES_HARD_CAP_BYTES}
+     * 这个远低于 2MiB 硬上限的安全阈值的估算依据。{@code registries} 由调用方
+     * 传入而不是这里去读 {@link #level}，因为 {@link #read} 触发时 level 不一定
+     * 已经挂好。
+     */
+    private static long estimateEncodedBytes(HolderLookup.Provider registries,
+                                             WorkWarehouseTemplateSnapshot.LogEntry entry) {
+        return CatnipCodecUtils.encode(WorkWarehouseTemplateSnapshot.LogEntry.CODEC, registries, entry)
+                .map(WorkWarehouseBlockEntity::rawTagByteSize)
+                .orElse(0L);
+    }
+
+    private static long rawTagByteSize(Tag tag) {
+        try {
+            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+            tag.write(new java.io.DataOutputStream(bos));
+            return bos.size();
+        } catch (java.io.IOException e) {
+            return 0L;
+        }
     }
 
     private static WorkWarehouseTemplateSnapshot.LogArg itemArg(ItemStack item, int amount) {
@@ -1785,6 +1866,8 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         producerCompletionAnnounced.clear();
         preExistingCredit.clear();
         logEntries.clear();
+        logEntriesEncodedBytes = 0;
+        logTruncated = false;
         latestLogKey = "";
         latestLogArgs = new ArrayList<>();
         latestLogCategory = WorkWarehouseTemplateSnapshot.LogCategory.NORMAL;
@@ -1796,9 +1879,10 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
     }
 
     /**
-     * 把这次工作的产物、请求数量、归档时刻的世界时间、以及完整日志历史，
-     * 打包发送给所在物流网络下当前所有现存的进程面板，供它们的"历史请求
-     * 日志"界面展示。发生在 {@link #logEntries} 被清空之前。
+     * 把这次工作的产物、请求数量、归档时刻的世界时间、完整日志历史、以及
+     * 日志是否曾经因为超过硬性字节上限被截断过，打包发送给所在物流网络下
+     * 当前所有现存的进程面板，供它们的"历史请求日志"界面展示。发生在
+     * {@link #logEntries} 被清空之前。
      */
     private void archiveHistoryToProcessManagers() {
         if (level == null || behaviour == null || behaviour.freqId == null) {
@@ -1807,7 +1891,7 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         long completionTime = level.getGameTime();
         for (com.molox.createimp.block.process_manager.ProcessManagerBlockEntity pmbe
                 : com.molox.createimp.block.process_manager.ProcessManagerNetworkHelper.findAll(behaviour.freqId, false)) {
-            pmbe.archiveHistory(requestedProduct, requestedAmount, completionTime, logEntries);
+            pmbe.archiveHistory(requestedProduct, requestedAmount, completionTime, logEntries, logTruncated);
         }
     }
 
@@ -2496,6 +2580,11 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
                 ? CatnipCodecUtils.decode(WorkWarehouseTemplateSnapshot.LogEntry.CODEC.listOf(), registries,
                 tag.get("LogEntries")).orElse(List.of())
                 : List.of());
+        logTruncated = tag.getBoolean("LogTruncated");
+        logEntriesEncodedBytes = 0;
+        for (WorkWarehouseTemplateSnapshot.LogEntry entry : logEntries) {
+            logEntriesEncodedBytes += estimateEncodedBytes(registries, entry);
+        }
         stage = tag.contains("Stage")
                 ? parseStage(tag.getString("Stage"))
                 : WorkStage.IDLE;
@@ -2565,6 +2654,7 @@ public class WorkWarehouseBlockEntity extends SmartBlockEntity implements IHaveG
         tag.putLong("LatestLogElapsedTicks", latestLogElapsedTicks);
         CatnipCodecUtils.encode(WorkWarehouseTemplateSnapshot.LogEntry.CODEC.listOf(), registries, logEntries)
                 .ifPresent(encoded -> tag.put("LogEntries", encoded));
+        tag.putBoolean("LogTruncated", logTruncated);
         tag.putString("Stage", stage.name());
         tag.putBoolean("ProductionComplete", productionComplete);
         if (!clientPacket) {

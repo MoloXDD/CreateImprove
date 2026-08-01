@@ -103,6 +103,15 @@ public class CreateImpConfig implements ConfigData {
 
     public static class TemplateFunctionConfig {
         public String backToConnectedInventoryAddress = "/back";
+        /**
+         * 范围限定在 1~10：这个数值和工作仓库单次工作日志的硬性字节上限
+         * （{@code WorkWarehouseBlockEntity.LOG_ENTRIES_HARD_CAP_BYTES}，
+         * 150KB）是配合生效的——进程面板会把这里设定的份数一起塞进同一个
+         * 方块实体同步包，如果这个值不设上限，即便单条日志本身有硬顶，
+         * 总量乘起来依然可能突破客户端 NBT 解码的硬性配额（2MiB）导致崩溃。
+         * 10 这个上限对应"10 × 150KB = 1.5MB"，比 2MiB 留了安全余量。
+         */
+        @ConfigEntry.BoundedDiscrete(min = 1, max = 10)
         public int historyLogRetentionCount = 10;
         public TemplateDisplayStyle stockKeeperTemplateDisplayStyle = TemplateDisplayStyle.STYLE_1;
         public boolean mergeTemplateWithStock = false;

@@ -167,6 +167,7 @@
   "createimp.log.enter_production_complete": "工作仓库进入_生产完成阶段_",
   "createimp.log.final_shipment": "输出最终产物：_%s_，输出地址：_%s_",
   "createimp.log.enter_idle": "模板请求完成，工作仓库进入_空闲阶段_",
+  "createimp.log.truncated_warning": "日志过大，最早的日志条目被丢弃",
   "createimp.log.label_material": "原料",
   "createimp.log.label_product": "产物",
   "createimp.log.connected_storage_short": "连接库存",

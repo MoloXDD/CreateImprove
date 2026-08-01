@@ -421,7 +421,8 @@ public class ProcessManagerScreen extends AbstractSimiScreen {
                 if (historyMode) {
                     if (index < historyEntries.size()) {
                         ProcessManagerHistoryEntry entry = historyEntries.get(index);
-                        ScreenOpener.open(new ProcessManagerDetailScreen(pos, entry.logEntries(), scroll.getChaseTarget()));
+                        ScreenOpener.open(new ProcessManagerDetailScreen(
+                                pos, entry.logEntries(), entry.logTruncated(), scroll.getChaseTarget()));
                         return true;
                     }
                 } else if (index < processes.size()) {

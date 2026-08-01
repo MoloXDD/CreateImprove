@@ -313,17 +313,34 @@ public final class WorkWarehouseTemplateSnapshot {
             return String.valueOf(ic.count());
         }
 
-        /** 一种物品 + 数量，用于拼成日志里"物品名×数量"这一段。 */
+        /** 一种物品 + 数量，用于拼成日志里"物品名×数量"这一段。
+         * <p>
+         * 【瘦身说明】{@code item} 只保留"这是哪个物品"（用于查图标）和玩家/
+         * 系统自定义名字（如果有的话，用于展示名字），其余全部 components
+         * （附魔、成书内容、告示牌文字、潜影盒内容物、染色等）一律不保留。
+         * 这套日志系统从设计上就只需要"物品名字+数量+图标"三样（见
+         * {@link LogArg#resolve()} 和界面渲染逻辑），从没用到过物品实例的
+         * 完整数据；而这些被舍弃的 components 里，恰恰是成书/告示牌/潜影盒
+         * 这类物品体积失控的来源——单个这类物品的完整编码可以到几十 KB
+         * 甚至更大，几十条历史日志累积起来足以让方块实体同步包突破客户端
+         * NBT 解码的硬性配额（2MiB），导致附近玩家崩溃。瘦身后单个物品在
+         * 日志里的编码体积稳定在几十字节量级，从根源上消除了这个风险。 */
         public record ItemCount(ItemStack item, int count) {
-            /**
-             * 强制把 {@code item} 内嵌的数量归一化成 1——真实数量只由 {@code count}
-             * 这个独立字段承载。原版 {@code ItemStack.CODEC} 对内部 count 字段做了
-             * {@code intRange(1, 99)} 校验，如果不归一化，调用方一旦把"物品×实际
-             * 数量"直接拼进 {@code item} 里（比如数量超过 99 的批量物流请求），
-             * 这一条记录就会编码失败，进而拖累整个日志列表都编码失败、静默丢失。
-             */
             public ItemCount {
-                item = item.copyWithCount(1);
+                item = stripToEssentials(item);
+            }
+
+            private static ItemStack stripToEssentials(ItemStack item) {
+                if (item.isEmpty()) {
+                    return item;
+                }
+                ItemStack essentials = new ItemStack(item.getItem());
+                net.minecraft.network.chat.Component customName =
+                        item.get(net.minecraft.core.component.DataComponents.CUSTOM_NAME);
+                if (customName != null) {
+                    essentials.set(net.minecraft.core.component.DataComponents.CUSTOM_NAME, customName);
+                }
+                return essentials;
             }
 
             public static final Codec<ItemCount> CODEC = RecordCodecBuilder.create(instance -> instance.group(
