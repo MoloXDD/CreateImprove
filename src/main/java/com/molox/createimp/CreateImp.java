@@ -1,11 +1,16 @@
 package com.molox.createimp;
 
 import com.molox.createimp.client.ClientPayloadHandlers;
+import com.molox.createimp.compat.fluidlogistics.FluidLogisticsCompat;
+import me.shedaniel.autoconfig.AutoConfig;
+import me.shedaniel.autoconfig.gui.registry.GuiRegistry;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.fml.loading.FMLLoader;
 import net.neoforged.neoforge.network.handling.IPayloadHandler;
 import java.util.function.Supplier;
+import java.lang.reflect.Field;
+import java.util.List;
 
 import com.molox.createimp.item.NetworkManagerItem;
 import com.molox.createimp.network.ApplyNetworkPacket;
@@ -60,7 +65,6 @@ import com.simibubi.create.api.packager.unpacking.UnpackingHandler;
 import com.simibubi.create.api.stress.BlockStressValues;
 import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelBlockEntity;
 import com.molox.createimp.block.batch_mechanical_crafter.BatchCrafterUnpackingHandler;
-import me.shedaniel.autoconfig.AutoConfig;
 import me.shedaniel.autoconfig.serializer.GsonConfigSerializer;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.ItemStack;
@@ -84,6 +88,9 @@ public class CreateImp {
 
     public CreateImp(IEventBus modEventBus, ModContainer modContainer) {
         AutoConfig.register(CreateImpConfig.class, GsonConfigSerializer::new);
+        if (FMLLoader.getDist() == Dist.CLIENT) {
+            registerClientConfigVisibilityRules();
+        }
         ModBlocks.BLOCKS.register(modEventBus);
         ModItems.ITEMS.register(modEventBus);
         ModCreativeTabs.CREATIVE_MODE_TABS.register(modEventBus);
@@ -110,6 +117,29 @@ public class CreateImp {
         // 维度等都会触发，双端都会收到），按"是否属于这个正在卸载的关卡"
         // 精确清理，不会误清其他仍在加载的维度。
         NeoForge.EVENT_BUS.addListener(WorkWarehouseBlockEntity::onLevelUnload);
+    }
+
+    /**
+     * Cloth Config 的 {@code Excluded} 注解是静态的，无法依据已装模组版本
+     * 动态生效。这里在客户端构建配置界面时过滤旧流体打包机去重开关；字段
+     * 本身仍保留在配置数据中，以兼容已有 1.2.6 配置文件并避免影响其它流包
+     * 配置项或普通 Create 打包机的独立修复开关。
+     */
+    private static void registerClientConfigVisibilityRules() {
+        GuiRegistry registry = AutoConfig.getGuiRegistry(CreateImpConfig.class);
+        registry.registerPredicateTransformer(
+                (entries, i18n, field, config, defaults, access) ->
+                        isLegacyFluidPackagerFixField(field)
+                                && !FluidLogisticsCompat.shouldShowLegacyDuplicatePromiseFixOption()
+                                ? List.of()
+                                : entries,
+                CreateImp::isLegacyFluidPackagerFixField
+        );
+    }
+
+    private static boolean isLegacyFluidPackagerFixField(Field field) {
+        return field.getDeclaringClass() == CreateImpConfig.ModCompatConfig.FluidLogisticsCompatConfig.class
+                && field.getName().equals("fixFluidPackagerDuplicatePromiseConsumption");
     }
 
     private static void commonSetup(FMLCommonSetupEvent event) {

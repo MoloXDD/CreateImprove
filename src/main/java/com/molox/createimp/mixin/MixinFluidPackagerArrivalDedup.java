@@ -46,8 +46,10 @@ import java.util.UUID;
  * 命中检查。{@code notifyNewArrivals} 本身的签名和内部实现两个版本完全一致，
  * 变的只是它被从哪个方法里调用——所以下面 {@code @Redirect} 的 {@code method}
  * 目标是 {@code refreshAvailableResources}，不是 {@code getAvailableResources}。
- * 之后流体包裹再更新，如果这个 Mixin 又报"Scanned 0 target(s)"，先反编译确认
- * 这次调用点又挪到哪个方法里了，再对应改这里的 {@code method}，不要凭猜测改。
+ * 流体包裹 1.2.7 起改用新的到货通知签名，并自行按库存身份和承诺队列去重，
+ * 因此此处显式使用 {@code require = 0}：旧调用存在的 1.2.6 会注入；1.2.7
+ * 及以后找不到旧调用时不注入，不能把这种预期结果当作错误。未来若需要兼容
+ * 新版本，仍应先反编译确认其去重语义，而不是盲目改写目标方法名。
  * <p>
  * 【本类为什么直接重新实现一遍到货通知逻辑，而不是像
  * {@code MixinPackagerArrivalDedup} 那样单纯替换参数后调用原方法】
@@ -75,7 +77,7 @@ public abstract class MixinFluidPackagerArrivalDedup {
             target = "Lcom/yision/fluidlogistics/content/logistics/packageResource/ResourcePackagerPromiseHelper;"
                     + "notifyNewArrivals(Lcom/simibubi/create/content/logistics/packager/PackagerBlockEntity;"
                     + "Lcom/simibubi/create/content/logistics/packager/InventorySummary;"
-                    + "Lcom/simibubi/create/content/logistics/packager/InventorySummary;)V"))
+                    + "Lcom/simibubi/create/content/logistics/packager/InventorySummary;)V"), require = 0)
     private static void createimp$notifyNewArrivalsDeduped(PackagerBlockEntity owner,
                                                            InventorySummary before, InventorySummary after) {
         InventorySummary effectiveBefore = before;
