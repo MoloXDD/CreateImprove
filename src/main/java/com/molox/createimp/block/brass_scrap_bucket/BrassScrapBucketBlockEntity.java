@@ -23,7 +23,9 @@ import net.neoforged.neoforge.fluids.FluidStack;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import net.neoforged.neoforge.items.IItemHandler;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
 
@@ -32,6 +34,8 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
 
     private int itemFill = 0;
     private int fluidFill = 0;
+    private final Map<ResourceLocation, Integer> configuredItemFill = new HashMap<>();
+    private final Map<ResourceLocation, Integer> configuredFluidFill = new HashMap<>();
     private ItemStack producedStack = ItemStack.EMPTY;
 
     public int keepAmount = -1;
@@ -105,37 +109,79 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
      * 累积物品销毁量并尝试转化为产出物品。供直接输入销毁与维持存量自动漏出销毁
      * 两条路径共用，确保判定逻辑完全一致。
      */
-    private void accumulateItemFill(int destroyedCount) {
+    private void accumulateItemFill(ItemStack destroyedStack) {
         if (!canProduceAccumulate()) return;
-        itemFill += destroyedCount;
-        Item produceItem = resolveProduceItem(CreateImp.getConfig());
-        int itemsPerNugget = Math.max(1, CreateImp.getConfig().scrapBucket.itemsPerNugget);
+        CreateImpConfig config = CreateImp.getConfig();
+        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(destroyedStack.getItem());
+        CreateImpConfig.ScrapBucket.ItemProductionEfficiency efficiency = findItemProductionEfficiency(config, itemId);
+        int currentFill = efficiency == null ? itemFill : configuredItemFill.getOrDefault(itemId, 0);
+        currentFill += destroyedStack.getCount();
+        Item produceItem = resolveProduceItem(config);
+        int itemsPerNugget = Math.max(1, efficiency == null
+                ? config.scrapBucket.itemsPerNugget
+                : efficiency.itemsPerNugget);
         int maxStack = produceItem.getDefaultInstance().getMaxStackSize();
-        while (itemFill >= itemsPerNugget) {
+        while (currentFill >= itemsPerNugget) {
             int currentCount = producedStack.isEmpty() ? 0 : producedStack.getCount();
             if (currentCount >= maxStack) break;
-            itemFill -= itemsPerNugget;
+            currentFill -= itemsPerNugget;
             produceOneUnit(produceItem);
         }
-        if (itemFill >= itemsPerNugget) itemFill %= itemsPerNugget;
+        if (currentFill >= itemsPerNugget) currentFill %= itemsPerNugget;
+        if (efficiency == null) {
+            itemFill = currentFill;
+        } else {
+            configuredItemFill.put(itemId, currentFill);
+        }
     }
 
     /**
      * 累积流体销毁量（单位 mB）并尝试转化为产出物品，逻辑与 accumulateItemFill 对称。
      */
-    private void accumulateFluidFill(int destroyedMb) {
+    private void accumulateFluidFill(FluidStack destroyedFluid) {
         if (!canProduceAccumulate()) return;
-        fluidFill += destroyedMb;
-        Item produceItem = resolveProduceItem(CreateImp.getConfig());
-        int mbPerNugget = Math.max(1, CreateImp.getConfig().scrapBucket.mbPerNugget);
+        CreateImpConfig config = CreateImp.getConfig();
+        ResourceLocation fluidId = BuiltInRegistries.FLUID.getKey(destroyedFluid.getFluid());
+        CreateImpConfig.ScrapBucket.FluidProductionEfficiency efficiency = findFluidProductionEfficiency(config, fluidId);
+        int currentFill = efficiency == null ? fluidFill : configuredFluidFill.getOrDefault(fluidId, 0);
+        currentFill += destroyedFluid.getAmount();
+        Item produceItem = resolveProduceItem(config);
+        int mbPerNugget = Math.max(1, efficiency == null
+                ? config.scrapBucket.mbPerNugget
+                : efficiency.mbPerNugget);
         int maxStack = produceItem.getDefaultInstance().getMaxStackSize();
-        while (fluidFill >= mbPerNugget) {
+        while (currentFill >= mbPerNugget) {
             int currentCount = producedStack.isEmpty() ? 0 : producedStack.getCount();
             if (currentCount >= maxStack) break;
-            fluidFill -= mbPerNugget;
+            currentFill -= mbPerNugget;
             produceOneUnit(produceItem);
         }
-        if (fluidFill >= mbPerNugget) fluidFill %= mbPerNugget;
+        if (currentFill >= mbPerNugget) currentFill %= mbPerNugget;
+        if (efficiency == null) {
+            fluidFill = currentFill;
+        } else {
+            configuredFluidFill.put(fluidId, currentFill);
+        }
+    }
+
+    private static CreateImpConfig.ScrapBucket.ItemProductionEfficiency findItemProductionEfficiency(
+            CreateImpConfig config, ResourceLocation itemId) {
+        for (CreateImpConfig.ScrapBucket.ItemProductionEfficiency efficiency
+                : config.scrapBucket.itemProductionEfficiencies) {
+            ResourceLocation configuredId = ResourceLocation.tryParse(efficiency.itemId == null ? "" : efficiency.itemId.trim());
+            if (itemId.equals(configuredId)) return efficiency;
+        }
+        return null;
+    }
+
+    private static CreateImpConfig.ScrapBucket.FluidProductionEfficiency findFluidProductionEfficiency(
+            CreateImpConfig config, ResourceLocation fluidId) {
+        for (CreateImpConfig.ScrapBucket.FluidProductionEfficiency efficiency
+                : config.scrapBucket.fluidProductionEfficiencies) {
+            ResourceLocation configuredId = ResourceLocation.tryParse(efficiency.fluidId == null ? "" : efficiency.fluidId.trim());
+            if (fluidId.equals(configuredId)) return efficiency;
+        }
+        return null;
     }
 
     public int getAttachType() {
@@ -361,7 +407,7 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
                 ItemStack extracted = handler.extractItem(i, canTake, false);
                 if (extracted.getCount() >= stack.getCount()) slotsStillToRemove--;
                 destroyed += extracted.getCount();
-                accumulateItemFill(extracted.getCount());
+                accumulateItemFill(extracted);
                 setChanged();
             }
         } else {
@@ -382,7 +428,7 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
                 if (canTake <= 0) break;
                 ItemStack extracted = handler.extractItem(i, canTake, false);
                 destroyed += extracted.getCount();
-                accumulateItemFill(extracted.getCount());
+                accumulateItemFill(extracted);
                 setChanged();
             }
         }
@@ -412,9 +458,8 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
 
             FluidStack toDrain = new FluidStack(inTank.getFluid(), remaining);
             FluidStack drained = handler.drain(toDrain, IFluidHandler.FluidAction.EXECUTE);
-            int drainedAmount = drained.getAmount();
-            remaining -= drainedAmount;
-            accumulateFluidFill(drainedAmount);
+            remaining -= drained.getAmount();
+            accumulateFluidFill(drained);
             setChanged();
         }
     }
@@ -423,6 +468,22 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
         keepAmount = -1;
         keepInStacks = false;
         setChanged();
+    }
+
+    private static void writeConfiguredFill(CompoundTag tag, String key, Map<ResourceLocation, Integer> fills) {
+        CompoundTag fillTag = new CompoundTag();
+        fills.forEach((id, amount) -> fillTag.putInt(id.toString(), amount));
+        tag.put(key, fillTag);
+    }
+
+    private static void readConfiguredFill(CompoundTag tag, String key, Map<ResourceLocation, Integer> fills) {
+        fills.clear();
+        if (!tag.contains(key)) return;
+        CompoundTag fillTag = tag.getCompound(key);
+        for (String idString : fillTag.getAllKeys()) {
+            ResourceLocation id = ResourceLocation.tryParse(idString);
+            if (id != null) fills.put(id, fillTag.getInt(idString));
+        }
     }
 
     public int getProducedCount() {
@@ -442,6 +503,8 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
         super.write(tag, registries, clientPacket);
         tag.putInt("itemFill", itemFill);
         tag.putInt("fluidFill", fluidFill);
+        writeConfiguredFill(tag, "configuredItemFill", configuredItemFill);
+        writeConfiguredFill(tag, "configuredFluidFill", configuredFluidFill);
         if (!producedStack.isEmpty()) {
             tag.put("producedStack", producedStack.save(registries, new CompoundTag()));
         }
@@ -457,6 +520,8 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
         super.read(tag, registries, clientPacket);
         itemFill = tag.getInt("itemFill");
         fluidFill = tag.getInt("fluidFill");
+        readConfiguredFill(tag, "configuredItemFill", configuredItemFill);
+        readConfiguredFill(tag, "configuredFluidFill", configuredFluidFill);
         if (tag.contains("producedStack")) {
             producedStack = ItemStack.parseOptional(registries, tag.getCompound("producedStack"));
         } else if (tag.contains("nuggetCount")) {
@@ -497,7 +562,7 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
                 if (!fis.test(level, stack, false)) return stack;
             }
             if (!simulate) {
-                accumulateItemFill(stack.getCount());
+                accumulateItemFill(stack);
                 setChanged();
             }
             return ItemStack.EMPTY;
@@ -547,7 +612,7 @@ public class BrassScrapBucketBlockEntity extends SmartBlockEntity {
                 if (!fis.test(level, resource, false)) return 0;
             }
             if (!action.simulate()) {
-                accumulateFluidFill(resource.getAmount());
+                accumulateFluidFill(resource);
                 setChanged();
             }
             return resource.getAmount();

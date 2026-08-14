@@ -11,7 +11,7 @@
       "item": "create:redstone_link"
     },
     {
-      "item": "minecraft:oak_sign"
+      "tag": "minecraft:signs"
     }
   ],
   "result": {

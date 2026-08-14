@@ -77,6 +77,8 @@ public class CreateImpConfig implements ConfigData {
     public static class ScrapBucket {
         public int itemsPerNugget = 64;
         public int mbPerNugget = 8000;
+        public List<ItemProductionEfficiency> itemProductionEfficiencies = new ArrayList<>();
+        public List<FluidProductionEfficiency> fluidProductionEfficiencies = new ArrayList<>();
         public boolean generateExperienceNuggets = true;
         public String brassScrapBucketProduceItem = "create:experience_nugget";
         public int itemTransferAmount = 64;
@@ -85,6 +87,16 @@ public class CreateImpConfig implements ConfigData {
         public int fluidTransferInterval = 10;
         public List<String> blacklistedItems = new ArrayList<>();
         public List<String> blacklistedFluids = new ArrayList<>();
+
+        public static class ItemProductionEfficiency {
+            public String itemId = "";
+            public int itemsPerNugget = 64;
+        }
+
+        public static class FluidProductionEfficiency {
+            public String fluidId = "";
+            public int mbPerNugget = 8000;
+        }
     }
 
     public static class LabeledRedstoneLinkConfig {
