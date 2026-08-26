@@ -1,6 +1,7 @@
 package com.molox.createimp.mixin;
 
 import com.molox.createimp.CreateImp;
+import com.molox.createimp.block.template_panel.TemplatePanelBehaviour;
 import com.molox.createimp.compat.createadditionallogistics.CreateAdditionalLogisticsCompat;
 import com.molox.createimp.compat.createadditionallogistics.FactoryPanelPromiseLimitHelper;
 import com.molox.createimp.util.IFactoryPanelBehaviourDemandMode;
@@ -28,6 +29,7 @@ import com.simibubi.create.foundation.utility.CreateLang;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenCustomHashMap;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.ItemStackLinkedSet;
 import net.minecraft.world.level.BlockAndTintGetter;
@@ -338,5 +340,33 @@ public abstract class MixinFactoryPanelBehaviour implements IFactoryPanelBehavio
         if (!isActive()) return;
         CompoundTag panelTag = nbt.getCompound(CreateLang.asId(slot.name()));
         createimp$demandMode = panelTag.getBoolean("CreateImpDemandMode");
+    }
+
+    // ---- 修复：移动工厂仪表后，同步模板面板侧引用的跨类型「工厂-模板」连接 ----
+    // 跨类型连接只存储在模板面板的 targetedBy 中（单侧存储），Create 原版
+    // FactoryPanelBehaviour.moveTo 不会感知模板面板，移动后模板侧连接会悬空断开。
+    @Unique
+    private FactoryPanelPosition createimp$moveFromPos;
+
+    @Inject(method = "moveTo", at = @At("HEAD"))
+    private void createimp$moveToHead(FactoryPanelPosition newPos, ServerPlayer player, CallbackInfo ci) {
+        this.createimp$moveFromPos = ((FactoryPanelBehaviour) (Object) this).getPanelPosition();
+    }
+
+    @Inject(method = "moveTo", at = @At("TAIL"))
+    private void createimp$moveToTail(FactoryPanelPosition newPos, ServerPlayer player, CallbackInfo ci) {
+        FactoryPanelPosition oldPos = this.createimp$moveFromPos;
+        this.createimp$moveFromPos = null;
+        if (oldPos == null) {
+            return;
+        }
+        FactoryPanelPosition afterPos = ((FactoryPanelBehaviour) (Object) this).getPanelPosition();
+        if (oldPos.equals(afterPos)) {
+            return; // 移动未生效（目标无效等提前返回）
+        }
+        net.minecraft.world.level.Level level = createimp$getLevel();
+        if (level != null && !level.isClientSide()) {
+            TemplatePanelBehaviour.relocateFactoryReferences(level, oldPos, newPos);
+        }
     }
 }
