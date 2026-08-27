@@ -124,6 +124,8 @@
   "createimp.gui.stock_keeper.no_work_warehouse": "当前无可用工作仓库",
   "createimp.gui.stock_keeper.work_warehouse_available": "当前可用工作仓库数量：%s",
   "createimp.gui.stock_keeper.not_enough_work_warehouse": "没有足够可用工作仓库",
+  "createimp.gui.stock_keeper.cancel_template_orders_hint": "请在下方请求栏右键或滚轮取消部分模板订单",
+  "createimp.gui.stock_keeper.remove_excess_templates": "一键移除超出工作仓库数量的模板订单",
   "createimp.item.template_order_token.name": "%s 模板",
   "createimp.item.template_order_token.tooltip_prefix": "使用材料",
   "createimp.item.template_order_token.tooltip_suffix": " 的配方",
