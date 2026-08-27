@@ -102,6 +102,14 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
     @Unique
     private int createimp$workWarehousePollCooldown = 0;
 
+    /**
+     * 剪贴板模式下，用户是否已经手动编辑过请求栏（点击/滚轮调整模板订单、
+     * 一键清除等）。一旦编辑过，后续服务端库存快照刷新触发的自动重填
+     * （{@code requestSchematicList}）就不再覆盖请求栏，保留用户编辑结果。
+     */
+    @Unique
+    private boolean createimp$schematicOrdersTouched = false;
+
     @Shadow
     public List<List<BigItemStack>> displayedItems;
 
@@ -152,6 +160,72 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
 
     @Shadow
     private native void drawItemCount(GuiGraphics graphics, int count, int customCount);
+
+    @Shadow
+    private int itemsX;
+
+    @Shadow
+    private int itemsY;
+
+    @Shadow
+    private int orderY;
+
+    @Shadow
+    private int cols;
+
+    @Shadow
+    private int colWidth;
+
+    @Shadow
+    private int rowHeight;
+
+    @Shadow
+    private int windowWidth;
+
+    @Shadow
+    private int windowHeight;
+
+    // getGuiLeft/getGuiTop 是 Screen 父类的方法，Mixin 不允许 @Shadow 继承方法，
+    // 且编译映射中方法名不统一，这里用已有的 @Shadow 布局字段反推：
+    //   itemsX = getGuiLeft() + (windowWidth - cols*colWidth)/2 + 1
+    //   orderY = getGuiTop()  + windowHeight - 72
+    @Unique
+    private int createimp$getGuiLeft() {
+        return this.itemsX - (this.windowWidth - this.cols * this.colWidth) / 2 - 1;
+    }
+
+    @Unique
+    private int createimp$getGuiTop() {
+        return this.orderY - this.windowHeight + 72;
+    }
+
+    /**
+     * 剪贴板模式下原版 {@code getHoveredSlot} 被 {@code isSchematicListMode()}
+     * 短路（Create 原版设计为"一键自动补货、不允许手动编辑"），这里手动补算
+     * 请求栏的命中，使模板订单在剪贴板模式下也能编辑/取消。
+     */
+    @Unique
+    private Couple<Integer> createimp$resolveHoveredSlot(double mouseX, double mouseY) {
+        Couple<Integer> hovered = this.getHoveredSlot((int) mouseX, (int) mouseY);
+        if (hovered != this.noneHovered) {
+            return hovered;
+        }
+        if (!this.isSchematicListMode()) {
+            return hovered;
+        }
+        int x = (int) mouseX + 1;
+        int y = (int) mouseY;
+        if (x < this.itemsX || x >= this.itemsX + this.cols * this.colWidth) {
+            return hovered;
+        }
+        if (y >= this.orderY && y < this.orderY + this.rowHeight) {
+            int col = (x - this.itemsX) / this.colWidth;
+            if (col >= 0 && col < this.itemsToOrder.size()) {
+                return Couple.create(-1, col);
+            }
+        }
+        return hovered;
+    }
 
     @Override
     public void createimp$invokeSendIt() {
@@ -363,12 +437,85 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
         List<Component> lines = new ArrayList<>();
         if (availableCount < templateCount) {
             lines.add(Component.translatable("createimp.gui.stock_keeper.not_enough_work_warehouse"));
+            // 操作指引：剪贴板模式下请求栏模板订单已支持右键/滚轮编辑
+            lines.add(Component.translatable("createimp.gui.stock_keeper.cancel_template_orders_hint")
+                    .withStyle(ChatFormatting.GRAY));
         }
         // 还没收到服务端回应（-1）时，提示文案里不显示负数，展示为 0 更符合直觉，
         // 不影响上面"是否禁用"这条判断本身（判断依然用的是原始的 -1）。
         lines.add(Component.translatable("createimp.gui.stock_keeper.work_warehouse_available",
                 Math.max(0, availableCount)));
         graphics.renderComponentTooltip(net.minecraft.client.Minecraft.getInstance().font, lines, mouseX, mouseY);
+    }
+
+    // ==== 一键移除超出工作仓库数量的模板订单 ====
+
+    @Unique
+    private int createimp$removeExcessButtonX() {
+        return this.createimp$getGuiLeft() + 143 - 20;
+    }
+
+    @Unique
+    private int createimp$removeExcessButtonY() {
+        return this.createimp$getGuiTop() + this.windowHeight - 39;
+    }
+
+    @Unique
+    private boolean createimp$isRemoveExcessHovered(double mouseX, double mouseY) {
+        int x = createimp$removeExcessButtonX();
+        int y = createimp$removeExcessButtonY();
+        return mouseX >= x && mouseX < x + 18 && mouseY >= y && mouseY < y + 18;
+    }
+
+    @Unique
+    private void createimp$removeExcessTemplates() {
+        int templateCount = createimp$countTemplateEntries();
+        if (templateCount == 0 || this.blockEntity == null || this.blockEntity.behaviour == null) {
+            return;
+        }
+        int available = ClientWorkWarehouseAvailabilityCache.get(this.blockEntity.behaviour.freqId);
+        int excess = templateCount - available;
+        if (excess <= 0) {
+            return;
+        }
+        // 从请求栏末尾开始移除多余的模板订单（普通现货条目不受影响）
+        for (int i = this.itemsToOrder.size() - 1; i >= 0 && excess > 0; i--) {
+            BigItemStack entry = this.itemsToOrder.get(i);
+            if (TemplateOrderTokenHelper.isToken(entry.stack)) {
+                this.itemsToOrder.remove(i);
+                excess--;
+            }
+        }
+    }
+
+    @Inject(method = "renderForeground", at = @At("TAIL"))
+    private void createimp$renderRemoveExcessButton(GuiGraphics graphics, int mouseX, int mouseY,
+                                                    float partialTicks, CallbackInfo ci) {
+        if (!createimp$isTemplateSendBlocked() || createimp$isConfiguringRedstoneRequester()) {
+            return;
+        }
+        int x = createimp$removeExcessButtonX();
+        int y = createimp$removeExcessButtonY();
+        graphics.blit(TEMPLATE_REQUEST_SLOT_BG, x, y, 0, 0, 18, 18, 18, 18);
+        graphics.drawString(net.minecraft.client.Minecraft.getInstance().font, "-", x + 6, y + 5, 0xFFFFFF, false);
+        if (createimp$isRemoveExcessHovered(mouseX, mouseY)) {
+            graphics.renderComponentTooltip(net.minecraft.client.Minecraft.getInstance().font,
+                    List.of(Component.translatable("createimp.gui.stock_keeper.remove_excess_templates")), mouseX, mouseY);
+        }
+    }
+
+    @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
+    private void createimp$handleRemoveExcessClick(double mouseX, double mouseY, int button,
+                                                   CallbackInfoReturnable<Boolean> cir) {
+        if (button != 0 || !createimp$isTemplateSendBlocked() || createimp$isConfiguringRedstoneRequester()) {
+            return;
+        }
+        if (!createimp$isRemoveExcessHovered(mouseX, mouseY)) {
+            return;
+        }
+        this.createimp$schematicOrdersTouched = true;
+        cir.setReturnValue(true);
+        createimp$removeExcessTemplates();
     }
 
     @Unique
@@ -744,6 +891,11 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
     @Inject(method = "requestSchematicList", at = @At("HEAD"), cancellable = true)
     private void createimp$fillSchematicListWithTemplates(CallbackInfo ci) {
         ci.cancel();
+        // 用户已手动编辑过请求栏：保留当前订单，不再随库存快照刷新自动重填
+        // （否则每次刷新都会清空重建，把编辑结果吞掉）。
+        if (this.createimp$schematicOrdersTouched) {
+            return;
+        }
         this.itemsToOrder.clear();
         InventorySummary availableItems = this.blockEntity.getLastClientsideStockSnapshotAsSummary();
         List<BigItemStack> tokenPool = availableItems.getStacks();
@@ -989,6 +1141,98 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
      * 上面两个方法处理，这里跳过；点的是请求栏本身，不管合并/分离模式，
      * 都统一在这里处理。
      */
+    /**
+     * 剪贴板模式（拿剪贴板打开仓管）下，原版 {@code getHoveredSlot} 被
+     * {@code isSchematicListMode()} 短路导致请求栏槽位交互全部失效；这里手动
+     * 解析请求栏命中，让模板订单可以右键减少/左键增加/中键补一份（减到 0
+     * 自动移除）。普通现货条目保持原版"剪贴板模式禁交互"的设计。
+     */
+    @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
+    private void createimp$handleSchematicTemplateOrderClick(double mouseX, double mouseY, int button,
+                                                             CallbackInfoReturnable<Boolean> cir) {
+        if (!this.isSchematicListMode()) {
+            return;
+        }
+        if (button != 0 && button != 1 && button != 2) {
+            return;
+        }
+        Couple<Integer> hovered = createimp$resolveHoveredSlot(mouseX, mouseY);
+        if (hovered.getFirst() != -1) {
+            return;
+        }
+        int itemIndex = hovered.getSecond();
+        if (itemIndex < 0 || itemIndex >= this.itemsToOrder.size()) {
+            return;
+        }
+        BigItemStack entry = this.itemsToOrder.get(itemIndex);
+        if (!TemplateOrderTokenHelper.isToken(entry.stack)) {
+            return;
+        }
+        TemplateOrderTarget target = TemplateOrderTokenHelper.getTarget(entry.stack);
+        if (target == null) {
+            return;
+        }
+        this.createimp$schematicOrdersTouched = true;
+        cir.setReturnValue(true);
+        int transfer = createimp$templateTransferStep(entry.stack, true);
+        if (button == 1) {
+            createimp$adjustOrder(entry.stack, -transfer);
+            return;
+        }
+        if (button == 2) {
+            createimp$adjustOrder(entry.stack, transfer);
+            return;
+        }
+        int remaining = createimp$remainingStock(target);
+        if (remaining > 0) {
+            createimp$adjustOrder(target.display(), Math.min(transfer, remaining));
+        } else {
+            createimp$adjustOrder(entry.stack, transfer);
+        }
+    }
+
+    /**
+     * 剪贴板模式下请求栏模板订单的滚轮调整：向下滚减少、向上滚增加，
+     * 与点击交互一致（减到 0 自动移除）。
+     */
+    @Inject(method = "mouseScrolled", at = @At("HEAD"), cancellable = true)
+    private void createimp$handleSchematicTemplateOrderScroll(double mouseX, double mouseY, double scrollX, double scrollY,
+                                                              CallbackInfoReturnable<Boolean> cir) {
+        if (!this.isSchematicListMode()) {
+            return;
+        }
+        Couple<Integer> hovered = createimp$resolveHoveredSlot(mouseX, mouseY);
+        if (hovered.getFirst() != -1) {
+            return;
+        }
+        int itemIndex = hovered.getSecond();
+        if (itemIndex < 0 || itemIndex >= this.itemsToOrder.size()) {
+            return;
+        }
+        BigItemStack entry = this.itemsToOrder.get(itemIndex);
+        if (!TemplateOrderTokenHelper.isToken(entry.stack)) {
+            return;
+        }
+        TemplateOrderTarget target = TemplateOrderTokenHelper.getTarget(entry.stack);
+        if (target == null) {
+            return;
+        }
+        this.createimp$schematicOrdersTouched = true;
+        cir.setReturnValue(true);
+        boolean remove = scrollY < 0;
+        int transfer = net.minecraft.util.Mth.ceil(Math.abs(scrollY)) * (Screen.hasControlDown() ? 10 : 1);
+        if (remove) {
+            createimp$adjustOrder(entry.stack, -transfer);
+            return;
+        }
+        int remaining = createimp$remainingStock(target);
+        if (remaining > 0) {
+            createimp$adjustOrder(target.display(), Math.min(transfer, remaining));
+        } else {
+            createimp$adjustOrder(entry.stack, transfer);
+        }
+    }
+
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
     private void createimp$handleFluidTemplateOrderClick(double mouseX, double mouseY, int button,
                                                          CallbackInfoReturnable<Boolean> cir) {

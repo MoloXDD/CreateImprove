@@ -124,6 +124,8 @@
   "createimp.gui.stock_keeper.no_work_warehouse": "No Work Warehouse available",
   "createimp.gui.stock_keeper.work_warehouse_available": "Available Work Warehouses: %s",
   "createimp.gui.stock_keeper.not_enough_work_warehouse": "Not enough Work Warehouses available",
+  "createimp.gui.stock_keeper.cancel_template_orders_hint": "Right-click or scroll on template orders in the request bar to cancel some",
+  "createimp.gui.stock_keeper.remove_excess_templates": "Remove template orders exceeding the available Work Warehouse count",
   "createimp.item.template_order_token.name": "%s Template",
   "createimp.item.template_order_token.tooltip_prefix": "Uses ingredients",
   "createimp.item.template_order_token.tooltip_suffix": " recipe",
