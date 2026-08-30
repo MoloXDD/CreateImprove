@@ -258,6 +258,11 @@ public final class TemplateMaterialCalculator {
             if (order.amount() > 0) {
                 TemplateOrderTarget target = order.target();
                 TemplatePanelBehaviour root = TemplatePanelBehaviour.at(level, target.position());
+                if (root == null) {
+                    // 跨维度回退：玩家所在维度可能与模板面板不同（如主世界的
+                    // 模板面板 + 下界的玩家），按网络注册表跨维度查找。
+                    root = TemplatePanelBehaviour.atAnyDimension(primaryNetwork, target.position());
+                }
                 if (root == null || !root.validTemplateChain) {
                     addTo(missingAgg, target.display(), order.amount());
                     anyChainBroken = true;
@@ -336,6 +341,10 @@ public final class TemplateMaterialCalculator {
             }
             TemplateOrderTarget target = ordered.target();
             TemplatePanelBehaviour root = TemplatePanelBehaviour.at(level, target.position());
+            if (root == null) {
+                // 跨维度回退：玩家所在维度可能与模板面板不同，按网络注册表跨维度查找。
+                root = TemplatePanelBehaviour.atAnyDimension(primaryNetwork, target.position());
+            }
             if (root == null || !root.validTemplateChain) {
                 continue;
             }
@@ -619,11 +628,17 @@ public final class TemplateMaterialCalculator {
     }
 
     private static NodeData resolveNode(Level level, TemplatePanelPosition pos) {
-        if (!level.isLoaded(pos.pos())) {
-            return null;
+        BlockEntity be = level.isLoaded(pos.pos()) ? level.getBlockEntity(pos.pos()) : null;
+        TemplatePanelBlockEntity tpbe = be instanceof TemplatePanelBlockEntity t ? t : null;
+        if (tpbe == null) {
+            // 跨维度回退：玩家所在维度可能与模板面板不同（模板链通常在主世界），
+            // 按 createimp 的网络注册表跨维度查找模板面板。
+            TemplatePanelBehaviour anyLevel = TemplatePanelBehaviour.atAnyLevel(pos);
+            if (anyLevel != null && anyLevel.blockEntity instanceof TemplatePanelBlockEntity t2) {
+                tpbe = t2;
+            }
         }
-        BlockEntity be = level.getBlockEntity(pos.pos());
-        if (be instanceof TemplatePanelBlockEntity tpbe) {
+        if (tpbe != null) {
             TemplatePanelBehaviour node = tpbe.panels.get(pos.slot());
             if (node == null || !node.isActive() || node.getFilter().isEmpty()
                     || node.recipeAddress == null || node.recipeAddress.isEmpty()) {
