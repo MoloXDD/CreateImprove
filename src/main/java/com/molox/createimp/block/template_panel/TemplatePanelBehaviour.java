@@ -293,6 +293,31 @@ public class TemplatePanelBehaviour extends FilteringBehaviour implements MenuPr
         }
     }
 
+    /**
+     * 跨维度查找模板面板：按网络注册表查找（注册表按网络 UUID 分组、跨维度维护），
+     * 不依赖调用方所在维度。玩家在其它维度（如模板面板在主世界、玩家在下界）时，
+     * 原版 {@link #at(BlockAndTintGetter, TemplatePanelPosition)} 用调用方维度的
+     * Level 查方块实体，会查不到面板，导致模板链被误判为失效。
+     */
+    public static TemplatePanelBehaviour atAnyDimension(UUID network, TemplatePanelPosition pos) {
+        if (network == null || pos == null) {
+            return null;
+        }
+        Cache<TemplatePanelPosition, WeakReference<TemplatePanelBehaviour>> cache = NETWORK_REGISTRY.getIfPresent(network);
+        if (cache == null) {
+            return null;
+        }
+        WeakReference<TemplatePanelBehaviour> ref = cache.getIfPresent(pos);
+        if (ref == null) {
+            return null;
+        }
+        TemplatePanelBehaviour behaviour = ref.get();
+        if (behaviour == null || behaviour.blockEntity.isRemoved() || !behaviour.active) {
+            return null;
+        }
+        return behaviour;
+    }
+
     public static ItemStack getExternalFilter(Level level, BlockPos pos, TemplatePanelBlock.PanelSlot slot) {
         if (!level.isLoaded(pos)) {
             return ItemStack.EMPTY;

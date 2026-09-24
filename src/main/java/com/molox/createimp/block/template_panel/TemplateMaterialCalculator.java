@@ -257,12 +257,12 @@ public final class TemplateMaterialCalculator {
 
             if (order.amount() > 0) {
                 TemplateOrderTarget target = order.target();
-                TemplatePanelBehaviour root = TemplatePanelBehaviour.at(level, target.position());
-                if (root == null || !root.validTemplateChain) {
+                TemplatePanelBehaviour root = resolveRoot(level, target);
+                if (root == null || !root.validTemplateChain || root.getWorld() == null) {
                     addTo(missingAgg, target.display(), order.amount());
                     anyChainBroken = true;
                 } else {
-                    buildSnapshotForTemplate(level, target.position(), order.amount(), stockCache,
+                    buildSnapshotForTemplate(root.getWorld(), target.position(), order.amount(), stockCache,
                             usedAggThis, usedAggThisByNetwork, missingAgg, snapshotThis, accurate);
                 }
             }
@@ -335,10 +335,11 @@ public final class TemplateMaterialCalculator {
                 continue;
             }
             TemplateOrderTarget target = ordered.target();
-            TemplatePanelBehaviour root = TemplatePanelBehaviour.at(level, target.position());
-            if (root == null || !root.validTemplateChain) {
+            TemplatePanelBehaviour root = resolveRoot(level, target);
+            if (root == null || !root.validTemplateChain || root.getWorld() == null) {
                 continue;
             }
+            Level templateLevel = root.getWorld();
 
             int low = 0;
             int high = ordered.amount();
@@ -354,7 +355,7 @@ public final class TemplateMaterialCalculator {
                     Map<StockKey, NetworkAccumulator> trialUsedByNetwork = new LinkedHashMap<>();
                     Map<ItemOnlyKey, Accumulator> trialMissing = new LinkedHashMap<>();
                     List<WorkWarehouseTemplateSnapshot.PanelSnapshot> trialSnapshot = new ArrayList<>();
-                    buildSnapshotForTemplate(level, target.position(), mid, trialCache,
+                    buildSnapshotForTemplate(templateLevel, target.position(), mid, trialCache,
                             trialUsed, trialUsedByNetwork, trialMissing, trialSnapshot, accurate);
                     feasible = trialMissing.isEmpty();
                 }
@@ -374,7 +375,7 @@ public final class TemplateMaterialCalculator {
             Map<StockKey, NetworkAccumulator> committedUsedByNetwork = new LinkedHashMap<>();
             Map<ItemOnlyKey, Accumulator> committedMissing = new LinkedHashMap<>();
             List<WorkWarehouseTemplateSnapshot.PanelSnapshot> committedSnapshot = new ArrayList<>();
-            buildSnapshotForTemplate(level, target.position(), best, stockCache,
+            buildSnapshotForTemplate(templateLevel, target.position(), best, stockCache,
                     committedUsed, committedUsedByNetwork, committedMissing, committedSnapshot, accurate);
 
             templatesToActivate.add(new TemplateDispatch(ordered, best, committedSnapshot,
@@ -383,6 +384,19 @@ public final class TemplateMaterialCalculator {
         }
 
         return new PartialResult(regularFulfillments, templatesToActivate);
+    }
+
+    /**
+     * 先在调用者所在维度查找模板；找不到时按令牌保存的模板网络回退。
+     * 模板的位置对象不含维度，不能以请求者网络或全局坐标扫描代替令牌网络，
+     * 否则可能把同坐标的其它模板误认为请求目标。
+     */
+    private static TemplatePanelBehaviour resolveRoot(Level lookupLevel, TemplateOrderTarget target) {
+        TemplatePanelBehaviour root = TemplatePanelBehaviour.at(lookupLevel, target.position());
+        if (root != null) {
+            return root;
+        }
+        return TemplatePanelBehaviour.atAnyDimension(target.network(), target.position());
     }
 
     private static void buildSnapshotForTemplate(Level level, TemplatePanelPosition rootPos, int requestedAmount,
