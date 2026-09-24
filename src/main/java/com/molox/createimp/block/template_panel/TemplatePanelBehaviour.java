@@ -8,6 +8,7 @@ import com.simibubi.create.Create;
 import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelBehaviour;
 import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelBlock;
 import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelBlockEntity;
+import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelPosition;
 import com.simibubi.create.content.logistics.filter.FilterItem;
 import com.simibubi.create.content.logistics.filter.FilterItemStack;
 import com.simibubi.create.content.logistics.packagerLink.LogisticallyLinkedBlockItem;
@@ -255,6 +256,41 @@ public class TemplatePanelBehaviour extends FilteringBehaviour implements MenuPr
             return null;
         }
         return behaviour;
+    }
+
+    /**
+     * 工厂面板移动后，把模板面板 targetedBy 中指向旧工厂位置的跨类型连接迁移到新位置。
+     * 「工厂-模板」连接是单侧存储（只存在于模板面板的 targetedBy），原版
+     * FactoryPanelBehaviour.moveTo 只迁移同类型连接、感知不到模板面板，
+     * 移动后模板侧连接会悬空断开，这里补上同步。
+     */
+    public static void relocateFactoryReferences(Level level, FactoryPanelPosition oldPos, FactoryPanelPosition newPos) {
+        if (level == null || oldPos == null || newPos == null) {
+            return;
+        }
+        TemplatePanelPosition oldKey = new TemplatePanelPosition(oldPos.pos(),
+                TemplatePanelBlock.PanelSlot.valueOf(oldPos.slot().name()));
+        TemplatePanelPosition newKey = new TemplatePanelPosition(newPos.pos(),
+                TemplatePanelBlock.PanelSlot.valueOf(newPos.slot().name()));
+        if (oldKey.equals(newKey)) {
+            return;
+        }
+        for (Cache<TemplatePanelPosition, WeakReference<TemplatePanelBehaviour>> netCache
+                : NETWORK_REGISTRY.asMap().values()) {
+            for (WeakReference<TemplatePanelBehaviour> ref : netCache.asMap().values()) {
+                TemplatePanelBehaviour t = ref.get();
+                if (t == null || t.blockEntity.isRemoved() || t.getWorld() != level) {
+                    continue;
+                }
+                TemplatePanelConnection connection = t.targetedBy.remove(oldKey);
+                if (connection == null) {
+                    continue;
+                }
+                connection.from = newKey;
+                t.targetedBy.put(newKey, connection);
+                t.blockEntity.notifyUpdate();
+            }
+        }
     }
 
     public static ItemStack getExternalFilter(Level level, BlockPos pos, TemplatePanelBlock.PanelSlot slot) {
