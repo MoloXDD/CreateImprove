@@ -103,8 +103,8 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
     private int createimp$workWarehousePollCooldown = 0;
 
     /**
-     * 剪贴板模式下，用户是否已经手动编辑过请求栏（点击/滚轮调整模板订单、
-     * 一键清除等）。一旦编辑过，后续服务端库存快照刷新触发的自动重填
+     * 剪贴板模式下，用户是否已经手动编辑过请求栏（点击或滚轮调整模板订单）。
+     * 一旦编辑过，后续服务端库存快照刷新触发的自动重填
      * （{@code requestSchematicList}）就不再覆盖请求栏，保留用户编辑结果。
      */
     @Unique
@@ -178,26 +178,6 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
 
     @Shadow
     private int rowHeight;
-
-    @Shadow
-    private int windowWidth;
-
-    @Shadow
-    private int windowHeight;
-
-    // getGuiLeft/getGuiTop 是 Screen 父类的方法，Mixin 不允许 @Shadow 继承方法，
-    // 且编译映射中方法名不统一，这里用已有的 @Shadow 布局字段反推：
-    //   itemsX = getGuiLeft() + (windowWidth - cols*colWidth)/2 + 1
-    //   orderY = getGuiTop()  + windowHeight - 72
-    @Unique
-    private int createimp$getGuiLeft() {
-        return this.itemsX - (this.windowWidth - this.cols * this.colWidth) / 2 - 1;
-    }
-
-    @Unique
-    private int createimp$getGuiTop() {
-        return this.orderY - this.windowHeight + 72;
-    }
 
     /**
      * 剪贴板模式下原版 {@code getHoveredSlot} 被 {@code isSchematicListMode()}
@@ -446,76 +426,6 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
         lines.add(Component.translatable("createimp.gui.stock_keeper.work_warehouse_available",
                 Math.max(0, availableCount)));
         graphics.renderComponentTooltip(net.minecraft.client.Minecraft.getInstance().font, lines, mouseX, mouseY);
-    }
-
-    // ==== 一键移除超出工作仓库数量的模板订单 ====
-
-    @Unique
-    private int createimp$removeExcessButtonX() {
-        return this.createimp$getGuiLeft() + 143 - 20;
-    }
-
-    @Unique
-    private int createimp$removeExcessButtonY() {
-        return this.createimp$getGuiTop() + this.windowHeight - 39;
-    }
-
-    @Unique
-    private boolean createimp$isRemoveExcessHovered(double mouseX, double mouseY) {
-        int x = createimp$removeExcessButtonX();
-        int y = createimp$removeExcessButtonY();
-        return mouseX >= x && mouseX < x + 18 && mouseY >= y && mouseY < y + 18;
-    }
-
-    @Unique
-    private void createimp$removeExcessTemplates() {
-        int templateCount = createimp$countTemplateEntries();
-        if (templateCount == 0 || this.blockEntity == null || this.blockEntity.behaviour == null) {
-            return;
-        }
-        int available = ClientWorkWarehouseAvailabilityCache.get(this.blockEntity.behaviour.freqId);
-        int excess = templateCount - available;
-        if (excess <= 0) {
-            return;
-        }
-        // 从请求栏末尾开始移除多余的模板订单（普通现货条目不受影响）
-        for (int i = this.itemsToOrder.size() - 1; i >= 0 && excess > 0; i--) {
-            BigItemStack entry = this.itemsToOrder.get(i);
-            if (TemplateOrderTokenHelper.isToken(entry.stack)) {
-                this.itemsToOrder.remove(i);
-                excess--;
-            }
-        }
-    }
-
-    @Inject(method = "renderForeground", at = @At("TAIL"))
-    private void createimp$renderRemoveExcessButton(GuiGraphics graphics, int mouseX, int mouseY,
-                                                    float partialTicks, CallbackInfo ci) {
-        if (!createimp$isTemplateSendBlocked() || createimp$isConfiguringRedstoneRequester()) {
-            return;
-        }
-        int x = createimp$removeExcessButtonX();
-        int y = createimp$removeExcessButtonY();
-        graphics.blit(TEMPLATE_REQUEST_SLOT_BG, x, y, 0, 0, 18, 18, 18, 18);
-        graphics.drawString(net.minecraft.client.Minecraft.getInstance().font, "-", x + 6, y + 5, 0xFFFFFF, false);
-        if (createimp$isRemoveExcessHovered(mouseX, mouseY)) {
-            graphics.renderComponentTooltip(net.minecraft.client.Minecraft.getInstance().font,
-                    List.of(Component.translatable("createimp.gui.stock_keeper.remove_excess_templates")), mouseX, mouseY);
-        }
-    }
-
-    @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
-    private void createimp$handleRemoveExcessClick(double mouseX, double mouseY, int button,
-                                                   CallbackInfoReturnable<Boolean> cir) {
-        if (button != 0 || !createimp$isTemplateSendBlocked() || createimp$isConfiguringRedstoneRequester()) {
-            return;
-        }
-        if (!createimp$isRemoveExcessHovered(mouseX, mouseY)) {
-            return;
-        }
-        this.createimp$schematicOrdersTouched = true;
-        cir.setReturnValue(true);
-        createimp$removeExcessTemplates();
     }
 
     @Unique
