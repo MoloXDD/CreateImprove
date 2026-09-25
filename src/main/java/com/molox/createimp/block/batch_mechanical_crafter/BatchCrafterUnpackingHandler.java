@@ -1,15 +1,19 @@
 package com.molox.createimp.block.batch_mechanical_crafter;
 
 import com.simibubi.create.AllDataComponents;
+import com.simibubi.create.AllRecipeTypes;
 import com.simibubi.create.api.packager.unpacking.UnpackingHandler;
 import com.simibubi.create.content.logistics.BigItemStack;
 import com.simibubi.create.content.logistics.box.PackageItem;
+import com.simibubi.create.content.kinetics.crafter.MechanicalCraftingRecipe;
 import com.simibubi.create.content.logistics.packager.PackagerBlockEntity;
 import com.simibubi.create.content.logistics.stockTicker.PackageOrderWithCrafts;
 import com.simibubi.create.foundation.item.ItemHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.Ingredient;
+import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.items.ItemHandlerHelper;
@@ -79,25 +83,27 @@ public enum BatchCrafterUnpackingHandler implements UnpackingHandler {
             if (inv.getBlockEntity().phase != BatchMechanicalCrafterBlockEntity.Phase.IDLE) return;
             if (!inv.getItem(0).isEmpty()) return;
         }
-        // 配方的pattern必须是一个n×n正方形（n=max(配方宽度,配方高度)，由
-        // TemplatePanelScreen在构造阶段按左上角对齐补齐空位得到），列表长度
-        // 本身就能反推出n，不需要额外传递宽度信息。旧的仅靠九宫格3×3合成表
-        // 产生的pattern长度恒为9，同样是完全平方数，天然兼容，不受影响。
-        int patternSide = (int) Math.round(Math.sqrt(pattern.size()));
-        if (patternSide <= 0 || patternSide * patternSide != pattern.size()) {
-            // pattern本身不是一个正方形，理论上不会出现（除非数据来源异常），
-            // 为安全起见直接放弃，包裹原样留在打包机里，不做任何处理。
-            return;
+        // 赛博护目镜会将原版工厂仪表的宽×高扁平材料表原样写入包裹，订单中
+        // 没有宽高字段。先依据完整材料布局反查实际机械合成表；命中后按其
+        // 真实矩形尺寸摆放（例如2×8），而不是从列表长度猜边长。旧模板仪表/
+        // 额外仪表已经补齐为n×n方阵的订单不会匹配这种原始布局，继续沿用
+        // 既有方阵逻辑。
+        PatternLayout layout = findRawMechanicalCraftingLayout(level, pattern);
+        if (layout == null) {
+            int patternSide = (int) Math.round(Math.sqrt(pattern.size()));
+            if (patternSide <= 0 || patternSide * patternSide != pattern.size()) {
+                // 既不是可反查的原始机械合成表，也不是原有约定的方阵订单。
+                // 安全起见让包裹原样留在打包机中。
+                return;
+            }
+            layout = new PatternLayout(patternSide, patternSide);
         }
-        // 不要求整条连接链条本身恰好是一个正方形——链条可能比配方大得多、
-        // 形状也可能不规整（比如缺角），只要链条里存在至少一块边长为
-        // patternSide、内部完全填满、不缺格子的正方形区域就足够用来放这个
-        // 配方。存在多块候选区域，或者可用区域本身比配方大时，优先选择
-        // 最靠左上角的那一块（先比较行、再比较列，行列都从整条链条的左上角
-        // 算起）。找不到任何一块满足条件的区域时，包裹原样留在打包机里，
-        // 不做任何处理。
+
+        // 不要求整条连接链条本身恰好等于配方尺寸——只需包含一块完整的
+        // width×height矩形区域。这样既支持原来的方阵配方，也支持赛博护目镜
+        // 传入的2×8、4×3等非正方形机械合成表。
         List<BatchMechanicalCrafterBlockEntity.Inventory> placement =
-                findSquarePlacement(crafter, inventories, patternSide);
+                findRectanglePlacement(crafter, inventories, layout.width(), layout.height());
         if (placement == null) {
             return;
         }
@@ -157,7 +163,7 @@ public enum BatchCrafterUnpackingHandler implements UnpackingHandler {
         // 分配材料到合成器槽位。
         // Inventory.insertItem 单槽一旦非空即整体拒绝任何后续插入（即使是同种物品），
         // 因此每个格子所需的数量必须先从items列表里凑齐成一份，再对该槽位调用一次insertItem。
-        // placement已经是findSquarePlacement按行优先顺序选好的n×n子区域，
+        // placement已经是findRectanglePlacement按行优先顺序选好的矩形子区域，
         // 下标直接与pattern一一对应，不需要再换算行列号。
         int totalInserted = 0;
         for (int i = 0; i < pattern.size(); i++) {
@@ -246,10 +252,46 @@ public enum BatchCrafterUnpackingHandler implements UnpackingHandler {
         }
     }
 
+    private static PatternLayout findRawMechanicalCraftingLayout(Level level, List<BigItemStack> pattern) {
+        for (RecipeHolder<?> holder : level.getRecipeManager()
+                .getAllRecipesFor(AllRecipeTypes.MECHANICAL_CRAFTING.getType())) {
+            if (!(holder.value() instanceof MechanicalCraftingRecipe recipe)) {
+                continue;
+            }
+            if (recipe.getWidth() * recipe.getHeight() != pattern.size()) {
+                continue;
+            }
+            if (matchesRawMechanicalCraftingPattern(recipe, pattern)) {
+                return new PatternLayout(recipe.getWidth(), recipe.getHeight());
+            }
+        }
+        return null;
+    }
+
+    private static boolean matchesRawMechanicalCraftingPattern(
+            MechanicalCraftingRecipe recipe, List<BigItemStack> pattern) {
+        List<Ingredient> ingredients = recipe.getIngredients();
+        for (int index = 0; index < ingredients.size(); index++) {
+            Ingredient ingredient = ingredients.get(index);
+            ItemStack stack = pattern.get(index).stack;
+            if (ingredient.isEmpty()) {
+                if (!stack.isEmpty()) {
+                    return false;
+                }
+            } else if (stack.isEmpty() || !ingredient.test(stack)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private record PatternLayout(int width, int height) {
+    }
+
     /**
-     * 在整条连接链条里寻找一块边长为 n、内部完全填满（不缺格子）的正方形
-     * 区域，用于放置这份配方；找到时按行优先顺序（与pattern的下标顺序
-     * 完全对应）返回这 n×n 台合成器，找不到时返回 null。
+     * 在整条连接链条里寻找一块宽为width、高为height、内部完全填满（不缺
+     * 格子）的矩形区域。找到时按行优先顺序（与pattern的下标顺序完全对应）
+     * 返回这些合成器，找不到时返回 null。
      * <p>
      * 存在多块候选区域、或者链条本身比 n 大出不止一圈时，优先选择最靠
      * 左上角的一块——先比较区域左上角所在的行，行相同再比较列，行列的
@@ -261,9 +303,9 @@ public enum BatchCrafterUnpackingHandler implements UnpackingHandler {
      * {@code getInventories} 排序时"从左到右"的符号约定，保证这里认定的
      * "左上角"和玩家在配方界面里看到的左上角是同一个方向。
      */
-    private static List<BatchMechanicalCrafterBlockEntity.Inventory> findSquarePlacement(
+    private static List<BatchMechanicalCrafterBlockEntity.Inventory> findRectanglePlacement(
             BatchMechanicalCrafterBlockEntity crafter,
-            List<BatchMechanicalCrafterBlockEntity.Inventory> inventories, int n) {
+            List<BatchMechanicalCrafterBlockEntity.Inventory> inventories, int width, int height) {
         Direction facing = Direction.SOUTH;
         BlockState blockState = crafter.getBlockState();
         if (blockState.hasProperty(BatchMechanicalCrafterBlock.HORIZONTAL_FACING)) {
@@ -295,13 +337,13 @@ public enum BatchCrafterUnpackingHandler implements UnpackingHandler {
             maxCol = Math.max(maxCol, col);
         }
 
-        for (int r0 = 0; r0 + n - 1 <= maxRow; r0++) {
-            for (int c0 = 0; c0 + n - 1 <= maxCol; c0++) {
-                List<BatchMechanicalCrafterBlockEntity.Inventory> candidate = new ArrayList<>(n * n);
+        for (int r0 = 0; r0 + height - 1 <= maxRow; r0++) {
+            for (int c0 = 0; c0 + width - 1 <= maxCol; c0++) {
+                List<BatchMechanicalCrafterBlockEntity.Inventory> candidate = new ArrayList<>(width * height);
                 boolean valid = true;
                 search:
-                for (int row = 0; row < n; row++) {
-                    for (int col = 0; col < n; col++) {
+                for (int row = 0; row < height; row++) {
+                    for (int col = 0; col < width; col++) {
                         BatchMechanicalCrafterBlockEntity.Inventory inv = grid.get(gridKey(r0 + row, c0 + col));
                         if (inv == null) {
                             valid = false;

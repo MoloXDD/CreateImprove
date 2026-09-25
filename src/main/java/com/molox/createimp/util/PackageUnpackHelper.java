@@ -2,6 +2,7 @@ package com.molox.createimp.util;
 
 import com.simibubi.create.AllSoundEvents;
 import com.simibubi.create.content.logistics.box.PackageItem;
+import com.molox.createimp.compat.fluidlogistics.FluidLogisticsCompat;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
@@ -26,6 +27,13 @@ public class PackageUnpackHelper {
         ItemStack stack = slot.getItem();
 
         if (stack.isEmpty() || !(stack.getItem() instanceof PackageItem)) {
+            return false;
+        }
+
+        // 快速拆包只会处理物品栏内容，无法保留流体包裹中的压缩储罐及其
+        // 流体语义。含流体的纯流体包裹、固液混合包裹均交给流体包裹自己的
+        // 设备/交互处理，物品栏右键在这里不再触发快速拆包。
+        if (FluidLogisticsCompat.packageContainsFluid(stack)) {
             return false;
         }
 

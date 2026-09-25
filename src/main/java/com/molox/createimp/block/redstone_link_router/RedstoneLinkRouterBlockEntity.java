@@ -2,6 +2,7 @@ package com.molox.createimp.block.redstone_link_router;
 
 import com.mojang.serialization.Codec;
 import com.molox.createimp.block.labeled_redstone_link.LabeledRedstoneLinkNetworkHandler;
+import com.molox.createimp.compat.sable.SableCompat;
 import com.simibubi.create.Create;
 import com.simibubi.create.content.redstone.link.IRedstoneLinkable;
 import com.simibubi.create.content.redstone.link.RedstoneLinkNetworkHandler;
@@ -221,7 +222,12 @@ public class RedstoneLinkRouterBlockEntity extends SmartBlockEntity {
         int power = 0;
         for (IRedstoneLinkable other : network) {
             if (!other.isAlive()) continue;
-            if (!RedstoneLinkNetworkHandler.withinRange(probe, other)) continue;
+            // Sable 只改写了 Create 自己的 updateNetworkOf 调用点；路由器这里是手写读取
+            // 网络，必须显式使用其物理体坐标投影，否则物理体内的逻辑坐标会被当成世界坐标。
+            boolean withinRange = SableCompat.isLoaded()
+                    ? SableCompat.withinRedstoneLinkRange(level, probe, other)
+                    : RedstoneLinkNetworkHandler.withinRange(probe, other);
+            if (!withinRange) continue;
             power = Math.max(power, other.getTransmittedStrength());
             if (power >= 15) break;
         }

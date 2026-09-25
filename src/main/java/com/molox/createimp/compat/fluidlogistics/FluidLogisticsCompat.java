@@ -1,6 +1,10 @@
 package com.molox.createimp.compat.fluidlogistics;
 
+import com.simibubi.create.content.logistics.box.PackageItem;
+import com.yision.fluidlogistics.content.logistics.fluidPackage.CompressedTankItem;
+import net.minecraft.world.item.ItemStack;
 import net.neoforged.fml.ModList;
+import net.neoforged.neoforge.items.ItemStackHandler;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -24,6 +28,25 @@ public final class FluidLogisticsCompat {
 
     public static boolean isLoaded() {
         return ModList.get().isLoaded(MOD_ID);
+    }
+
+    /**
+     * 判断包裹是否含有流体包裹使用的非空压缩储罐。扫描全部九个内容槽位，
+     * 因此纯流体包裹和固液混合包裹都会被识别；空储罐不算作实际含有流体。
+     */
+    public static boolean packageContainsFluid(ItemStack packageStack) {
+        if (!isLoaded() || !PackageItem.isPackage(packageStack)) {
+            return false;
+        }
+        ItemStackHandler contents = PackageItem.getContents(packageStack);
+        for (int slot = 0; slot < contents.getSlots(); slot++) {
+            ItemStack content = contents.getStackInSlot(slot);
+            if (CompressedTankItem.isFluidStack(content)
+                    && !CompressedTankItem.getFluid(content).isEmpty()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

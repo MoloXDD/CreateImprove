@@ -4,6 +4,7 @@ import com.molox.createimp.block.template_panel.TemplatePanelBehaviour;
 import com.molox.createimp.block.template_panel.TemplatePanelConnection;
 import com.molox.createimp.block.template_panel.TemplatePanelConnectionHandler;
 import com.molox.createimp.block.template_panel.TemplatePanelPosition;
+import com.molox.createimp.compat.cybergoggles.CyberGogglesCompat;
 import com.molox.createimp.compat.extragauges.ExtraGaugesCompat;
 import com.molox.createimp.compat.fluidlogistics.FluidLogisticsCompat;
 import com.molox.createimp.compat.fluidlogistics.TemplateFluidDisplayHelper;
@@ -57,9 +58,8 @@ public class TemplatePanelScreen extends AbstractSimiScreen {
      * 动力合成表过大无法逐格渲染时使用的遮盖贴图，直接复用额外仪表自带的
      * 同一张贴图（其资源包内已经包含这张图，不需要我们自己再打包一份）。
      * 这个字段只会在 {@link #tooLargeToRender} 判定为 true 时才会被用于绘制，
-     * 而 {@code availableMechanicalRecipe} 只有在 {@link ExtraGaugesCompat#isLoaded()}
-     * 为真时才可能非空，因此这里引用到的贴图资源在被绘制的那一刻必定真实
-     * 存在，不会出现资源缺失。
+     * 赛博护目镜也可以启用大尺寸动力合成配方，但不提供这张贴图；赛博单独
+     * 安装时会改用纯色遮盖层（见 {@link #renderLargeRecipePlaceholder}）。
      */
     private static final net.minecraft.resources.ResourceLocation LARGE_RECIPE_PLACEHOLDER_TEXTURE =
             net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(
@@ -79,8 +79,9 @@ public class TemplatePanelScreen extends AbstractSimiScreen {
     private List<TemplatePanelConnection> connections;
     private CraftingRecipe availableCraftingRecipe;
     /**
-     * 额外仪表（Extra Gauges）兼容：识别到的动力合成表，仅在安装了额外仪表
-     * 时才会被搜索、被赋值，未安装时恒为 null，行为与本次改动之前完全一致。
+     * 大尺寸动力合成配方兼容：额外仪表存在时沿用既有兼容；仅安装赛博护目镜
+     * 时，则由其 {@code allowLargeCrafting} 开关决定是否搜索。两者都不满足时
+     * 恒为 null，保持普通合成表行为。
      * 只有 {@link #availableCraftingRecipe} 找不到匹配的普通合成表时，才会
      * 尝试搜索这个字段，两者不会同时非空。
      */
@@ -329,8 +330,12 @@ public class TemplatePanelScreen extends AbstractSimiScreen {
             boolean tooLargeToRender = this.availableMechanicalRecipe != null
                     && Math.max(this.availableMechanicalRecipe.getWidth(), this.availableMechanicalRecipe.getHeight()) > 3;
             if (tooLargeToRender) {
-                graphics.blit(LARGE_RECIPE_PLACEHOLDER_TEXTURE, x + 56, y + 23, 0, 0, 79, 72);
-                this.showLargeRecipeTooltip(graphics, mouseX, mouseY);
+                if (CyberGogglesCompat.isLargeCraftingEnabled()) {
+                    this.renderCyberLargeRecipe(graphics, mouseX, mouseY);
+                } else {
+                    this.renderLargeRecipePlaceholder(graphics, x, y);
+                    this.showLargeRecipeTooltip(graphics, mouseX, mouseY);
+                }
             } else {
                 for (BigItemStack itemStack : this.craftingIngredients) {
                     this.renderInputItem(graphics, slot++, itemStack, mouseX, mouseY);
@@ -379,6 +384,62 @@ public class TemplatePanelScreen extends AbstractSimiScreen {
         }
     }
 
+    /**
+     * 额外仪表提供了对应的占位贴图；赛博护目镜单独安装时不应引用该资源，
+     * 因此使用同尺寸的纯色遮盖层，并保留悬停提示展示完整材料信息。
+     */
+    private void renderLargeRecipePlaceholder(GuiGraphics graphics, int x, int y) {
+        if (ExtraGaugesCompat.isLoaded()) {
+            graphics.blit(LARGE_RECIPE_PLACEHOLDER_TEXTURE, x + 56, y + 23, 0, 0, 79, 72);
+            return;
+        }
+        graphics.fill(x + 56, y + 23, x + 135, y + 95, 0xC0202020);
+    }
+
+    /**
+     * 赛博护目镜单独安装时，模板仪表按赛博原版工厂仪表的规则显示大配方：
+     * 在九宫格中列出合并后的材料及使用次数，鼠标悬停时由赛博自己的提示组件
+     * 展示完整宽×高配方表。
+     */
+    private void renderCyberLargeRecipe(GuiGraphics graphics, int mouseX, int mouseY) {
+        List<BigItemStack> totals = new ArrayList<>();
+        for (BigItemStack ingredient : this.craftingIngredients) {
+            if (ingredient.stack.isEmpty()) {
+                continue;
+            }
+            BigItemStack existing = null;
+            for (BigItemStack total : totals) {
+                if (ItemStack.isSameItemSameComponents(total.stack, ingredient.stack)) {
+                    existing = total;
+                    break;
+                }
+            }
+            if (existing == null) {
+                totals.add(new BigItemStack(ingredient.stack.copyWithCount(1), 1));
+            } else {
+                existing.count++;
+            }
+        }
+
+        for (int slot = 0; slot < Math.min(totals.size(), 9); slot++) {
+            BigItemStack total = totals.get(slot);
+            int inputX = this.guiLeft + 68 + slot % 3 * 20;
+            int inputY = this.guiTop + 28 + slot / 3 * 20;
+            graphics.renderItem(total.stack, inputX, inputY);
+            graphics.renderItemDecorations(this.font, total.stack, inputX, inputY, Integer.toString(total.count));
+        }
+
+        int areaX = this.guiLeft + 68 - 2;
+        int areaY = this.guiTop + 28 - 2;
+        if (mouseX < areaX || mouseX >= areaX + 62 || mouseY < areaY || mouseY >= areaY + 62) {
+            return;
+        }
+        List<Component> tooltip = new ArrayList<>();
+        List<ItemStack> arrangement = this.craftingIngredients.stream().map(entry -> entry.stack).toList();
+        CyberGogglesCompat.addLargeRecipeTooltip(arrangement, this.availableMechanicalRecipe.getWidth(), tooltip);
+        graphics.renderComponentTooltip(this.font, tooltip, mouseX, mouseY);
+    }
+
     private void renderInputItem(GuiGraphics graphics, int slot, BigItemStack itemStack, int mouseX, int mouseY) {
         int columns = this.craftingActive ? this.craftingColumns : 3;
         int inputX = this.guiLeft + 68 + slot % columns * 20;
@@ -414,7 +475,7 @@ public class TemplatePanelScreen extends AbstractSimiScreen {
     }
 
     /**
-     * 动力合成表宽或高超过 3（额外仪表兼容功能）时，材料展示区域不再逐格
+     * 动力合成表宽或高超过 3（额外仪表或赛博护目镜兼容功能）时，材料展示区域不再逐格
      * 渲染每一种材料的图标，鼠标悬停在这块区域上时改为显示这条提示。
      * 只影响这一块区域的展示，配方实际参与生产的数据不受影响。
      */
@@ -591,10 +652,9 @@ public class TemplatePanelScreen extends AbstractSimiScreen {
         if (this.availableCraftingRecipe != null) {
             return;
         }
-        // 额外仪表兼容：只有在没有匹配到任何普通合成表、且额外仪表确实已安装时，
-        // 才尝试搜索动力合成表；未安装额外仪表时这段代码完全不会执行，
-        // availableMechanicalRecipe 恒为 null，行为与本次改动之前完全一致。
-        if (!ExtraGaugesCompat.isLoaded()) {
+        // 额外仪表存在时沿用其已实现的兼容；否则仅在赛博护目镜明确启用该
+        // 功能时搜索动力合成表。赛博关闭开关时不会进入这里。
+        if (!ExtraGaugesCompat.isLoaded() && !CyberGogglesCompat.isLargeCraftingEnabled()) {
             return;
         }
         RecipeType<MechanicalCraftingRecipe> mechanicalType = AllRecipeTypes.MECHANICAL_CRAFTING.getType();

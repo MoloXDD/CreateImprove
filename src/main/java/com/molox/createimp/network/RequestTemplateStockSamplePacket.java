@@ -60,7 +60,7 @@ public record RequestTemplateStockSamplePacket(UUID freqId, List<ItemStack> samp
             boolean allowed = freqId != null && Create.LOGISTICS.mayInteract(freqId, player);
             if (allowed) {
                 InventorySummary summary = TemplateOrderSummaryHelper.augment(
-                        LogisticsManager.getSummaryOfNetwork(freqId, false), freqId);
+                        LogisticsManager.getSummaryOfNetwork(freqId, true), freqId);
                 for (ItemStack sample : packet.samples()) {
                     counts.add(summary.getCountOf(sample));
                 }

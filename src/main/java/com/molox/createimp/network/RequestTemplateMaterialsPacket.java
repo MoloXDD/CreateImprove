@@ -80,7 +80,7 @@ public record RequestTemplateMaterialsPacket(UUID freqId,
             }
 
             TemplateMaterialCalculator.Result result =
-                    TemplateMaterialCalculator.calculate(level, freqId, entries);
+                    TemplateMaterialCalculator.calculate(level, freqId, entries, true);
             CreateImp.LOGGER.info(
                     "[模板材料] 材料计算完成：玩家={}, 网络={}, 模板数={}, 能否完全满足={}, 链是否失效={}, 缺少材料种类数={}, 现有材料种类数={}",
                     player.getGameProfile().getName(), freqId, templateCount,

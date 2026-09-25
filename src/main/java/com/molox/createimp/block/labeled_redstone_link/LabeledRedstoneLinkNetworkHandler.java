@@ -32,7 +32,14 @@ public class LabeledRedstoneLinkNetworkHandler {
         Set<LabeledRedstoneLinkable> group = networks.get(freq);
         if (group != null) {
             group.remove(be);
-            if (group.isEmpty()) networks.remove(freq);
+            if (group.isEmpty()) {
+                networks.remove(freq);
+            } else {
+                // A removed transmitter may have been the only active source in this
+                // frequency. Recompute immediately so receivers do not retain its
+                // previous signal level after a routed pulse ends.
+                updateAll(freq);
+            }
         }
     }
 
