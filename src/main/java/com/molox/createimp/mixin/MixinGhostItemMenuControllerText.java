@@ -3,7 +3,6 @@ package com.molox.createimp.mixin;
 import com.molox.createimp.item.LinkedControllerTextFrequencies;
 import com.molox.createimp.compat.simulated.TypewriterTextAccess;
 import com.molox.createimp.compat.simulated.TypewriterEditState;
-import dev.simulated_team.simulated.content.blocks.redstone.linked_typewriter.screen.LinkedTypewriterMenuCommon;
 import com.simibubi.create.content.redstone.link.controller.LinkedControllerMenu;
 import com.simibubi.create.foundation.gui.menu.GhostItemMenu;
 import net.minecraft.world.entity.player.Player;
@@ -27,11 +26,11 @@ public abstract class MixinGhostItemMenuControllerText {
             return ghostSlot >= 0 && ghostSlot < 12
                     && LinkedControllerTextFrequencies.has(controller.contentHolder, ghostSlot / 2);
         }
-        return (Object) this instanceof LinkedTypewriterMenuCommon typewriter
+        GhostItemMenu<?> menu = (GhostItemMenu<?>) (Object) this;
+        return (Object) this instanceof TypewriterEditState typewriter
                 && ghostSlot >= 0 && ghostSlot < 2
-                && typewriter.contentHolder != null
-                && ((TypewriterTextAccess) typewriter.contentHolder).createimp$getTextBindings()
-                        .containsKey(((TypewriterEditState) typewriter).createimp$getEditingKey());
+                && menu.contentHolder instanceof TypewriterTextAccess access
+                && access.createimp$getTextBindings().containsKey(typewriter.createimp$getEditingKey());
     }
 
     @Inject(method = "clicked", at = @At("HEAD"), cancellable = true)
@@ -47,8 +46,8 @@ public abstract class MixinGhostItemMenuControllerText {
         if ((Object) this instanceof LinkedControllerMenu controller
                 && ghostSlot < 12 && controller.getSlot(36 + ghostSlot) == slot
                 && createimp$locked(ghostSlot)) cir.setReturnValue(false);
-        if ((Object) this instanceof LinkedTypewriterMenuCommon typewriter
-                && ghostSlot < 2 && typewriter.getSlot(36 + ghostSlot) == slot
+        if ((Object) this instanceof TypewriterEditState
+                && ghostSlot < 2 && ((GhostItemMenu<?>) (Object) this).getSlot(36 + ghostSlot) == slot
                 && createimp$locked(ghostSlot)) cir.setReturnValue(false);
     }
 

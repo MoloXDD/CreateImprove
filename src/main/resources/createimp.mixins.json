@@ -2,6 +2,7 @@
   "required": true,
   "minVersion": "0.8",
   "package": "com.molox.createimp.mixin",
+  "plugin": "com.molox.createimp.mixin.CreateImpMixinConfigPlugin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
     "MixinAbstractContainerMenu",
