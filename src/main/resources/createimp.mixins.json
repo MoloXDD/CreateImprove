@@ -31,6 +31,8 @@
     "MixinStockTickerInteractionHandler",
     "MixinRedstoneRequesterBlockEntity",
     "MixinRedstoneRequesterScreen",
+    "MixinMobilePackagesStockCheckingItem",
+    "MixinMobilePackagesGenericLogisticsManager",
     "MixinItemTunablePortableTickerAccess",
     "PhantomCategoryEntryAccessor",
     "MixinTunablePortableTickerScreen",
@@ -38,6 +40,7 @@
     "MixinSimulatedTypewriterMenu"
   ],
   "client": [
+    "MixinMobilePackagesStockTickerScreen",
     "MixinAbstractSimiContainerScreenControllerText",
     "MixinLinkedControllerTextScreen",
     "MixinSimulatedTypewriterScreen",

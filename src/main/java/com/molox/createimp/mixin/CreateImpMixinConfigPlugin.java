@@ -8,21 +8,23 @@ import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
 import java.util.List;
 import java.util.Set;
 
-/** Enables mixins whose target classes come from optional bundled Create: Aeronautics/Simulated only when present. */
+/** Gates optional integrations during Mixin discovery without loading their classes. */
 public final class CreateImpMixinConfigPlugin implements IMixinConfigPlugin {
     private static final String SIMULATED_MOD_ID = "simulated";
     private boolean simulatedLoaded;
+    private boolean mobilePackagesLoaded;
 
     @Override
     public void onLoad(String mixinPackage) {
         simulatedLoaded = LoadingModList.get().getModFileById(SIMULATED_MOD_ID) != null;
+        mobilePackagesLoaded = LoadingModList.get().getModFileById("create_mobile_packages") != null;
     }
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
-        if (simulatedLoaded) return true;
         String simpleName = mixinClassName.substring(mixinClassName.lastIndexOf('.') + 1);
-        return !simpleName.startsWith("MixinSimulated");
+        if (simpleName.startsWith("MixinMobilePackages")) return mobilePackagesLoaded;
+        return simulatedLoaded || !simpleName.startsWith("MixinSimulated");
     }
 
     @Override public void acceptTargets(Set<String> myTargets, Set<String> otherTargets) {}

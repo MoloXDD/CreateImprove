@@ -125,7 +125,21 @@ tasks.register('extractSimulatedApi', Copy) {
     into(layout.buildDirectory.dir('extracted-simulated'))
     outputs.file(simulatedApiJar)
 }
-tasks.named('compileJava') { dependsOn tasks.named('extractSimulatedApi') }
+// Mobile Packages uses the generic logistics API bundled in its JarJar. Compile
+// against that exact API without shipping it or making it a required dependency.
+def factoryAbstractionsApiJar = layout.buildDirectory.file('extracted-mobile-packages/create_factory_abstractions-1.21.1-1.6.0.jar')
+tasks.register('extractMobilePackagesApi', Copy) {
+    from(zipTree(file('libs/create_mobile_packages-1.21.1-0.7.8.jar'))) {
+        include 'META-INF/jarjar/create_factory_abstractions-1.21.1-1.6.0.jar'
+        eachFile { it.path = 'create_factory_abstractions-1.21.1-1.6.0.jar' }
+        includeEmptyDirs = false
+    }
+    into(layout.buildDirectory.dir('extracted-mobile-packages'))
+    outputs.file(factoryAbstractionsApiJar)
+}
+tasks.named('compileJava') {
+    dependsOn tasks.named('extractSimulatedApi'), tasks.named('extractMobilePackagesApi')
+}
 
 // Sets up a dependency configuration called 'localRuntime'.
 // This configuration should be used instead of 'runtimeOnly' to declare
@@ -208,7 +222,7 @@ dependencies {
 
 
     //幻翼物流兼容
-    localRuntime files("libs/createphantom-1.0.1.jar")
+    //localRuntime files("libs/createphantom-1.0.1.jar")
     compileOnly files("libs/createphantom-1.0.1.jar")
 
     //Repackage、deployer兼容
@@ -226,6 +240,12 @@ dependencies {
     //赛博护目镜兼容
     localRuntime files("libs/CreateCyberGoggles-1.21.1-8.6.4.jar")
     compileOnly files("libs/CreateCyberGoggles-1.21.1-8.6.4.jar")
+
+    //无人机物流兼容
+    compileOnly files(factoryAbstractionsApiJar)
+    localRuntime files("libs/create_mobile_packages-1.21.1-0.7.8.jar")
+    compileOnly files("libs/create_mobile_packages-1.21.1-0.7.8.jar")
+
 
 }
 
