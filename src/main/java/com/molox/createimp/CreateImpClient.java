@@ -27,6 +27,7 @@ import com.simibubi.create.content.kinetics.base.SingleAxisRotatingVisual;
 import com.molox.createimp.client.BatchCrafterCTQuadLibrary;
 import com.molox.createimp.client.BatchCrafterUnbakedGeometry;
 import com.simibubi.create.foundation.item.ItemDescription;
+import com.simibubi.create.foundation.item.KineticStats;
 import com.simibubi.create.foundation.item.TooltipModifier;
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer;
 import me.shedaniel.autoconfig.AutoConfig;
@@ -101,6 +102,7 @@ public class CreateImpClient {
         TooltipModifier.REGISTRY.register(
                 ModItems.BATCH_MECHANICAL_CRAFTER.get().asItem(),
                 new ItemDescription.Modifier(ModItems.BATCH_MECHANICAL_CRAFTER.get().asItem(), FontHelper.Palette.STANDARD_CREATE)
+                        .andThen(TooltipModifier.mapNull(KineticStats.create(ModItems.BATCH_MECHANICAL_CRAFTER.get().asItem())))
         );
         TooltipModifier.REGISTRY.register(
                 ModItems.REDSTONE_LINK_ROUTER.get().asItem(),

@@ -541,7 +541,7 @@ public abstract class MixinTunablePortableTickerScreen implements StockKeeperReq
     private static boolean createimp$hasMatchingTemplate(List<BigItemStack> tokens, ItemStack displayStack) {
         for (BigItemStack token : tokens) {
             TemplateOrderTarget target = TemplateOrderTokenHelper.getTarget(token.stack);
-            if (target != null && ItemStack.isSameItemSameComponents(target.display(), displayStack)) {
+            if (target != null && FluidLogisticsCompat.sameDisplay(target.display(), displayStack)) {
                 return true;
             }
         }
@@ -763,7 +763,7 @@ public abstract class MixinTunablePortableTickerScreen implements StockKeeperReq
             return;
         }
         int liveStock = this.getLatestSummary().getCountOf(target.display());
-        BigItemStack realOrder = this.getOrderForItem(target.display());
+        BigItemStack realOrder = this.getOrderForItem(FluidLogisticsCompat.normalizeDisplay(target.display()));
         int already = realOrder != null ? realOrder.count : 0;
         int liveCustom = Math.max(0, liveStock - already);
         PoseStack pose = graphics.pose();
@@ -907,7 +907,7 @@ public abstract class MixinTunablePortableTickerScreen implements StockKeeperReq
     @Unique
     private int createimp$remainingStock(TemplateOrderTarget target) {
         int liveStock = this.createimp$getLatestSummary().getCountOf(target.display());
-        BigItemStack realOrder = this.getOrderForItem(target.display());
+        BigItemStack realOrder = this.getOrderForItem(FluidLogisticsCompat.normalizeDisplay(target.display()));
         int already = realOrder != null ? realOrder.count : 0;
         return liveStock - already;
     }
@@ -980,13 +980,13 @@ public abstract class MixinTunablePortableTickerScreen implements StockKeeperReq
                     if (templateOrder != null && templateOrder.count > 0) {
                         createimp$adjustOrder(clicked.stack, -transfer);
                     } else {
-                        createimp$adjustOrder(target.display(), -transfer);
+                        createimp$adjustOrder(FluidLogisticsCompat.normalizeDisplay(target.display()), -transfer);
                     }
                     return;
                 }
                 int remaining = createimp$remainingStock(target);
                 if (remaining > 0) {
-                    createimp$adjustOrder(target.display(), Math.min(transfer, remaining));
+                    createimp$adjustOrder(FluidLogisticsCompat.normalizeDisplay(target.display()), Math.min(transfer, remaining));
                 } else {
                     createimp$adjustOrder(clicked.stack, transfer);
                 }
@@ -1074,14 +1074,14 @@ public abstract class MixinTunablePortableTickerScreen implements StockKeeperReq
                 if (templateOrder != null && templateOrder.count > 0) {
                     createimp$adjustOrder(hoveredEntry.stack, -transfer);
                 } else {
-                    createimp$adjustOrder(target.display(), -transfer);
+                    createimp$adjustOrder(FluidLogisticsCompat.normalizeDisplay(target.display()), -transfer);
                 }
                 return;
             }
             if (scrollY > 0) {
                 int remaining = createimp$remainingStock(target);
                 if (remaining > 0) {
-                    createimp$adjustOrder(target.display(), Math.min(transfer, remaining));
+                    createimp$adjustOrder(FluidLogisticsCompat.normalizeDisplay(target.display()), Math.min(transfer, remaining));
                 } else {
                     createimp$adjustOrder(hoveredEntry.stack, transfer);
                 }

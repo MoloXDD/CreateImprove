@@ -580,7 +580,7 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
     private static boolean createimp$hasMatchingTemplate(List<BigItemStack> tokens, ItemStack displayStack) {
         for (BigItemStack token : tokens) {
             TemplateOrderTarget target = TemplateOrderTokenHelper.getTarget(token.stack);
-            if (target != null && ItemStack.isSameItemSameComponents(target.display(), displayStack)) {
+            if (target != null && FluidLogisticsCompat.sameDisplay(target.display(), displayStack)) {
                 return true;
             }
         }
@@ -870,7 +870,7 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
             return;
         }
         int liveStock = this.blockEntity.getLastClientsideStockSnapshotAsSummary().getCountOf(target.display());
-        BigItemStack realOrder = this.getOrderForItem(target.display());
+        BigItemStack realOrder = this.getOrderForItem(FluidLogisticsCompat.normalizeDisplay(target.display()));
         int already = realOrder != null ? realOrder.count : 0;
         int liveCustom = Math.max(0, liveStock - already);
         PoseStack pose = graphics.pose();
@@ -960,13 +960,13 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
             if (templateOrder != null && templateOrder.count > 0) {
                 createimp$adjustOrder(clicked.stack, -transfer);
             } else {
-                createimp$adjustOrder(target.display(), -transfer);
+                createimp$adjustOrder(FluidLogisticsCompat.normalizeDisplay(target.display()), -transfer);
             }
             return;
         }
         int remaining = createimp$remainingStock(target);
         if (remaining > 0) {
-            createimp$adjustOrder(target.display(), Math.min(transfer, remaining));
+            createimp$adjustOrder(FluidLogisticsCompat.normalizeDisplay(target.display()), Math.min(transfer, remaining));
         } else {
             createimp$adjustOrder(clicked.stack, transfer);
         }
@@ -1013,14 +1013,14 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
             if (templateOrder != null && templateOrder.count > 0) {
                 createimp$adjustOrder(hoveredEntry.stack, -transfer);
             } else {
-                createimp$adjustOrder(target.display(), -transfer);
+                createimp$adjustOrder(FluidLogisticsCompat.normalizeDisplay(target.display()), -transfer);
             }
             return;
         }
         if (scrollY > 0) {
             int remaining = createimp$remainingStock(target);
             if (remaining > 0) {
-                createimp$adjustOrder(target.display(), Math.min(transfer, remaining));
+                createimp$adjustOrder(FluidLogisticsCompat.normalizeDisplay(target.display()), Math.min(transfer, remaining));
             } else {
                 createimp$adjustOrder(hoveredEntry.stack, transfer);
             }
@@ -1030,7 +1030,7 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
     @Unique
     private int createimp$remainingStock(TemplateOrderTarget target) {
         int liveStock = this.blockEntity.getLastClientsideStockSnapshotAsSummary().getCountOf(target.display());
-        BigItemStack realOrder = this.getOrderForItem(target.display());
+        BigItemStack realOrder = this.getOrderForItem(FluidLogisticsCompat.normalizeDisplay(target.display()));
         int already = realOrder != null ? realOrder.count : 0;
         return liveStock - already;
     }
@@ -1095,7 +1095,7 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
         }
         int remaining = createimp$remainingStock(target);
         if (remaining > 0) {
-            createimp$adjustOrder(target.display(), Math.min(transfer, remaining));
+            createimp$adjustOrder(FluidLogisticsCompat.normalizeDisplay(target.display()), Math.min(transfer, remaining));
         } else {
             createimp$adjustOrder(entry.stack, transfer);
         }
@@ -1137,7 +1137,7 @@ public abstract class MixinStockKeeperRequestScreen implements StockKeeperReques
         }
         int remaining = createimp$remainingStock(target);
         if (remaining > 0) {
-            createimp$adjustOrder(target.display(), Math.min(transfer, remaining));
+            createimp$adjustOrder(FluidLogisticsCompat.normalizeDisplay(target.display()), Math.min(transfer, remaining));
         } else {
             createimp$adjustOrder(entry.stack, transfer);
         }

@@ -1,11 +1,10 @@
 package com.molox.createimp.compat.fluidlogistics;
 
 import com.simibubi.create.content.logistics.box.PackageItem;
-import com.yision.fluidlogistics.content.logistics.fluidPackage.CompressedTankItem;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.fml.ModList;
-import net.neoforged.neoforge.items.ItemStackHandler;
 
+import java.lang.reflect.Method;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -30,23 +29,58 @@ public final class FluidLogisticsCompat {
         return ModList.get().isLoaded(MOD_ID);
     }
 
+    public static ItemStack normalizeDisplay(ItemStack stack) {
+        return isLoaded() ? TemplateFluidDisplayHelper.normalizeFluidDisplay(stack) : stack;
+    }
+
+    public static boolean sameDisplay(ItemStack first, ItemStack second) {
+        return ItemStack.isSameItemSameComponents(normalizeDisplay(first), normalizeDisplay(second));
+    }
+
     /**
-     * 判断包裹是否含有流体包裹使用的非空压缩储罐。扫描全部九个内容槽位，
-     * 因此纯流体包裹和固液混合包裹都会被识别；空储罐不算作实际含有流体。
+     * 判断包裹是否携带非空流体，兼容旧压缩储罐内容和独立流体货物组件。
+     * 纯流体包裹与固液混合包裹使用同一读取入口，不能只检查物品内容槽位。
      */
     public static boolean packageContainsFluid(ItemStack packageStack) {
         if (!isLoaded() || !PackageItem.isPackage(packageStack)) {
             return false;
         }
-        ItemStackHandler contents = PackageItem.getContents(packageStack);
-        for (int slot = 0; slot < contents.getSlots(); slot++) {
-            ItemStack content = contents.getStackInSlot(slot);
-            if (CompressedTankItem.isFluidStack(content)
-                    && !CompressedTankItem.getFluid(content).isEmpty()) {
+        return !TemplateFluidDisplayHelper.findContainedFluidsInPackage(packageStack).isEmpty();
+    }
+
+    /**
+     * An item-only unpacker must not consume resource cargo or a conflicting legacy/current
+     * payload. Keep this safety decision separate from the safe reader's fluid-content list.
+     */
+    public static boolean blocksItemOnlyUnpack(ItemStack packageStack) {
+        if (!isLoaded() || !PackageItem.isPackage(packageStack)) {
+            return false;
+        }
+        Method guard = ManualOpenApi.METHOD;
+        if (guard != null) {
+            try {
+                if (Boolean.TRUE.equals(guard.invoke(null, packageStack))) {
+                    return true;
+                }
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError unsafePayload) {
+                // Failed inspection cannot establish that discarding non-item components is safe.
                 return true;
             }
         }
-        return false;
+        return packageContainsFluid(packageStack);
+    }
+
+    private static final class ManualOpenApi {
+        private static final Method METHOD = find();
+
+        private static Method find() {
+            try {
+                return Class.forName("com.yision.fluidlogistics.api.packager.PackageResources")
+                        .getMethod("blocksManualOpen", ItemStack.class);
+            } catch (ReflectiveOperationException | LinkageError olderVersion) {
+                return null;
+            }
+        }
     }
 
     /**

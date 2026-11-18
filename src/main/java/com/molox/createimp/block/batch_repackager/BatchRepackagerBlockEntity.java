@@ -1,6 +1,7 @@
 package com.molox.createimp.block.batch_repackager;
 
 import com.molox.createimp.registry.ModBlockEntityTypes;
+import com.molox.createimp.compat.fluidlogistics.FluidResourceRepackCompat;
 import com.simibubi.create.AllDataComponents;
 import com.simibubi.create.compat.computercraft.events.ComputerEvent;
 import com.simibubi.create.compat.computercraft.events.PackageEvent;
@@ -171,6 +172,15 @@ public class BatchRepackagerBlockEntity extends PackagerBlockEntity {
             return;
         }
 
+        FluidResourceRepackCompat.Result resourceOrder = FluidResourceRepackCompat.prepare(
+                this.collectedFragments.get(completedOrderId), completedOrderId, this.level.getRandom(), this.repackageHelper);
+        if (resourceOrder.handled()) {
+            if (!resourceOrder.packages().isEmpty()) {
+                this.exportResourceOrder(targetInv, completedOrderId, resourceOrder.packages());
+            }
+            return;
+        }
+
         String address = "";
         PackageOrderWithCrafts orderContext = null;
         InventorySummary summary = new InventorySummary();
@@ -198,12 +208,38 @@ public class BatchRepackagerBlockEntity extends PackagerBlockEntity {
             boxesToExport = this.repackageHelper.repackPlainMaterials(summary, address, completedOrderId);
         }
 
+        this.exportRepackagedOrder(targetInv, completedOrderId, boxesToExport);
+    }
+
+    private void exportResourceOrder(IItemHandler targetInv, int completedOrderId, List<BigItemStack> boxesToExport) {
+        List<ItemStack> remaining = new ArrayList<>(this.collectedFragments.get(completedOrderId));
+        List<Integer> slotsToConsume = new ArrayList<>();
+        for (int slot = 0; slot < targetInv.getSlots() && !remaining.isEmpty(); slot++) {
+            ItemStack candidate = targetInv.extractItem(slot, 1, true);
+            for (int index = 0; index < remaining.size(); index++) {
+                if (!ItemStack.isSameItemSameComponents(candidate, remaining.get(index))) continue;
+                remaining.remove(index);
+                slotsToConsume.add(slot);
+                break;
+            }
+        }
+        // Only consume the exact multiset that was validated, not later packages sharing its order id.
+        if (!remaining.isEmpty()) return;
+        for (int slot : slotsToConsume) targetInv.extractItem(slot, 1, false);
+        this.queueRepackagedOrder(boxesToExport);
+    }
+
+    private void exportRepackagedOrder(IItemHandler targetInv, int completedOrderId, List<BigItemStack> boxesToExport) {
         for (int slot = 0; slot < targetInv.getSlots(); ++slot) {
             ItemStack extracted = targetInv.extractItem(slot, 1, true);
             if (extracted.isEmpty() || !PackageItem.isPackage(extracted)
                     || PackageItem.getOrderId(extracted) != completedOrderId) continue;
             targetInv.extractItem(slot, 1, false);
         }
+        this.queueRepackagedOrder(boxesToExport);
+    }
+
+    private void queueRepackagedOrder(List<BigItemStack> boxesToExport) {
         if (boxesToExport.isEmpty()) {
             return;
         }

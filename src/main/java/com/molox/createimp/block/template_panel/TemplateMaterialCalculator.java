@@ -2,6 +2,8 @@ package com.molox.createimp.block.template_panel;
 
 import com.molox.createimp.block.work_warehouse.WorkWarehouseTemplateSnapshot;
 import com.molox.createimp.item.TemplateOrderTarget;
+import com.molox.createimp.compat.fluidlogistics.FluidLogisticsCompat;
+import com.molox.createimp.compat.fluidlogistics.TemplateFluidDisplayHelper;
 import com.molox.createimp.util.IFactoryPanelBehaviourDemandMode;
 import com.simibubi.create.content.logistics.BigItemStack;
 import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelBehaviour;
@@ -143,6 +145,11 @@ public final class TemplateMaterialCalculator {
     }
 
     private record StockKey(UUID network, ItemStack sample) {
+        private StockKey {
+            sample = FluidLogisticsCompat.isLoaded()
+                    ? TemplateFluidDisplayHelper.normalizeFluidDisplay(sample) : sample.copyWithCount(1);
+        }
+
         @Override
         public boolean equals(Object obj) {
             if (this == obj) {
@@ -161,6 +168,11 @@ public final class TemplateMaterialCalculator {
     }
 
     private record ItemOnlyKey(ItemStack sample) {
+        private ItemOnlyKey {
+            sample = FluidLogisticsCompat.isLoaded()
+                    ? TemplateFluidDisplayHelper.normalizeFluidDisplay(sample) : sample.copyWithCount(1);
+        }
+
         @Override
         public boolean equals(Object obj) {
             if (this == obj) {

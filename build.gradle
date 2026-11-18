@@ -217,8 +217,8 @@ dependencies {
     localRuntime files("libs/jei-1.21.1-neoforge-19.27.0.340.jar")
 
     //流体包裹兼容
-    localRuntime files("libs/fluidlogistics-1.3.0.jar")
-    compileOnly files("libs/fluidlogistics-1.3.0.jar")
+    localRuntime files("libs/fluidlogistics-1.3.2-mc1.21.1.jar")
+    compileOnly files("libs/fluidlogistics-1.3.2-mc1.21.1.jar")
 
 
     //幻翼物流兼容

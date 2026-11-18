@@ -30,10 +30,9 @@ public class PackageUnpackHelper {
             return false;
         }
 
-        // 快速拆包只会处理物品栏内容，无法保留流体包裹中的压缩储罐及其
-        // 流体语义。含流体的纯流体包裹、固液混合包裹均交给流体包裹自己的
-        // 设备/交互处理，物品栏右键在这里不再触发快速拆包。
-        if (FluidLogisticsCompat.packageContainsFluid(stack)) {
+        // 快速拆包只处理物品内容；资源货物及新旧内容冲突的包裹必须原样
+        // 留给流体包裹处理，不能把安全读取器返回空列表误判为没有流体。
+        if (FluidLogisticsCompat.blocksItemOnlyUnpack(stack)) {
             return false;
         }
 

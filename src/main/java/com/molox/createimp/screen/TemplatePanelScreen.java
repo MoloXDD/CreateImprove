@@ -565,7 +565,7 @@ public class TemplatePanelScreen extends AbstractSimiScreen {
                 }
                 if (createimp$isFluidStack(itemStack.stack)) {
                     itemStack.count = TemplateFluidDisplayHelper.adjustFluidAmount(itemStack.count,
-                            scrollY > 0, hasShiftDown(), hasControlDown(), 1, TemplateFluidDisplayHelper.maxFluidAmount());
+                            scrollY > 0, hasShiftDown(), hasControlDown(), 1, TemplateFluidDisplayHelper.maxFluidAmount(itemStack.stack));
                 } else {
                     itemStack.count = Mth.clamp((int) (itemStack.count + Math.signum(scrollY) * (hasShiftDown() ? 10 : 1)), 1, 64);
                 }
@@ -577,7 +577,7 @@ public class TemplatePanelScreen extends AbstractSimiScreen {
         if (mouseX >= outputX && mouseX < outputX + 16 && mouseY >= outputY && mouseY < outputY + 16) {
             if (createimp$isFluidStack(this.outputConfig.stack)) {
                 this.outputConfig.count = TemplateFluidDisplayHelper.adjustFluidAmount(this.outputConfig.count,
-                        scrollY > 0, hasShiftDown(), hasControlDown(), 1, TemplateFluidDisplayHelper.maxFluidAmount());
+                        scrollY > 0, hasShiftDown(), hasControlDown(), 1, TemplateFluidDisplayHelper.maxFluidAmount(this.outputConfig.stack));
             } else {
                 this.outputConfig.count = Mth.clamp((int) (this.outputConfig.count + Math.signum(scrollY) * (hasShiftDown() ? 10 : 1)), 1, 64);
             }

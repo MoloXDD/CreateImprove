@@ -1,15 +1,18 @@
 package com.molox.createimp.compat.fluidlogistics;
 
+import com.molox.createimp.item.TemplateOrderTokenHelper;
 import com.yision.fluidlogistics.compat.ghost.FluidGhostStacks;
 import com.yision.fluidlogistics.content.logistics.fluidPackage.CompressedTankItem;
-import com.yision.fluidlogistics.util.FluidAmountHelper;
+import com.yision.fluidlogistics.api.packager.PackageResourceTypes;
+
+import java.util.ArrayList;
+import java.util.List;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.material.Fluids;
 import net.neoforged.neoforge.fluids.FluidStack;
 
 /**
  * 本类集中封装所有对流体包裹（FluidLogistics）具体类的直接引用（
- * {@code CompressedTankItem}、{@code FluidStack}、{@code FluidAmountHelper}、
+ * {@code CompressedTankItem}、{@code FluidStack}、数量及渲染工具、
  * {@code FluidGhostStacks}）。
  * <p>
  * 【重要】本类里的任何方法都只允许在调用方已经确认
@@ -27,25 +30,12 @@ public final class TemplateFluidDisplayHelper {
     }
 
     /**
-     * 判断一个过滤物 {@link ItemStack} 是否是流体包裹用来代表“虚拟流体监测
-     * 目标”的压缩罐物品（即工厂仪表 / 我们模板仪表通过 JEI 拖拽流体设置出的
-     * 那种过滤物，本身不是一份真实存在的物品，只是携带了流体种类与数量的
-     * 数据组件）。
-     * <p>
-     * 【1.2.5 变更，反编译确认】流体包裹自 1.2.5 起彻底去掉了“虚拟/真实”
-     * 这个区分标记（{@code FluidTankContent} 从 {@code record(FluidStack,
-     * boolean virtual)} 改成了 {@code record(FluidStack)}，{@code
-     * CompressedTankItem.isVirtual}/{@code setFluidVirtual} 两个方法都已
-     * 不存在），压缩罐这个物品层面现在只剩“是不是装着流体”这一个判断维度
-     * （对应新增的 {@code CompressedTankItem.isFluidStack}）。本模组自己
-     * 从来不会把“包裹里真实压缩罐”这种 {@link ItemStack} 放进模板过滤物/
-     * 需求列表条目这个字段——这个字段的取值永远只来自
-     * {@link #createVirtualFluidGhostStack} 构造出的过滤物，所以这里直接
-     * 判断“是不是装着流体的压缩罐”跟原来的语义完全等价，不会因为流体
-     * 包裹去掉了虚拟标记而误认成真实压缩罐。
+     * Accept the installed version's ghost key (a fluid proxy since 1.3.2) as well
+     * as compressed-tank filters saved by older versions. This is a filter/key
+     * predicate, not a test for physical package cargo.
      */
     public static boolean isVirtualFluidDisplay(ItemStack stack) {
-        return CompressedTankItem.isFluidStack(stack);
+        return FluidGhostStacks.isFluidGhost(stack) || CompressedTankItem.isFluidStack(stack);
     }
 
     /**
@@ -53,7 +43,10 @@ public final class TemplateFluidDisplayHelper {
      * {@link #isVirtualFluidDisplay(ItemStack)} 确认过是虚拟流体过滤物。
      */
     public static FluidStack getFluid(ItemStack stack) {
-        return CompressedTankItem.getFluid(stack);
+        // Ghost keys are proxies in 1.3.2; physical tanks and saved legacy filters
+        // must retain the full amount stored in their original component.
+        return FluidGhostStacks.isFluidGhost(stack)
+                ? FluidGhostStacks.getFluid(stack) : CompressedTankItem.getFluid(stack);
     }
 
     /**
@@ -62,7 +55,7 @@ public final class TemplateFluidDisplayHelper {
      * 自己的工厂仪表显示风格一致。
      */
     public static String formatStorageAmount(int amountInMillibuckets) {
-        return FluidAmountHelper.format(amountInMillibuckets);
+        return FluidLogisticsVersionBridge.format(amountInMillibuckets);
     }
 
     /**
@@ -76,31 +69,21 @@ public final class TemplateFluidDisplayHelper {
         return FluidGhostStacks.fromFluid(fluid);
     }
 
-    /**
-     * 流体连接/流体产出在模板配方配置界面允许的最大数量（mB），与流体包裹
-     * 工厂仪表面板设置项的上限保持一致。
-     * <p>
-     * 【1.2.5 变更，反编译确认】原来直接读取的公开常量 {@code
-     * FluidGaugeHelper.MAX_FLUID_AMOUNT} 所在的类已被拆分/移除，且没有留下
-     * 任何公开常量替代——这个数值（反编译确认仍是 100000）现在只以
-     * {@code private} 常量 {@code MAX_FACTORY_PANEL_AMOUNT} 的形式，藏在
-     * 流体包裹自己标记为 {@code @ApiStatus.Internal} 的
-     * {@code FluidPackageResourceType} 内部类里。这里改成通过流体包裹
-     * 公开在 {@code api.packager} 包下的 {@code PackageResourceType
-     * .display().factoryPanelRestockPolicy(...).maxSettingAmount()} 这条
-     * 链路间接取值——反编译确认流体这一侧的实现不会用到传入的
-     * {@code normalizedKey} 参数内容，只依赖自己的配置项计算，所以传入
-     * 任意一份有效流体压缩罐即可。好处是这个值会跟随流体包裹自己的配置
-     * 变化自动同步；代价是链路末端的 {@code FluidPackageResourceType}
-     * 本身是内部类，流体包裹后续版本随时可能改变这条调用链，每次跟进新
-     * 版本时都需要重新反编译确认这一处依然可用。
-     */
-    public static int maxFluidAmount() {
-        ItemStack sampleKey = createRealFluidTankStack(new FluidStack(Fluids.WATER, 1));
-        return com.yision.fluidlogistics.content.logistics.fluidPackage.FluidPackageResourceType.fluid()
+    /** Canonicalize saved tank filters to the installed resource key without changing template tokens. */
+    public static ItemStack normalizeFluidDisplay(ItemStack stack) {
+        if (!TemplateOrderTokenHelper.isToken(stack) && isVirtualFluidDisplay(stack)) {
+            return createVirtualFluidGhostStack(getFluid(stack));
+        }
+        return stack.copyWithCount(1);
+    }
+
+    /** Recipe input/output amounts follow the fluid gauge's per-batch limit, not its restock settings limit. */
+    public static int maxFluidAmount(ItemStack filter) {
+        ItemStack key = normalizeFluidDisplay(filter);
+        return PackageResourceTypes.fluid()
                 .display()
-                .factoryPanelRestockPolicy(sampleKey)
-                .maxSettingAmount();
+                .factoryPanelRestockPolicy(key)
+                .maxRequestPerBatch();
     }
 
     /**
@@ -109,7 +92,7 @@ public final class TemplateFluidDisplayHelper {
      * 滚轮调整，保证步进手感与流体包裹一致。
      */
     public static int adjustFluidAmount(int currentAmount, boolean forward, boolean shift, boolean control, int minAmount, int maxAmount) {
-        return FluidAmountHelper.adjustFluidRequestAmount(currentAmount, forward, shift, control, minAmount, maxAmount);
+        return FluidLogisticsVersionBridge.adjust(currentAmount, forward, shift, control, minAmount, maxAmount);
     }
 
     /**
@@ -118,7 +101,7 @@ public final class TemplateFluidDisplayHelper {
      * Shift=2万mB），保证手感跟流包一致。
      */
     public static int stockKeeperFluidStep(boolean shift, boolean control) {
-        return FluidAmountHelper.getStockKeeperFluidRequestStep(shift, control);
+        return FluidLogisticsVersionBridge.stockStep(shift, control);
     }
 
     /**
@@ -143,7 +126,7 @@ public final class TemplateFluidDisplayHelper {
      * 用的同一个方法。
      */
     public static String formatPreciseAmount(int amountInMillibuckets) {
-        return FluidAmountHelper.formatPrecise(amountInMillibuckets);
+        return FluidLogisticsVersionBridge.formatPrecise(amountInMillibuckets);
     }
 
     /**
@@ -161,43 +144,45 @@ public final class TemplateFluidDisplayHelper {
         return FluidStack.isSameFluidSameComponents(demandFluid, realFluid);
     }
 
-    /**
-     * 扫描一个包裹（{@code PackageItem}）的9格内容，找第一个真实（非虚拟）
-     * 压缩罐并取出它携带的流体；没有就返回空。包裹内容有可能是"固液混包"
-     * （理包机合并出来的，物品和压缩罐混在一起），这里只关心压缩罐这一个
-     * 槽位，其余物品槽位忽略。
-     */
     /** 包裹本身的物品类型是不是流包的"流体包裹"（不管里面扫不扫得到压缩罐）。 */
     public static boolean isFluidPackageItemType(ItemStack box) {
         return box.getItem() instanceof com.yision.fluidlogistics.content.logistics.fluidPackage.FluidPackageItem;
     }
 
     /**
-     * 扫描一个包裹（{@code PackageItem}）的9格内容，找第一个装着流体的
-     * 压缩罐并取出流体。
-     * <p>
-     * 只要求 {@code CompressedTankItem.getFluid(...)} 非空即可，不额外区分
-     * 任何标记——1.2.5 起流体包裹自己也是同样的判断口径（新增的
-     * {@code CompressedTankItem.isFluidStack} 同样只看流体是否非空，压缩罐
-     * 已经没有“虚拟/真实”这个区分维度了，见 {@link #isVirtualFluidDisplay}
-     * 的说明）。
+     * Resolve fluid for the single-fluid warehouse cache. Component-based packages
+     * use the upstream normalized single-fluid view; older cargo is scanned for a tank
+     * and must additionally pass {@link #isPureFluidPackage} before consumption.
      */
     public static FluidStack findRealFluidInPackage(ItemStack box) {
-        if (box == null || box.isEmpty() || !com.simibubi.create.content.logistics.box.PackageItem.isPackage(box)) {
-            return FluidStack.EMPTY;
+        if (FluidLogisticsVersionBridge.hasComponentPackages()) {
+            // Use the same normalized single-fluid view as isPureFluidPackage,
+            // so legacy migration can never make us accept only part of the cargo.
+            return FluidLogisticsVersionBridge.singleContainedFluid(box);
         }
+        List<FluidStack> fluids = findContainedFluidsInPackage(box);
+        return fluids.isEmpty() ? FluidStack.EMPTY : fluids.getFirst();
+    }
+
+    /** Read component-based cargo on 1.3.2, including upstream's legacy migration rules. */
+    public static List<FluidStack> findContainedFluidsInPackage(ItemStack box) {
+        if (box == null || box.isEmpty() || !com.simibubi.create.content.logistics.box.PackageItem.isPackage(box)) {
+            return List.of();
+        }
+        if (FluidLogisticsVersionBridge.hasComponentPackages()) {
+            return FluidLogisticsVersionBridge.containedFluids(box);
+        }
+        List<FluidStack> fluids = new ArrayList<>();
         net.neoforged.neoforge.items.ItemStackHandler contents =
                 com.simibubi.create.content.logistics.box.PackageItem.getContents(box);
         for (int i = 0; i < contents.getSlots(); i++) {
             ItemStack slotStack = contents.getStackInSlot(i);
             if (slotStack.getItem() instanceof CompressedTankItem) {
                 FluidStack fluid = CompressedTankItem.getFluid(slotStack);
-                if (!fluid.isEmpty()) {
-                    return fluid;
-                }
+                if (!fluid.isEmpty()) fluids.add(fluid);
             }
         }
-        return FluidStack.EMPTY;
+        return fluids;
     }
 
     /**
@@ -213,6 +198,9 @@ public final class TemplateFluidDisplayHelper {
     public static boolean isPureFluidPackage(ItemStack box) {
         if (box == null || box.isEmpty() || !com.simibubi.create.content.logistics.box.PackageItem.isPackage(box)) {
             return false;
+        }
+        if (FluidLogisticsVersionBridge.hasComponentPackages()) {
+            return !FluidLogisticsVersionBridge.singleContainedFluid(box).isEmpty();
         }
         net.neoforged.neoforge.items.ItemStackHandler contents =
                 com.simibubi.create.content.logistics.box.PackageItem.getContents(box);
@@ -250,6 +238,9 @@ public final class TemplateFluidDisplayHelper {
      * 完全一样，不再是 Create 通用的纸壳包裹外观。
      */
     public static ItemStack createFluidPackageBox(FluidStack fluid) {
+        if (FluidLogisticsVersionBridge.hasComponentPackages()) {
+            return FluidLogisticsVersionBridge.createPackage(fluid);
+        }
         net.neoforged.neoforge.items.ItemStackHandler contents = new net.neoforged.neoforge.items.ItemStackHandler(9);
         contents.setStackInSlot(0, createRealFluidTankStack(fluid));
         ItemStack fluidPackage = com.yision.fluidlogistics.registry.AllItems.createFluidPackage();
@@ -313,6 +304,6 @@ public final class TemplateFluidDisplayHelper {
      * 跟流包完全一致。
      */
     public static void renderFluidAmountBadge(net.minecraft.client.gui.GuiGraphics graphics, int amount) {
-        com.yision.fluidlogistics.render.FluidSlotAmountRenderer.renderInStockKeeper(graphics, amount);
+        FluidLogisticsVersionBridge.renderAmount(graphics, amount);
     }
 }
